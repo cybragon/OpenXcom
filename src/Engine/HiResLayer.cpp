@@ -25,6 +25,8 @@
 #include <cmath>
 #include <cstring>
 #include <sstream>
+#include <map>
+#include <cstdlib>
 
 namespace OpenXcom
 {
@@ -35,15 +37,40 @@ bool HiResLayer::_textConfigured = false;
 namespace
 {
 
+struct SlotState
+{
+	HiResFont *font = nullptr;   ///< font chain used by the slot (owned by LayerState::fonts)
+	int sizePct = 100;           ///< per font-type size (%), multiplied with the global size
+	bool resolved = false;
+};
+
+/// Cached pixel sizes for one (slot, cell metrics, scale) combination.
+struct SizeKey
+{
+	int slot, target64, cls, refW64;
+	bool operator==(const SizeKey &o) const { return slot == o.slot && target64 == o.target64 && cls == o.cls && refW64 == o.refW64; }
+};
+struct SizeKeyHash
+{
+	size_t operator()(const SizeKey &k) const { return ((size_t)k.slot * 1000003u) ^ ((size_t)k.target64 * 9176u) ^ ((size_t)k.cls << 28) ^ ((size_t)k.refW64 * 31u); }
+};
+
 struct LayerState
 {
-	std::unique_ptr<HiResFont> font;
+	std::map<std::string, std::unique_ptr<HiResFont>> fonts;          ///< loaded font chains by key
+	HiResFont *defaultFont = nullptr;
+	std::vector<std::string> defaultSpecs;
+	std::vector<std::string> slotIds;
+	std::vector<SlotState> slots;
+	std::unordered_map<SizeKey, int, SizeKeyHash> sizeCache;
 	std::unordered_map<SDL_Surface*, std::vector<HiResCmd>> lists;   ///< commands held by (non-screen) surfaces
 	SDL_Surface *screen = nullptr;
 	int baseW = 0, baseH = 0;
 	bool outputSupported = false;
+	bool modeChanged = false;
 	std::vector<Uint32> stamps;        ///< per base pixel: id of last opaque blit
 	Uint32 stampCounter = 0;
+	Uint32 runCounter = 0;
 	std::vector<HiResCmd> frame;       ///< commands that reached the screen this frame
 	// composition buffer (premultiplied BGRA, output resolution without black bands)
 	std::vector<Uint32> rgba;
@@ -53,25 +80,121 @@ struct LayerState
 	GLuint tex = 0;
 	int texW = 0, texH = 0;
 #endif
-	int sizePct = 100, outlinePct = 100, boldPct = 30;
+	int sizePct = 100, outlinePct = 200, boldPct = 40, layout = 1;
+	HiResFont::Settings settings;
 };
 
 LayerState S;
 
 
-std::vector<std::string> splitList(const std::string &s)
+std::vector<std::string> splitList(const std::string &s, char sep = ';')
 {
 	std::vector<std::string> out;
 	std::stringstream ss(s);
 	std::string item;
-	while (std::getline(ss, item, ';'))
+	while (std::getline(ss, item, sep))
 	{
 		size_t a = item.find_first_not_of(" \t"), b = item.find_last_not_of(" \t");
 		if (a != std::string::npos)
 			out.push_back(item.substr(a, b - a + 1));
+		else if (sep != ';')
+			out.push_back("");
 	}
 	return out;
 }
+
+/// oxceHiResFontMap: "FONT_BIG=malgun.ttf,110;FONT_SMALL=,90" -> id -> (spec, size%)
+std::map<std::string, std::pair<std::string, int>> parseFontMap(const std::string &s)
+{
+	std::map<std::string, std::pair<std::string, int>> m;
+	for (const auto &entry : splitList(s))
+	{
+		size_t eq = entry.find('=');
+		if (eq == std::string::npos)
+			continue;
+		std::string id = entry.substr(0, eq);
+		std::string rest = entry.substr(eq + 1);
+		std::string spec = rest;
+		int size = 100;
+		size_t comma = rest.rfind(',');
+		if (comma != std::string::npos)
+		{
+			spec = rest.substr(0, comma);
+			size = std::atoi(rest.c_str() + comma + 1);
+			if (size <= 0) size = 100;
+		}
+		m[id] = std::make_pair(spec, size);
+	}
+	return m;
+}
+
+std::string formatFontMap(const std::map<std::string, std::pair<std::string, int>> &m)
+{
+	std::string out;
+	for (const auto &e : m)
+	{
+		if (e.second.first.empty() && e.second.second == 100)
+			continue;
+		if (!out.empty()) out += ";";
+		out += e.first + "=" + e.second.first;
+		if (e.second.second != 100) out += "," + std::to_string(e.second.second);
+	}
+	return out;
+}
+
+HiResFont *getFontChain(const std::vector<std::string> &specs)
+{
+	std::string key = std::to_string(S.settings.hinting) + (S.settings.antialias ? "a" : "m");
+	for (const auto &sp : specs) key += "|" + sp;
+	auto it = S.fonts.find(key);
+	if (it != S.fonts.end())
+		return it->second.get();
+	auto font = std::make_unique<HiResFont>();
+	if (font->load(specs, S.settings) <= 0)
+	{
+		S.fonts[key] = nullptr;
+		return nullptr;
+	}
+	HiResFont *raw = font.get();
+	S.fonts[key] = std::move(font);
+	return raw;
+}
+
+SlotState &slotState(int slot)
+{
+	static SlotState none;
+	if (slot < 0 || slot >= (int)S.slotIds.size())
+	{
+		none.font = S.defaultFont;
+		none.sizePct = 100;
+		return none;
+	}
+	if ((int)S.slots.size() < (int)S.slotIds.size())
+		S.slots.resize(S.slotIds.size());
+	SlotState &st = S.slots[slot];
+	if (!st.resolved)
+	{
+		st.resolved = true;
+		st.font = S.defaultFont;
+		st.sizePct = 100;
+		auto m = parseFontMap(Options::oxceHiResFontMap);
+		auto it = m.find(S.slotIds[slot]);
+		if (it != m.end())
+		{
+			st.sizePct = std::max(10, it->second.second);
+			if (!it->second.first.empty() && S.defaultFont)
+			{
+				std::vector<std::string> specs = splitList(it->second.first);
+				specs.insert(specs.end(), S.defaultSpecs.begin(), S.defaultSpecs.end());
+				if (HiResFont *f = getFontChain(specs))
+					st.font = f;
+			}
+		}
+	}
+	return st;
+}
+
+inline HiResFont *slotFont(int slot) { return slotState(slot).font; }
 
 inline bool intersect(int &x, int &y, int &w, int &h, int x2, int y2, int w2, int h2)
 {
@@ -81,26 +204,56 @@ inline bool intersect(int &x, int &y, int &w, int &h, int x2, int y2, int w2, in
 	return w > 0 && h > 0;
 }
 
-/// Glyph pixel size and outline radius (1/64 px) for a cell height at a scale.
-/// refW (bitmap advance of U+AC00, base px) additionally caps the size so that a
-/// Hangul syllable fits the box the bitmap layout reserved for it.
-void glyphSize(int cellH, int refW, double sx, double sy, int &px, int &outline64, int &bold64)
+/// Wide (CJK/Hangul) glyphs are sized/placed like the bitmap U+AC00, everything else like 'H'.
+inline bool isWide(UCode c)
 {
-	bold64 = (int)std::lround(sy * S.boldPct / 100.0 * 64.0);
-	double r = std::max(0.0, sy * S.outlinePct / 100.0 * 0.5);
-	outline64 = (int)std::lround(r * 64.0);
-	// fill ink should occupy the cell minus the outline on both sides; Hangul ink ~0.85 em
-	double em = (cellH * sy - 2.0 * r) / 0.85;
-	if (refW > 0 && S.font && S.font->hasGlyph(0xAC00))
+	return (c >= 0x1100 && c <= 0x11FF) || (c >= 0x2E80 && c <= 0x9FFF) || (c >= 0xAC00 && c <= 0xD7A3) ||
+		(c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFF00 && c <= 0xFFEF) || (c >= 0x3130 && c <= 0x318F);
+}
+
+inline double outlineRadius(double sy) { return std::max(0.0, sy * S.outlinePct / 100.0 * 0.5); }
+/// Emboldening in 1/64 px, proportional to the glyph size: oxceHiResTextBold is in 1/10 % of the em
+/// (40 = 4% em; bitmap fonts have ~0.11-0.125 em strokes, typical TTF regular weights ~0.07-0.08 em).
+inline double boldRatio() { return S.boldPct / 1000.0; }
+inline int bold64ForPx(int px) { return (int)std::lround(px * boldRatio() * 64.0); }
+
+/// Pixel size for a glyph class so that the TTF body ink height matches the bitmap body ink height
+/// ('H' for Latin, U+AC00 for wide glyphs); falls back to the cell height. refW (bitmap advance of
+/// U+AC00) caps wide glyphs so a syllable fits the box the bitmap layout reserved for it.
+int pixelSize(HiResFont *font, int slot, bool wide, int inkRows, int cellH, int refW, double sx, double sy)
+{
+	const double r = outlineRadius(sy);
+	double target = inkRows > 0 ? inkRows * sy : (cellH * sy - 2.0 * r) * 0.72;
+	SizeKey key{ slot, (int)std::lround(target * 64), wide ? 1 : 0, wide ? (int)std::lround(refW * sx * 64) : 0 };
+	auto it = S.sizeCache.find(key);
+	int px;
+	if (it != S.sizeCache.end())
 	{
-		int probe = std::max(1, (int)std::lround(em));
-		int adv = S.font->getAdvance(0xAC00, probe);
-		double avail = refW * sx - 2.0 * r;
-		if (adv > 0 && adv > avail)
-			em = em * avail / adv;
+		px = it->second;
 	}
-	em = em * S.sizePct / 100.0;
-	px = std::max(1, (int)std::lround(em));
+	else
+	{
+		UCode ref = wide ? 0xAC00 : 'H';
+		if (!font->hasGlyph(ref))
+			ref = font->hasGlyph('H') ? 'H' : 0xAC00;
+		const int probe = 64;
+		const HiResGlyph &g = font->getGlyph(ref, probe, 0, 0);
+		// emboldening grows the ink by em * boldRatio: solve em = probe * (target - em * b) / fillH
+		double em = (g.ok && g.fillH > 0) ? probe * target / (g.fillH + probe * boldRatio()) : target / 0.72;
+		if (wide && refW > 0 && font->hasGlyph(0xAC00))
+		{
+			// the syllable ink plus its outline must fit the bitmap advance box of U+AC00
+			const HiResGlyph &k = font->getGlyph(0xAC00, probe, 0, 0);
+			double inkW = k.ok && k.fillW > 0 ? k.fillW * em / probe + em * boldRatio() : 0.0;
+			double avail = refW * sx - 2.0 * r;
+			if (inkW > avail && inkW > 0)
+				em = em * avail / inkW;
+		}
+		px = std::max(1, (int)std::lround(em));
+		S.sizeCache[key] = px;
+	}
+	int pct = S.sizePct * slotState(slot).sizePct / 100;
+	return std::max(1, (int)std::lround(px * pct / 100.0));
 }
 
 inline void blendPixel(Uint32 &dst, const SDL_Color &c, unsigned cov)
@@ -163,52 +316,256 @@ void drawCoverage(const std::vector<uint8_t> &bm, int bw, int bh, int ox, int oy
 	unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }
 
+/// Placement of one glyph command in output pixels.
+struct Placed
+{
+	const HiResGlyph *g = nullptr;
+	int pen = 0, baseline = 0;
+};
+
+/// Vertical placement + pixel size for one glyph command.
+void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int &px, int &baseline)
+{
+	const bool wide = isWide(c.code);
+	int inkTop = wide ? c.inkTopK : c.inkTopL, inkBot = wide ? c.inkBotK : c.inkBotL;
+	bool haveInk = inkTop >= 0 && inkBot >= inkTop;
+	px = pixelSize(font, c.slot, wide, haveInk ? inkBot - inkTop + 1 : 0, c.cellH, c.refW, sx, sy);
+	const int bold64 = bold64ForPx(px);
+	UCode ref = wide ? 0xAC00 : 'H';
+	if (!font->hasGlyph(ref))
+		ref = font->hasGlyph('H') ? 'H' : 0xAC00;
+	const HiResGlyph &rg = font->getGlyph(ref, px, 0, bold64);
+	const double y0 = c.y * sy;
+	if (!rg.ok || rg.fillH <= 0)
+	{
+		baseline = (int)std::lround(y0 + c.cellH * sy * 0.8);
+		return;
+	}
+	if (!haveInk)
+	{
+		// centre the reference ink in the cell
+		baseline = (int)std::lround(y0 + (c.cellH * sy - rg.fillH) / 2.0 + rg.fillT);
+	}
+	else if (wide)
+	{
+		// centre the reference ink on the bitmap body rows of U+AC00
+		double centre = y0 + (inkTop + inkBot + 1) * sy / 2.0;
+		baseline = (int)std::lround(centre - rg.fillH / 2.0 + rg.fillT);
+	}
+	else
+	{
+		// bottom of 'H' on the bottom body row of the bitmap 'H' (= bitmap baseline)
+		double bottom = y0 + (inkBot + 1) * sy;
+		baseline = (int)std::lround(bottom + (rg.fillT - rg.fillH));
+	}
+}
+
+/// Composes the current frame into S.rgba (dstW x dstH). Returns the dirty rect of this frame;
+/// 'clearRect' receives the rect cleared from the previous frame.
+SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
+{
+	if (S.bufW != dstW || S.bufH != dstH)
+	{
+		S.bufW = dstW;
+		S.bufH = dstH;
+		S.rgba.assign((size_t)dstW * dstH, 0);
+		S.prevDirty = {0, 0, (Uint16)dstW, (Uint16)dstH};
+		S.sizeCache.clear();
+	}
+	clearRect = S.prevDirty;
+	for (int y = S.prevDirty.y; y < S.prevDirty.y + S.prevDirty.h; ++y)
+		std::fill_n(&S.rgba[y * S.bufW + S.prevDirty.x], S.prevDirty.w, 0u);
+
+	const double sx = dstW / (double)S.baseW, sy = dstH / (double)S.baseH;
+	for (auto &f : S.fonts)
+		if (f.second) f.second->trimCache(16384);
+	SDL_Rect dirty = {0, 0, 0, 0};
+	const double r = outlineRadius(sy);
+	const int outline64 = (int)std::lround(r * 64.0);
+	std::vector<Placed> placed;
+	// Commands delivered by the same blit (one text widget / button) are drawn in two
+	// passes - all outlines, then all bodies - like the bitmap font whose outline never
+	// covers the neighbouring glyph's body. Groups keep their blit (z) order.
+	for (size_t groupStart = 0; groupStart < S.frame.size(); )
+	{
+		size_t groupEnd = groupStart;
+		while (groupEnd < S.frame.size() && S.frame[groupEnd].stamp == S.frame[groupStart].stamp)
+			++groupEnd;
+		placed.assign(groupEnd - groupStart, Placed());
+		// layout, run by run
+		for (size_t runStart = groupStart; runStart < groupEnd; )
+		{
+			size_t runEnd = runStart + 1;
+			const HiResCmd &first = S.frame[runStart];
+			if (first.kind == HiResCmdKind::Glyph && first.run != 0)
+			{
+				while (runEnd < groupEnd && S.frame[runEnd].run == first.run && S.frame[runEnd].kind == HiResCmdKind::Glyph)
+					++runEnd;
+			}
+			if (first.kind != HiResCmdKind::Glyph)
+			{
+				runStart = runEnd; // HiResCmdKind::Image: reserved for hi-res sprite replacement
+				continue;
+			}
+			// vertical metrics + glyphs; then horizontal placement
+			double scale = 1.0;
+			for (int attempt = 0; attempt < 2; ++attempt)
+			{
+				long long pen64 = 0;
+				const HiResGlyph *prev = nullptr;
+				int prevPx = 0;
+				for (size_t i = runStart; i < runEnd; ++i)
+				{
+					const HiResCmd &c = S.frame[i];
+					HiResFont *font = slotFont(c.slot);
+					Placed &p = placed[i - groupStart];
+					p.g = nullptr;
+					if (!font)
+						continue;
+					int px, baseline;
+					placeVertical(c, font, sx, sy, px, baseline);
+					if (scale < 1.0)
+						px = std::max(1, (int)std::floor(px * scale));
+					const int bold64 = bold64ForPx(px);
+					const HiResGlyph &g = font->getGlyph(c.code, px, (c.flags & HiResCmd::GLYPH_SPACE) ? 0 : outline64, (c.flags & HiResCmd::GLYPH_SPACE) ? 0 : bold64);
+					if (!g.ok)
+						continue;
+					p.g = &g;
+					p.baseline = baseline;
+					if (S.layout == 0 || c.run == 0)
+					{
+						// cell mode: centre each glyph in the advance box of the bitmap glyph
+						p.pen = (int)std::lround(c.x * sx + (c.w * sx - g.advance) / 2.0);
+					}
+					else
+					{
+						if (prev && prevPx == px)
+							pen64 += font->getKerning64(*prev, g, px);
+						p.pen = (int)(pen64 >> 6); // relative for now
+						pen64 += g.adv64 + ((c.flags & HiResCmd::GLYPH_SPACE) ? 0 : bold64);
+						prev = &g;
+						prevPx = px;
+					}
+				}
+				if (S.layout == 0 || first.run == 0)
+					break;
+				// pen mode: fit the run into the span the bitmap layout reserved for it
+				const HiResCmd &last = S.frame[runEnd - 1];
+				const double spanL = first.x * sx, spanR = (last.x + last.w) * sx;
+				const double avail = spanR - spanL;
+				const double width = pen64 / 64.0;
+				if (width > avail + 0.5 && attempt == 0 && avail > 0)
+				{
+					scale = std::max(0.6, avail / width);
+					continue; // re-layout with a smaller pixel size
+				}
+				double start = spanL;
+				if (first.flags & HiResCmd::GLYPH_ALIGN_CENTER)
+					start = spanL + (avail - width) / 2.0;
+				else if (first.flags & HiResCmd::GLYPH_ALIGN_RIGHT)
+					start = spanR - width;
+				const int ist = (int)std::lround(start);
+				for (size_t i = runStart; i < runEnd; ++i)
+					placed[i - groupStart].pen += ist;
+				break;
+			}
+			runStart = runEnd;
+		}
+		for (int pass = 0; pass < 2; ++pass)
+		{
+			for (size_t i = groupStart; i < groupEnd; ++i)
+			{
+				const HiResCmd &c = S.frame[i];
+				const Placed &p = placed[i - groupStart];
+				if (!p.g || (c.flags & HiResCmd::GLYPH_SPACE) || (pass == 0 && p.g->line.empty()))
+					continue;
+				const HiResGlyph &g = *p.g;
+				const int cx0 = std::max(0, (int)std::floor(c.clipX * sx)), cy0 = std::max(0, (int)std::floor(c.clipY * sy));
+				const int cx1 = std::min(dstW, (int)std::ceil((c.clipX + c.clipW) * sx));
+				const int cy1 = std::min(dstH, (int)std::ceil((c.clipY + c.clipH) * sy));
+				if (pass == 0)
+					drawCoverage(g.line, g.lineW, g.lineH, p.pen + g.lineL, p.baseline - g.lineT, c.line, cx0, cy0, cx1, cy1, sx, sy, c.stamp, dirty);
+				else
+					drawCoverage(g.fill, g.fillW, g.fillH, p.pen + g.fillL, p.baseline - g.fillT, c.fill, cx0, cy0, cx1, cy1, sx, sy, c.stamp, dirty);
+			}
+		}
+		groupStart = groupEnd;
+	}
+	S.prevDirty = dirty;
+	return dirty;
+}
+
 }
 
 void HiResLayer::init()
 {
 	shutdown();
+	reconfigure();
+	S.modeChanged = false;
+}
+
+void HiResLayer::reconfigure()
+{
+	const bool wasRecording = _recording;
 	S.sizePct = std::max(10, Options::oxceHiResFontSize);
 	S.outlinePct = std::max(0, Options::oxceHiResTextOutline);
 	S.boldPct = std::max(0, Options::oxceHiResTextBold);
-	if (!Options::oxceHiResOverlay)
-	{
-		return;
-	}
-	if (Options::oxceHiResText)
+	S.layout = Options::oxceHiResTextLayout;
+	S.settings.hinting = Options::oxceHiResTextHinting;
+	S.settings.antialias = Options::oxceHiResTextAntialias;
+	S.slots.clear();
+	S.sizeCache.clear();
+	S.defaultFont = nullptr;
+	_textConfigured = false;
+	if (Options::oxceHiResOverlay && Options::oxceHiResText)
 	{
 		std::vector<std::string> specs = splitList(Options::oxceHiResFont);
 		std::vector<std::string> fallback = splitList(Options::oxceHiResFontFallback);
 		specs.insert(specs.end(), fallback.begin(), fallback.end());
-		if (specs.empty())
-		{
-			// defaults: Windows system fonts first, then common Linux/macOS fonts
-			specs = { "malgun.ttf", "gulim.ttc", "batang.ttc", "segoeui.ttf",
-				"NanumGothic.ttf", "NotoSansCJK-Regular.ttc", "DejaVuSans.ttf", "AppleSDGothicNeo.ttc" };
-		}
-		HiResFont::Settings settings;
-		settings.hinting = Options::oxceHiResTextHinting;
-		settings.antialias = Options::oxceHiResTextAntialias;
-		S.font = std::make_unique<HiResFont>();
-		if (S.font->load(specs, settings) > 0)
-		{
+		// built-in fallbacks: Windows system fonts first, then common Linux/macOS fonts
+		std::vector<std::string> builtin = { "malgun.ttf", "gulim.ttc", "batang.ttc", "segoeui.ttf",
+			"NanumGothic.ttf", "NotoSansCJK-Regular.ttc", "DejaVuSans.ttf", "AppleSDGothicNeo.ttc" };
+		for (const auto &b : builtin)
+			if (std::find(specs.begin(), specs.end(), b) == specs.end())
+				specs.push_back(b);
+		S.defaultSpecs = specs;
+		S.defaultFont = getFontChain(specs);
+		if (S.defaultFont)
 			_textConfigured = true;
-		}
 		else
-		{
 			Log(LOG_ERROR) << "HiResLayer: no usable TTF font found, hi-res text disabled";
-			S.font.reset();
-		}
 	}
 	_recording = _textConfigured && S.outputSupported;
-	Log(LOG_INFO) << "HiResLayer: overlay=" << Options::oxceHiResOverlay << " text=" << _textConfigured;
+	if (_recording && S.stamps.size() != (size_t)S.baseW * S.baseH)
+		S.stamps.assign((size_t)S.baseW * S.baseH, 0);
+	if (wasRecording != _recording)
+	{
+		S.lists.clear();
+		S.frame.clear();
+		S.modeChanged = true;
+	}
+	Log(LOG_INFO) << "HiResLayer: overlay=" << Options::oxceHiResOverlay << " text=" << _textConfigured << " recording=" << _recording;
+}
+
+bool HiResLayer::consumeModeChanged()
+{
+	bool r = S.modeChanged;
+	S.modeChanged = false;
+	return r;
+}
+
+bool HiResLayer::wantsTrueColor()
+{
+	return Options::oxceHiResOverlay && Options::oxceHiResText;
 }
 
 void HiResLayer::shutdown()
 {
 	_recording = false;
 	_textConfigured = false;
-	S.font.reset();
+	S.slots.clear();
+	S.defaultFont = nullptr;
+	S.fonts.clear();
 	S.lists.clear();
 	S.frame.clear();
 }
@@ -228,8 +585,11 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 	if (was != _recording)
 	{
 		Log(LOG_INFO) << "HiResLayer: recording " << (_recording ? "enabled" : "disabled (unsupported output path)");
+		S.lists.clear();
+		S.modeChanged = true;
 	}
 	S.frame.clear();
+	S.sizeCache.clear();
 }
 
 void HiResLayer::onContextLost()
@@ -238,7 +598,48 @@ void HiResLayer::onContextLost()
 	S.tex = 0; // the old context and its textures are gone
 	S.texW = S.texH = 0;
 #endif
+	// drop the composition buffer too: it is re-allocated (zeroed) on the next frame,
+	// otherwise the new texture would be created from stale contents
+	std::vector<Uint32>().swap(S.rgba);
+	S.bufW = S.bufH = 0;
 	S.prevDirty = {0, 0, 0, 0};
+}
+
+int HiResLayer::registerFontId(const std::string &id)
+{
+	auto it = std::find(S.slotIds.begin(), S.slotIds.end(), id);
+	if (it != S.slotIds.end())
+		return (int)(it - S.slotIds.begin());
+	if (S.slotIds.size() >= 255)
+		return -1;
+	S.slotIds.push_back(id);
+	return (int)S.slotIds.size() - 1;
+}
+
+const std::vector<std::string> &HiResLayer::fontIds()
+{
+	return S.slotIds;
+}
+
+void HiResLayer::getFontSetting(const std::string &id, std::string &spec, int &sizePct)
+{
+	auto m = parseFontMap(Options::oxceHiResFontMap);
+	auto it = m.find(id);
+	spec = it != m.end() ? it->second.first : "";
+	sizePct = it != m.end() ? it->second.second : 100;
+}
+
+void HiResLayer::setFontSetting(const std::string &id, const std::string &spec, int sizePct)
+{
+	auto m = parseFontMap(Options::oxceHiResFontMap);
+	m[id] = std::make_pair(spec, sizePct);
+	Options::oxceHiResFontMap = formatFontMap(m);
+}
+
+std::vector<std::string> HiResLayer::slotFaceNames(int slot)
+{
+	HiResFont *f = _textConfigured ? slotFont(slot) : nullptr;
+	return f ? f->getFaceNames() : std::vector<std::string>();
 }
 
 void HiResLayer::record(SDL_Surface *holder, const HiResCmd &cmd)
@@ -356,19 +757,29 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 	}
 }
 
-bool HiResLayer::canRenderGlyph(UCode c)
+bool HiResLayer::canRenderGlyph(UCode c, int slot)
 {
-	return _textConfigured && S.font && S.font->hasGlyph(c);
+	if (!_textConfigured)
+		return false;
+	HiResFont *f = slotFont(slot);
+	return f && f->hasGlyph(c);
 }
 
-int HiResLayer::baseAdvance(UCode c, int cellH)
+int HiResLayer::baseAdvance(UCode c, int cellH, int slot)
 {
-	if (!canRenderGlyph(c))
+	if (!canRenderGlyph(c, slot))
 		return -1;
-	int px, outline64, bold64;
-	glyphSize(cellH, 0, 1.0, 1.0, px, outline64, bold64);
-	int adv = S.font->getAdvance(c, px);
+	HiResFont *f = slotFont(slot);
+	int px = pixelSize(f, slot, isWide(c), 0, cellH, 0, 1.0, 1.0);
+	int adv = f->getAdvance(c, px);
 	return adv < 0 ? -1 : std::max(1, adv);
+}
+
+Uint32 HiResLayer::newRun()
+{
+	if (++S.runCounter == 0)
+		++S.runCounter;
+	return S.runCounter;
 }
 
 void HiResLayer::beginFrame()
@@ -385,6 +796,45 @@ const std::vector<HiResCmd> &HiResLayer::frameCommands()
 	return S.frame;
 }
 
+void HiResLayer::renderSoftware(SDL_Surface *out, int top, int bottom, int left, int right)
+{
+	if (!_recording || !out || out->format->BytesPerPixel != 4 || S.baseW <= 0 || S.baseH <= 0)
+		return;
+	const int dstW = out->w - left - right, dstH = out->h - top - bottom;
+	if (dstW <= 0 || dstH <= 0)
+		return;
+	if (S.frame.empty() && S.prevDirty.w == 0)
+		return;
+	SDL_Rect cleared;
+	SDL_Rect dirty = compose(dstW, dstH, cleared);
+	if (dirty.w <= 0 || dirty.h <= 0)
+		return;
+	if (SDL_MUSTLOCK(out))
+		SDL_LockSurface(out);
+	const SDL_PixelFormat *fmt = out->format;
+	for (int y = dirty.y; y < dirty.y + dirty.h; ++y)
+	{
+		Uint32 *dst = (Uint32*)((Uint8*)out->pixels + (y + top) * out->pitch) + left;
+		const Uint32 *src = &S.rgba[y * S.bufW];
+		for (int x = dirty.x; x < dirty.x + dirty.w; ++x)
+		{
+			Uint32 s = src[x];
+			unsigned a = s >> 24;
+			if (!a)
+				continue;
+			Uint32 d = dst[x];
+			unsigned inv = 255 - a;
+			unsigned dr = ((d & fmt->Rmask) >> fmt->Rshift), dg = ((d & fmt->Gmask) >> fmt->Gshift), db = ((d & fmt->Bmask) >> fmt->Bshift);
+			unsigned r = ((s >> 16) & 0xFF) + dr * inv / 255;
+			unsigned g = ((s >> 8) & 0xFF) + dg * inv / 255;
+			unsigned b = (s & 0xFF) + db * inv / 255;
+			dst[x] = (d & ~(fmt->Rmask | fmt->Gmask | fmt->Bmask)) | (r << fmt->Rshift) | (g << fmt->Gshift) | (b << fmt->Bshift);
+		}
+	}
+	if (SDL_MUSTLOCK(out))
+		SDL_UnlockSurface(out);
+}
+
 void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, int left, int right, const SDL_Color *screenPalette)
 {
 #ifdef __NO_OPENGL
@@ -398,69 +848,12 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 		return;
 	if (S.frame.empty() && S.prevDirty.w == 0)
 		return;
-	if (S.bufW != dstW || S.bufH != dstH)
-	{
-		S.bufW = dstW;
-		S.bufH = dstH;
-		S.rgba.assign((size_t)dstW * dstH, 0);
-		S.prevDirty = {0, 0, (Uint16)dstW, (Uint16)dstH};
-	}
-	// clear what was drawn last frame
-	for (int y = S.prevDirty.y; y < S.prevDirty.y + S.prevDirty.h; ++y)
-		std::fill_n(&S.rgba[y * S.bufW + S.prevDirty.x], S.prevDirty.w, 0u);
-
-	const double sx = dstW / (double)S.baseW, sy = dstH / (double)S.baseH;
-	if (S.font)
-		S.font->trimCache(16384);
-	SDL_Rect dirty = {0, 0, 0, 0};
-	// Commands delivered by the same blit (one text widget / button) are drawn in two
-	// passes - all outlines, then all bodies - like the bitmap font whose outline never
-	// covers the neighbouring glyph's body. Groups keep their blit (z) order.
-	const HiResGlyph *refGlyph = nullptr;
-	int refPx = -1;
-	for (size_t groupStart = 0; groupStart < S.frame.size(); )
-	{
-		size_t groupEnd = groupStart;
-		while (groupEnd < S.frame.size() && S.frame[groupEnd].stamp == S.frame[groupStart].stamp)
-			++groupEnd;
-		for (int pass = 0; pass < 2; ++pass)
-		{
-			for (size_t i = groupStart; i < groupEnd; ++i)
-			{
-				const HiResCmd &c = S.frame[i];
-				if (c.kind != HiResCmdKind::Glyph || !S.font)
-					continue; // HiResCmdKind::Image: reserved for hi-res sprite replacement
-				int px, outline64, bold64;
-				glyphSize(c.cellH, c.refW, sx, sy, px, outline64, bold64);
-				// vertical placement: centre the ink of a reference glyph in the cell
-				if (px != refPx)
-				{
-					refGlyph = &S.font->getGlyph(S.font->hasGlyph(0xAC00) ? 0xAC00 : 'H', px, 0);
-					refPx = px;
-				}
-				const HiResGlyph &g = S.font->getGlyph(c.code, px, outline64, bold64);
-				if (!g.ok || (pass == 0 && g.line.empty()))
-					continue;
-				int refTop = refGlyph->ok ? refGlyph->fillT : px * 4 / 5;
-				int refBottom = refGlyph->ok ? refGlyph->fillT - refGlyph->fillH : 0;
-				const double bx0 = c.x * sx, by0 = c.y * sy, bw = c.w * sx, bh = c.cellH * sy;
-				const int baseline = (int)std::lround(by0 + (bh - (refTop - refBottom)) / 2.0 + refTop);
-				const int pen = (int)std::lround(bx0 + (bw - g.advance) / 2.0);
-				const int cx0 = std::max(0, (int)std::floor(c.clipX * sx)), cy0 = std::max(0, (int)std::floor(c.clipY * sy));
-				const int cx1 = std::min(dstW, (int)std::ceil((c.clipX + c.clipW) * sx));
-				const int cy1 = std::min(dstH, (int)std::ceil((c.clipY + c.clipH) * sy));
-				if (pass == 0)
-					drawCoverage(g.line, g.lineW, g.lineH, pen + g.lineL, baseline - g.lineT, c.line, cx0, cy0, cx1, cy1, sx, sy, c.stamp, dirty);
-				else
-					drawCoverage(g.fill, g.fillW, g.fillH, pen + g.fillL, baseline - g.fillT, c.fill, cx0, cy0, cx1, cy1, sx, sy, c.stamp, dirty);
-			}
-		}
-		groupStart = groupEnd;
-	}
-
-	SDL_Rect upload = S.prevDirty;
+	SDL_Rect cleared;
+	bool resized = (S.bufW != dstW || S.bufH != dstH);
+	SDL_Rect dirty = compose(dstW, dstH, cleared);
+	SDL_Rect upload = cleared;
 	unionRect(upload, dirty.x, dirty.y, dirty.w, dirty.h);
-	S.prevDirty = dirty;
+	(void)resized;
 
 	if (S.tex == 0)
 	{
@@ -488,6 +881,8 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 
 	if (dirty.w > 0)
 	{
+		// OpenGL::refresh() already unbound the shader program (glUseProgram(0)), so the overlay is
+		// drawn with the fixed pipeline on top of whatever the screen shader produced.
 		glEnable(GL_TEXTURE_2D);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // premultiplied alpha

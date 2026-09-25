@@ -573,16 +573,56 @@ void Text::draw()
 	// (drawn later at output resolution) instead of being blitted as bitmap glyphs.
 	const bool hires = HiResLayer::recording();
 	auto paletteShift = [&](int src) { return (Uint8)(color + src * mul + (mid ? 2 * (mid - src) : 0)); };
+	// glyphs of one line are laid out together by the overlay (pen advance + kerning) inside the
+	// span the bitmap layout reserved for them; a bitmap-drawn glyph or a new line starts a new run
+	Uint32 run = (hires && dir > 0) ? HiResLayer::newRun() : 0;
+	Uint8 alignFlags = _align == ALIGN_CENTER ? HiResCmd::GLYPH_ALIGN_CENTER : (_align == ALIGN_RIGHT ? HiResCmd::GLYPH_ALIGN_RIGHT : 0);
+	auto makeCmd = [&](UCode code, int gx, int gw)
+	{
+		HiResCmd cmd;
+		cmd.kind = HiResCmdKind::Glyph;
+		cmd.code = code;
+		cmd.run = run;
+		cmd.x = gx;
+		cmd.y = y;
+		cmd.w = gw;
+		cmd.h = font->getHeight();
+		cmd.cellH = font->getHeight();
+		cmd.refW = font->hasChar(0xAC00) ? font->getCharSize(0xAC00).w : 0;
+		cmd.slot = (Uint8)std::max(0, font->getHiResSlot());
+		cmd.flags = alignFlags;
+		int t, b;
+		if (font->getInkRows('H', t, b)) { cmd.inkTopL = (Sint8)t; cmd.inkBotL = (Sint8)b; }
+		if (font->getInkRows(0xAC00, t, b)) { cmd.inkTopK = (Sint8)t; cmd.inkBotK = (Sint8)b; }
+		cmd.clipX = 0;
+		cmd.clipY = 0;
+		cmd.clipW = getWidth();
+		cmd.clipH = getHeight();
+		cmd.fillIdx = paletteShift(1); // bitmap fonts: 1 = glyph body
+		cmd.lineIdx = paletteShift(4); //               4 = outline
+		return cmd;
+	};
 
 	// Draw each letter one by one
 	for (UString::const_iterator c = s.begin(); c != s.end(); ++c)
 	{
 		if (Unicode::isSpace(*c) || *c == '\t')
 		{
+			if (run && *c == ' ' && !font->isMonospace() && HiResLayer::canRenderGlyph(' ', font->getHiResSlot()))
+			{
+				HiResCmd cmd = makeCmd(' ', x, font->getCharSize(*c).w);
+				cmd.flags |= HiResCmd::GLYPH_SPACE;
+				HiResLayer::record(getSurface(), cmd);
+			}
+			else if (run)
+			{
+				run = HiResLayer::newRun(); // tabs etc.: keep the bitmap positions
+			}
 			x += dir * font->getCharSize(*c).w;
 		}
 		else if (Unicode::isLinebreak(*c))
 		{
+			if (run) run = HiResLayer::newRun();
 			line++;
 			y += font->getCharSize(*c).h;
 			x = getLineX(line);
@@ -638,27 +678,13 @@ void Text::draw()
 		{
 			if (dir < 0)
 				x += dir * font->getCharSize(*c).w;
-			if (hires && !font->isMonospace() && HiResLayer::canRenderGlyph(*c))
+			if (hires && !font->isMonospace() && HiResLayer::canRenderGlyph(*c, font->getHiResSlot()))
 			{
-				HiResCmd cmd;
-				cmd.kind = HiResCmdKind::Glyph;
-				cmd.code = *c;
-				cmd.x = x;
-				cmd.y = y;
-				cmd.w = font->getCharSize(*c).w;
-				cmd.h = font->getHeight();
-				cmd.cellH = font->getHeight();
-				cmd.refW = font->hasChar(0xAC00) ? font->getCharSize(0xAC00).w : 0;
-				cmd.clipX = 0;
-				cmd.clipY = 0;
-				cmd.clipW = getWidth();
-				cmd.clipH = getHeight();
-				cmd.fillIdx = paletteShift(1); // bitmap fonts: 1 = glyph body
-				cmd.lineIdx = paletteShift(4); //               4 = outline
-				HiResLayer::record(getSurface(), cmd);
+				HiResLayer::record(getSurface(), makeCmd(*c, x, font->getCharSize(*c).w));
 			}
 			else
 			{
+				if (run) run = HiResLayer::newRun();
 				auto chr = font->getChar(*c);
 				chr.setX(x);
 				chr.setY(y);

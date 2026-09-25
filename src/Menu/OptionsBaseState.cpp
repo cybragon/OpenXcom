@@ -34,6 +34,8 @@
 #include "OptionsVideoState.h"
 #include "OptionsAudioState.h"
 #include "OptionsFoldersState.h"
+#include "OptionsFontsState.h"
+#include "../Engine/HiResLayer.h"
 #include "OptionsNoAudioState.h"
 #include "OptionsControlsState.h"
 #include "OptionsGeoscapeState.h"
@@ -63,12 +65,13 @@ OptionsBaseState::OptionsBaseState(OptionsOrigin origin) : _origin(origin), _gro
 	_btnBattlescape = new TextButton(80, 16, 8, 88);
 	_btnAdvanced = new TextButton(80, 16, 8, 108);
 	_btnFolders = new TextButton(80, 16, 8, 128);
+	_btnFonts = new TextButton(80, 16, 8, 148);
 
 	_btnOk = new TextButton(100, 16, 8, 176);
 	_btnCancel = new TextButton(100, 16, 110, 176);
 	_btnDefault = new TextButton(100, 16, 212, 176);
 
-	_txtTooltip = new Text(305, 25, 8, 148);
+	_txtTooltip = new Text(218, 25, 94, 148); // was (305, 25, 8, 148); left column now has the Fonts tab
 
 	// Set palette
 	setInterface("optionsMenu", false, _game->getSavedGame() ? _game->getSavedGame()->getSavedBattle() : 0);
@@ -82,6 +85,7 @@ OptionsBaseState::OptionsBaseState(OptionsOrigin origin) : _origin(origin), _gro
 	add(_btnBattlescape, "button", "optionsMenu");
 	add(_btnAdvanced, "button", "optionsMenu");
 	add(_btnFolders, "button", "optionsMenu");
+	add(_btnFonts, "button", "optionsMenu");
 
 	add(_btnOk, "button", "optionsMenu");
 	add(_btnCancel, "button", "optionsMenu");
@@ -112,6 +116,9 @@ OptionsBaseState::OptionsBaseState(OptionsOrigin origin) : _origin(origin), _gro
 
 	_btnFolders->setText(tr("STR_FOLDERS"));
 	_btnFolders->onMousePress((ActionHandler)&OptionsBaseState::btnGroupPress, SDL_BUTTON_LEFT);
+
+	_btnFonts->setText(tr("STR_HIRES_FONTS"));
+	_btnFonts->onMousePress((ActionHandler)&OptionsBaseState::btnGroupPress, SDL_BUTTON_LEFT);
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&OptionsBaseState::btnOkClick);
@@ -196,6 +203,7 @@ void OptionsBaseState::setCategory(TextButton *button)
 	_btnBattlescape->setGroup(&_group);
 	_btnAdvanced->setGroup(&_group);
 	_btnFolders->setGroup(&_group);
+	_btnFonts->setGroup(&_group);
 }
 
 /**
@@ -214,6 +222,8 @@ void OptionsBaseState::btnOkClick(Action *)
 	recenter(dX, dY);
 	Options::save();
 	_game->loadLanguages();
+	HiResLayer::reconfigure(); // hi-res text settings apply immediately (states are rebuilt below)
+	HiResLayer::consumeModeChanged();
 	_game->getScreen()->resetDisplay();
 	SDL_WM_GrabInput(Options::captureMouse);
 	_game->setVolume(Options::soundVolume, Options::musicVolume, Options::uiVolume);
@@ -252,6 +262,16 @@ void OptionsBaseState::btnCancelClick(Action *)
 	Screen::updateScale(Options::battlescapeScale, Options::baseXBattlescape, Options::baseYBattlescape, _origin == OPT_BATTLESCAPE);
 	Screen::updateScale(Options::geoscapeScale, Options::baseXGeoscape, Options::baseYGeoscape, _origin != OPT_BATTLESCAPE);
 	_game->setVolume(Options::soundVolume, Options::musicVolume, Options::uiVolume);
+	// undo live hi-res text changes made in the Fonts tab
+	HiResLayer::reconfigure();
+	if (HiResLayer::consumeModeChanged())
+	{
+		// the overlay was switched on/off meanwhile: the states below lost their text, rebuild them
+		_game->getScreen()->resetDisplay(false);
+		HiResLayer::consumeModeChanged();
+		restart(_origin);
+		return;
+	}
 	_game->popState();
 }
 
@@ -304,6 +324,10 @@ void OptionsBaseState::btnGroupPress(Action *action)
 		else if (sender == _btnFolders)
 		{
 			_game->pushState(new OptionsFoldersState(_origin));
+		}
+		else if (sender == _btnFonts)
+		{
+			_game->pushState(new OptionsFontsState(_origin));
 		}
 	}
 }

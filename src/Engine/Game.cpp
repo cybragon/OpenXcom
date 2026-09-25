@@ -92,6 +92,7 @@ Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0
 
 	// Create display
 	_screen = new Screen();
+	HiResLayer::consumeModeChanged(); // initial setup is not a runtime mode change
 
 	// Create cursor
 	_cursor = new Cursor(9, 13);

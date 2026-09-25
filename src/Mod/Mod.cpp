@@ -28,6 +28,7 @@
 #include "../Engine/FileMap.h"
 #include "../Engine/Palette.h"
 #include "../Engine/Font.h"
+#include "../Engine/HiResLayer.h"
 #include "../Engine/Surface.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Engine/Music.h"
@@ -6062,6 +6063,7 @@ void Mod::loadExtraResources()
 		std::string id = fontReader["id"].readVal<std::string>();
 		Font *font = new Font();
 		font->load(fontReader);
+		font->setId(id, HiResLayer::registerFontId(id));
 		_fonts[id] = font;
 	}
 

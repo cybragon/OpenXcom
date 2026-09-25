@@ -846,6 +846,21 @@ int Zoom::_zoomSurfaceY(SDL_Surface * src, SDL_Surface * dst, int flipx, int fli
 		proclaimed = true;
 	}
 
+	if (src->format->BytesPerPixel == 4 && dst->format->BytesPerPixel == 4)
+	{
+		// 32bpp nearest-neighbour zoom; only reached when the hi-res overlay forces a true-colour
+		// buffer without a 32bpp scaler (the vanilla code never has a 32bpp buffer here)
+		for (int y = 0; y < dst->h; ++y)
+		{
+			int sy = (int)((long long)y * src->h / dst->h);
+			const Uint32 *sp32 = (const Uint32*)((const Uint8*)src->pixels + sy * src->pitch);
+			Uint32 *dp32 = (Uint32*)((Uint8*)dst->pixels + y * dst->pitch);
+			for (int x = 0; x < dst->w; ++x)
+				dp32[x] = sp32[(long long)x * src->w / dst->w];
+		}
+		return 0;
+	}
+
 	/*
 	* Allocate memory for row increments
 	*/

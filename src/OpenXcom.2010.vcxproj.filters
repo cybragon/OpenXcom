@@ -86,6 +86,12 @@
     <ClCompile Include="Engine\Font.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\HiResFont.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\HiResLayer.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Game.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
@@ -1088,6 +1094,9 @@
     <ClCompile Include="Menu\OptionsFoldersState.cpp">
       <Filter>Menu</Filter>
     </ClCompile>
+    <ClCompile Include="Menu\OptionsFontsState.cpp">
+      <Filter>Menu</Filter>
+    </ClCompile>
     <ClCompile Include="Savegame\HitLog.cpp">
       <Filter>Savegame</Filter>
     </ClCompile>
@@ -1326,6 +1335,12 @@
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Font.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\HiResFont.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\HiResLayer.h">
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Game.h">
@@ -2370,6 +2385,9 @@
       <Filter>Basescape</Filter>
     </ClInclude>
     <ClInclude Include="Menu\OptionsFoldersState.h">
+      <Filter>Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Menu\OptionsFontsState.h">
       <Filter>Menu</Filter>
     </ClInclude>
     <ClInclude Include="Savegame\HitLog.h">

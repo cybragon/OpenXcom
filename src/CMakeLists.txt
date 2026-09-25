@@ -277,6 +277,7 @@ set ( menu_src
   Menu/OptionsControlsState.cpp
   Menu/OptionsDefaultsState.cpp
   Menu/OptionsFoldersState.cpp
+  Menu/OptionsFontsState.cpp
   Menu/OptionsGeoscapeState.cpp
   Menu/ModConfirmExtendedState.cpp
   Menu/ModListState.cpp

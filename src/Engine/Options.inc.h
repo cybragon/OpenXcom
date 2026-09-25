@@ -127,8 +127,8 @@ OPT bool oxceListVFSContents;
 OPT bool oxceEnablePaletteFlickerFix;
 // hi-res overlay layer prototype (options.cfg only)
 OPT bool oxceHiResOverlay, oxceHiResText, oxceHiResTextAntialias;
-OPT int oxceHiResFontSize, oxceHiResTextOutline, oxceHiResTextBold, oxceHiResTextHinting;
-OPT std::string oxceHiResFont, oxceHiResFontFallback;
+OPT int oxceHiResFontSize, oxceHiResTextOutline, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
+OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap;
 OPT bool oxceRecommendedOptionsWereSet;
 OPT std::string password;
 

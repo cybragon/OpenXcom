@@ -48,6 +48,7 @@ enum class HiResCmdKind : Uint8
  */
 struct HiResCmd
 {
+	enum : Uint8 { GLYPH_SPACE = 1, GLYPH_ALIGN_CENTER = 2, GLYPH_ALIGN_RIGHT = 4 };
 	HiResCmdKind kind = HiResCmdKind::Glyph;
 	Sint16 x = 0, y = 0;            ///< layout box (base px): glyph advance box / image destination
 	Sint16 w = 0, h = 0;
@@ -55,10 +56,15 @@ struct HiResCmd
 	Sint16 clipW = 0, clipH = 0;
 	// --- Glyph payload
 	UCode code = 0;                  ///< unicode code point
+	Uint32 run = 0;                  ///< text run id (one line of one Text draw); glyphs of a run are laid out together
 	Uint8 cellH = 0;                 ///< font cell height in base px (drives the glyph pixel size)
 	Uint8 refW = 0;                  ///< advance of U+AC00 in the bitmap font (base px), 0 = n/a; caps glyph width
 	Uint8 fillIdx = 0;               ///< palette index of the glyph body   (font pixel value 1)
 	Uint8 lineIdx = 0;               ///< palette index of the glyph outline (font pixel value 4)
+	Uint8 slot = 0;                  ///< font slot (one per Font.dat font id, see registerFontId)
+	Uint8 flags = 0;                 ///< GLYPH_* flags
+	Sint8 inkTopL = -1, inkBotL = -1; ///< body rows of 'H' in the bitmap font (Latin size/baseline reference)
+	Sint8 inkTopK = -1, inkBotK = -1; ///< body rows of U+AC00 in the bitmap font (Hangul/CJK reference)
 	// --- Image payload (reserved)
 	Uint32 imageId = 0;
 	// --- resolved when the command reaches the screen buffer
@@ -76,7 +82,7 @@ struct HiResCmd
  * pixels. Commands travel with the pixels: whenever a Surface is blitted onto
  * another one, its commands are translated and clipped into the target. Commands
  * that reach the screen buffer are collected per frame and rendered at the final
- * output resolution after the scaler (OpenGL path only in this prototype).
+ * output resolution after the scaler (OpenGL path, or the software path with a 32bpp output).
  *
  * Occlusion: every blit onto the screen buffer gets an increasing id and stamps
  * the base pixels it covers with non-transparent pixels. A command delivered by
@@ -97,6 +103,13 @@ public:
 
 	/// Reads options, loads fonts. Call once after SDL/options init.
 	static void init();
+	/// Re-reads the options (fonts, sizes, master switch) at runtime. Recorded commands are kept,
+	/// so font/size changes apply on the next frame; if the master switch flips, all command lists
+	/// are dropped and consumeModeChanged() returns true once (the caller must rebuild its states).
+	static void reconfigure();
+	static bool consumeModeChanged();
+	/// True if the overlay wants a 32bpp output surface in the software (non-OpenGL) path.
+	static bool wantsTrueColor();
 	/// Releases everything.
 	static void shutdown();
 	/// Called by Screen::resetDisplay: the (new) screen buffer and whether the output path supports the layer.
@@ -115,16 +128,32 @@ public:
 	static void onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y);
 
 	// --- glyph helpers
-	/// Can the hi-res font draw this code point?
-	static bool canRenderGlyph(UCode c);
+	/// Can the hi-res font of this slot draw this code point?
+	static bool canRenderGlyph(UCode c, int slot);
 	/// Layout advance (base px) for a code point missing from a bitmap font, -1 if unknown.
-	static int baseAdvance(UCode c, int cellH);
+	static int baseAdvance(UCode c, int cellH, int slot);
+	/// Next text run id.
+	static Uint32 newRun();
+
+	// --- per game font (Font.dat id) configuration
+	/// Registers a Font.dat font id, returns its slot (stable for the process lifetime).
+	static int registerFontId(const std::string &id);
+	/// Registered font ids, in slot order.
+	static const std::vector<std::string> &fontIds();
+	/// Font spec ("" = default chain) and size (%) configured for a font id (from oxceHiResFontMap).
+	static void getFontSetting(const std::string &id, std::string &spec, int &sizePct);
+	/// Changes the font setting of a font id (writes Options::oxceHiResFontMap, does not reconfigure).
+	static void setFontSetting(const std::string &id, const std::string &spec, int sizePct);
+	/// Faces actually used by a slot (for display), first = primary.
+	static std::vector<std::string> slotFaceNames(int slot);
 
 	// --- frame
 	/// Start of a frame (screen buffer was cleared).
 	static void beginFrame();
 	/// Renders the frame's commands on top of the already drawn OpenGL output.
 	static void renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, int left, int right, const SDL_Color *screenPalette);
+	/// Renders the frame's commands on top of the already scaled 32bpp software output surface.
+	static void renderSoftware(SDL_Surface *out, int top, int bottom, int left, int right);
 	/// Commands collected for the current frame (debug/tests).
 	static const std::vector<HiResCmd> &frameCommands();
 

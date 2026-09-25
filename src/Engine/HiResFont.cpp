@@ -22,9 +22,22 @@
 #include FT_GLYPH_H
 #include FT_STROKER_H
 #include FT_OUTLINE_H
+#include FT_SFNT_NAMES_H
+#include FT_TRUETYPE_IDS_H
 #include <cstdlib>
+#include <cstring>
+#include <cctype>
 #include <fstream>
+#include <algorithm>
+#include <filesystem>
+#include <set>
 #include "Logger.h"
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace OpenXcom
 {
@@ -72,6 +85,205 @@ HiResFont::~HiResFont()
 		FT_Done_FreeType((FT_Library)_lib);
 }
 
+std::vector<std::string> HiResFont::fontDirs()
+{
+	std::vector<std::string> dirs;
+	if (const char *windir = std::getenv("WINDIR"))
+	{
+		dirs.push_back(std::string(windir) + "/Fonts/");
+	}
+	if (const char *local = std::getenv("LOCALAPPDATA"))
+	{
+		dirs.push_back(std::string(local) + "/Microsoft/Windows/Fonts/"); // per-user installed fonts (Win10+)
+	}
+#ifdef _WIN32
+	dirs.push_back("C:/Windows/Fonts/");
+#elif defined(__APPLE__)
+	if (const char *home = std::getenv("HOME"))
+	{
+		dirs.push_back(std::string(home) + "/Library/Fonts/");
+	}
+	dirs.push_back("/Library/Fonts/");
+	dirs.push_back("/System/Library/Fonts/");
+#else
+	if (const char *home = std::getenv("HOME"))
+	{
+		dirs.push_back(std::string(home) + "/.local/share/fonts/");
+		dirs.push_back(std::string(home) + "/.fonts/");
+	}
+	dirs.push_back("/usr/local/share/fonts/");
+	dirs.push_back("/usr/share/fonts/");
+#endif
+	return dirs;
+}
+
+namespace
+{
+std::string lower(std::string s)
+{
+	std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+	return s;
+}
+bool isFontFile(const std::string &name)
+{
+	std::string l = lower(name);
+	auto ends = [&](const char *e) { size_t n = strlen(e); return l.size() > n && l.compare(l.size() - n, n, e) == 0; };
+	return ends(".ttf") || ends(".ttc") || ends(".otf") || ends(".otc");
+}
+std::string baseName(const std::string &p)
+{
+	size_t s = p.find_last_of("/\\");
+	return s == std::string::npos ? p : p.substr(s + 1);
+}
+void scanDir(const std::filesystem::path &dir, int depth, std::vector<std::string> &out, std::set<std::string> &seen)
+{
+	std::error_code ec;
+	if (depth > 5 || !std::filesystem::is_directory(dir, ec))
+		return;
+	for (std::filesystem::directory_iterator it(dir, std::filesystem::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec))
+	{
+		std::error_code ec2;
+		if (it->is_directory(ec2))
+		{
+			scanDir(it->path(), depth + 1, out, seen);
+		}
+		else
+		{
+			std::string p = it->path().u8string();
+			if (isFontFile(p) && seen.insert(lower(p)).second)
+				out.push_back(p);
+		}
+	}
+}
+#ifdef _WIN32
+/// Font files registered in HKLM/HKCU ...\Windows NT\CurrentVersion\Fonts (value data = file name or absolute path).
+void registryFonts(std::vector<std::string> &out, std::set<std::string> &seen, const std::string &winFonts)
+{
+	HKEY roots[2] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER };
+	for (HKEY root : roots)
+	{
+		HKEY key;
+		if (RegOpenKeyExW(root, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts", 0, KEY_READ, &key) != ERROR_SUCCESS)
+			continue;
+		for (DWORD i = 0; ; ++i)
+		{
+			wchar_t name[512]; DWORD nameLen = 512;
+			BYTE data[2048]; DWORD dataLen = sizeof(data) - 2; DWORD type = 0;
+			LONG r = RegEnumValueW(key, i, name, &nameLen, nullptr, &type, data, &dataLen);
+			if (r == ERROR_NO_MORE_ITEMS)
+				break;
+			if (r != ERROR_SUCCESS || type != REG_SZ)
+				continue;
+			data[dataLen] = 0; data[dataLen + 1] = 0;
+			const wchar_t *w = (const wchar_t*)data;
+			int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+			if (n <= 1)
+				continue;
+			std::string file(n - 1, '\0');
+			WideCharToMultiByte(CP_UTF8, 0, w, -1, &file[0], n, nullptr, nullptr);
+			if (file.find(':') == std::string::npos && file.find('\\') != 0)
+				file = winFonts + file;
+			if (isFontFile(file) && seen.insert(lower(file)).second)
+				out.push_back(file);
+		}
+		RegCloseKey(key);
+	}
+}
+#endif
+std::string utf16beToUtf8(const FT_Byte *s, FT_UInt len)
+{
+	std::string out;
+	for (FT_UInt i = 0; i + 1 < len; i += 2)
+	{
+		unsigned c = (s[i] << 8) | s[i + 1];
+		if (c >= 0xD800 && c <= 0xDFFF)
+			continue; // no surrogates in family names we care about
+		if (c < 0x80) out += (char)c;
+		else if (c < 0x800) { out += (char)(0xC0 | (c >> 6)); out += (char)(0x80 | (c & 0x3F)); }
+		else { out += (char)(0xE0 | (c >> 12)); out += (char)(0x80 | ((c >> 6) & 0x3F)); out += (char)(0x80 | (c & 0x3F)); }
+	}
+	return out;
+}
+}
+
+const std::vector<HiResFontInfo> &HiResFont::enumerateSystemFonts(bool rescan)
+{
+	static std::vector<HiResFontInfo> list;
+	static bool done = false;
+	if (done && !rescan)
+		return list;
+	done = true;
+	list.clear();
+	std::vector<std::string> files;
+	std::set<std::string> seen;
+	for (const auto &d : fontDirs())
+	{
+		scanDir(std::filesystem::u8path(d), 0, files, seen);
+	}
+#ifdef _WIN32
+	std::string winFonts = "C:/Windows/Fonts/";
+	if (const char *windir = std::getenv("WINDIR"))
+		winFonts = std::string(windir) + "/Fonts/";
+	registryFonts(files, seen, winFonts);
+#endif
+	FT_Library lib;
+	if (FT_Init_FreeType(&lib) != 0)
+		return list;
+	for (const auto &file : files)
+	{
+		FT_Face face;
+		if (FT_New_Face(lib, file.c_str(), -1, &face) != 0)
+			continue;
+		FT_Long n = face->num_faces;
+		FT_Done_Face(face);
+		for (FT_Long i = 0; i < n && i < 64; ++i)
+		{
+			if (FT_New_Face(lib, file.c_str(), i, &face) != 0)
+				continue;
+			if (FT_IS_SCALABLE(face) && FT_Select_Charmap(face, FT_ENCODING_UNICODE) == 0 && face->family_name)
+			{
+				HiResFontInfo info;
+				info.path = file;
+				info.index = (int)i;
+				info.family = face->family_name;
+				info.style = face->style_name ? face->style_name : "";
+				info.hangul = FT_Get_Char_Index(face, 0xAC00) != 0 && FT_Get_Char_Index(face, 0xD7A3) != 0;
+				FT_UInt names = FT_Get_Sfnt_Name_Count(face);
+				for (FT_UInt k = 0; k < names; ++k)
+				{
+					FT_SfntName nm;
+					if (FT_Get_Sfnt_Name(face, k, &nm) == 0 && nm.platform_id == TT_PLATFORM_MICROSOFT &&
+						nm.language_id == TT_MS_LANGID_KOREAN_KOREA && nm.name_id == TT_NAME_ID_FONT_FAMILY)
+					{
+						info.familyKo = utf16beToUtf8(nm.string, nm.string_len);
+						break;
+					}
+				}
+				list.push_back(info);
+			}
+			FT_Done_Face(face);
+		}
+	}
+	FT_Done_FreeType(lib);
+	std::sort(list.begin(), list.end(), [](const HiResFontInfo &a, const HiResFontInfo &b)
+	{
+		if (a.hangul != b.hangul) return a.hangul; // Korean-capable fonts first
+		std::string la = lower(a.family), lb = lower(b.family);
+		if (la != lb) return la < lb;
+		return a.style < b.style;
+	});
+	// short, portable spec when the plain file name resolves to the same file
+	for (auto &info : list)
+	{
+		std::string shortSpec = baseName(info.path) + (info.index ? "#" + std::to_string(info.index) : "");
+		int idx = 0;
+		std::string resolved = resolvePath(shortSpec, &idx);
+		info.spec = (lower(resolved) == lower(info.path)) ? shortSpec : info.path + (info.index ? "#" + std::to_string(info.index) : "");
+	}
+	Log(LOG_INFO) << "HiResFont: found " << list.size() << " scalable faces in " << files.size() << " font files";
+	return list;
+}
+
 std::string HiResFont::resolvePath(const std::string &specIn, int *faceIndex)
 {
 	std::string spec = specIn;
@@ -86,27 +298,26 @@ std::string HiResFont::resolvePath(const std::string &specIn, int *faceIndex)
 		return "";
 	if (fileExists(spec))
 		return spec;
-	std::vector<std::string> dirs;
-	if (const char *windir = std::getenv("WINDIR"))
-	{
-		dirs.push_back(std::string(windir) + "/Fonts/");
-	}
-	if (const char *local = std::getenv("LOCALAPPDATA"))
-	{
-		dirs.push_back(std::string(local) + "/Microsoft/Windows/Fonts/"); // per-user installed fonts (Win10+)
-	}
-	dirs.push_back("C:/Windows/Fonts/");
-	dirs.push_back("/usr/share/fonts/truetype/nanum/");
-	dirs.push_back("/usr/share/fonts/opentype/noto/");
-	dirs.push_back("/usr/share/fonts/truetype/noto/");
-	dirs.push_back("/usr/share/fonts/truetype/dejavu/");
-	dirs.push_back("/usr/share/fonts/truetype/");
-	dirs.push_back("/Library/Fonts/");
-	dirs.push_back("/System/Library/Fonts/");
-	for (const auto &d : dirs)
+	for (const auto &d : fontDirs())
 	{
 		if (fileExists(d + spec))
 			return d + spec;
+	}
+	// fonts in sub folders (Linux distributions): find by file name
+	static std::vector<std::string> deep;
+	static bool scanned = false;
+	if (!scanned)
+	{
+		scanned = true;
+		std::set<std::string> seen;
+		for (const auto &d : fontDirs())
+			scanDir(std::filesystem::u8path(d), 0, deep, seen);
+	}
+	std::string want = lower(spec);
+	for (const auto &p : deep)
+	{
+		if (lower(baseName(p)) == want)
+			return p;
 	}
 	return "";
 }
@@ -187,6 +398,19 @@ int HiResFont::getAdvance(UCode c, int px)
 	return g.ok ? g.advance : -1;
 }
 
+int HiResFont::getKerning64(const HiResGlyph &left, const HiResGlyph &right, int px)
+{
+	if (!left.ok || !right.ok || left.face < 0 || left.face != right.face)
+		return 0;
+	FT_Face f = (FT_Face)_faces[left.face];
+	if (!FT_HAS_KERNING(f) || selectFace(left.face, px) < 0)
+		return 0;
+	FT_Vector k;
+	if (FT_Get_Kerning(f, left.glyphIndex, right.glyphIndex, FT_KERNING_UNFITTED, &k) != 0)
+		return 0;
+	return (int)k.x;
+}
+
 const HiResGlyph &HiResFont::getGlyph(UCode c, int px, int outline64, int bold64)
 {
 	uint64_t key = ((uint64_t)c << 32) | ((uint64_t)(px & 0xFFF) << 20) | ((uint64_t)(outline64 & 0x3FF) << 10) | (uint64_t)(bold64 & 0x3FF);
@@ -211,6 +435,9 @@ const HiResGlyph &HiResFont::getGlyph(UCode c, int px, int outline64, int bold64
 	if (FT_Load_Glyph(f, FT_Get_Char_Index(f, c), flags) != 0)
 		return g;
 	g.advance = (int)((f->glyph->advance.x + 32) >> 6);
+	g.adv64 = (int)(f->glyph->linearHoriAdvance >> 10); // 16.16 -> 26.6
+	g.face = face;
+	g.glyphIndex = FT_Get_Char_Index(f, c);
 	if (bold64 > 0 && f->glyph->format == FT_GLYPH_FORMAT_OUTLINE)
 	{
 		// thicken strokes (the bitmap fonts have 1 base-pixel wide strokes)

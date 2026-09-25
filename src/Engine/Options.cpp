@@ -377,9 +377,11 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResText", &oxceHiResText, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFont", &oxceHiResFont, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontFallback", &oxceHiResFontFallback, ""));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontMap", &oxceHiResFontMap, ""));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontSize", &oxceHiResFontSize, 100));
-	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextOutline", &oxceHiResTextOutline, 150));
-	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextBold", &oxceHiResTextBold, 40));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextOutline", &oxceHiResTextOutline, 200));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextBold", &oxceHiResTextBold, 45));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextHinting", &oxceHiResTextHinting, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextAntialias", &oxceHiResTextAntialias, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceRecommendedOptionsWereSet", &oxceRecommendedOptionsWereSet, false));

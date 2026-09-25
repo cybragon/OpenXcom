@@ -104,6 +104,10 @@ void Screen::makeVideoFlags()
 	}
 
 	_bpp = (use32bitScaler() || useOpenGL()) ? 32 : 8;
+	if (HiResLayer::wantsTrueColor())
+	{
+		_bpp = 32; // the hi-res overlay needs a true-colour output in the software path as well
+	}
 	_baseWidth = Options::baseXResolution;
 	_baseHeight = Options::baseYResolution;
 }
@@ -209,6 +213,11 @@ void Screen::flip()
 	else
 	{
 		SDL_BlitSurface(_surface.get(), 0, _screen, 0);
+	}
+	if (!useOpenGL() && HiResLayer::recording())
+	{
+		// software path: hi-res overlay on top of the scaled (Scale/HQx/xBRZ/plain) 32bpp output
+		HiResLayer::renderSoftware(_screen, _topBlackBand, _bottomBlackBand, _leftBlackBand, _rightBlackBand);
 	}
 
 	// perform any requested palette update
@@ -502,8 +511,8 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 		setPalette(getPalette());
 	}
 
-	// prototype: the hi-res overlay is only rendered by the OpenGL output path
-	HiResLayer::setScreen(_surface.get(), useOpenGL());
+	// the hi-res overlay is rendered by the OpenGL output path and by the software path with a 32bpp output
+	HiResLayer::setScreen(_surface.get(), useOpenGL() || (_screen && _screen->format->BitsPerPixel == 32 && _surface->format->BitsPerPixel == 32));
 }
 
 /**

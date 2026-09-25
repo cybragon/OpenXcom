@@ -1,0 +1,92 @@
+#pragma once
+/*
+ * Copyright 2010-2026 OpenXcom Developers.
+ *
+ * This file is part of OpenXcom.
+ *
+ * OpenXcom is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * OpenXcom is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
+ */
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include <cstdint>
+#include "Unicode.h"
+
+namespace OpenXcom
+{
+
+/**
+ * Rasterized glyph (8-bit coverage maps) for the hi-res overlay.
+ * Coordinates are relative to the pen position on the baseline, y grows down.
+ */
+struct HiResGlyph
+{
+	bool ok = false;
+	int advance = 0;                 ///< horizontal advance in output pixels
+	int fillW = 0, fillH = 0, fillL = 0, fillT = 0;   ///< fill bitmap size/offset (T = pixels above baseline)
+	std::vector<uint8_t> fill;
+	int lineW = 0, lineH = 0, lineL = 0, lineT = 0;   ///< outline (stroked, expanded) bitmap
+	std::vector<uint8_t> line;
+};
+
+/**
+ * TrueType/OpenType font renderer for the hi-res overlay, based on FreeType.
+ * Supports a chain of fallback faces (first face that has the glyph wins),
+ * per-pixel-size rendering, outline stroking and a glyph cache.
+ */
+class HiResFont
+{
+public:
+	struct Settings
+	{
+		int hinting = 1;        ///< 0 = none, 1 = light, 2 = normal (full), 3 = mono (implies no AA)
+		bool antialias = true;
+	};
+private:
+	void *_lib = nullptr;              ///< FT_Library
+	std::vector<void*> _faces;          ///< FT_Face chain
+	std::vector<std::string> _faceNames;
+	Settings _settings;
+	std::unordered_map<UCode, int> _faceForCode;              ///< -1 = none
+	std::unordered_map<uint64_t, HiResGlyph> _cache;
+	std::unordered_map<uint64_t, std::pair<int,int>> _metrics; ///< px -> (ascender, descender) of primary face
+	int selectFace(int face, int px);
+public:
+	HiResFont();
+	~HiResFont();
+	HiResFont(const HiResFont&) = delete;
+	HiResFont& operator=(const HiResFont&) = delete;
+	/// Resolves a font spec ("name.ttf", "/abs/path.ttc#1") to an existing path. Empty if not found.
+	static std::string resolvePath(const std::string &spec, int *faceIndex);
+	/// Loads faces from a list of font specs. Returns number of loaded faces.
+	int load(const std::vector<std::string> &specs, const Settings &settings);
+	bool empty() const { return _faces.empty(); }
+	const std::vector<std::string> &getFaceNames() const { return _faceNames; }
+	/// Index of first face providing the code point, -1 if none.
+	int faceFor(UCode c);
+	bool hasGlyph(UCode c) { return faceFor(c) >= 0; }
+	/// Renders (or fetches from cache) a glyph at a pixel size with an outline radius and emboldening (both in 1/64 pixel).
+	const HiResGlyph &getGlyph(UCode c, int px, int outline64, int bold64 = 0);
+	/// Ascender (positive) and descender (negative) of the primary face at a pixel size.
+	std::pair<int,int> getMetrics(int px);
+	/// Advance width of a glyph at a pixel size (no outline), -1 if missing.
+	int getAdvance(UCode c, int px);
+	/// Drops all cached glyphs.
+	void clearCache() { _cache.clear(); }
+	/// Bounds the cache (call only when no glyph references are held). An LRU is a TODO.
+	void trimCache(size_t maxEntries) { if (_cache.size() > maxEntries) _cache.clear(); }
+	size_t cacheSize() const { return _cache.size(); }
+};
+
+}

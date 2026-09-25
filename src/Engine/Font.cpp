@@ -21,6 +21,7 @@
 #include "Surface.h"
 #include "FileMap.h"
 #include "Unicode.h"
+#include "HiResLayer.h"
 
 namespace OpenXcom
 {
@@ -221,6 +222,31 @@ SDL_Rect Font::getCharSize(UCode c) const
 	if (Unicode::isPrintable(c))
 	{
 		auto f = _chars.find(c);
+		if (f == _chars.end() && HiResLayer::textConfigured() && !_monospace && HiResLayer::canRenderGlyph(c))
+		{
+			// Hi-res text: the character will be drawn by the TTF overlay, but layout still
+			// happens in bitmap-font units. Hangul syllables missing from the KS X 1001 bitmap
+			// set borrow the size of U+AC00 so all syllables line up; anything else uses the
+			// TTF advance measured at the base (unscaled) size, so layout never depends on the
+			// output scale.
+			auto proxy = (c >= 0xAC00 && c <= 0xD7A3) ? _chars.find(0xAC00) : _chars.end();
+			if (proxy != _chars.end())
+			{
+				f = proxy;
+			}
+			else
+			{
+				int adv = HiResLayer::baseAdvance(c, getHeight());
+				if (adv > 0)
+				{
+					size.w = adv + getSpacing();
+					size.h = getHeight() + getSpacing();
+					size.x = size.w;
+					size.y = size.h;
+					return size;
+				}
+			}
+		}
 		if (f == _chars.end())
 			f = _chars.find('?');
 

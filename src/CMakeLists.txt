@@ -146,6 +146,8 @@ set ( engine_src
   Engine/FileMap.cpp
   Engine/FlcPlayer.cpp
   Engine/Font.cpp
+  Engine/HiResFont.cpp
+  Engine/HiResLayer.cpp
   Engine/Game.cpp
   Engine/GMCat.cpp
   Engine/InteractiveSurface.cpp
@@ -627,7 +629,7 @@ if (WIN32)
   set(WIN32_LIBS imagehlp dbghelp)
 endif(WIN32)
 
-target_link_libraries ( openxcom ${system_libs} ${PKG_DEPS_LDFLAGS} ${EXTRA_XCOM_LIBS} ${WIN32_LIBS} )
+target_link_libraries ( openxcom ${system_libs} ${PKG_DEPS_LDFLAGS} Freetype::Freetype ${EXTRA_XCOM_LIBS} ${WIN32_LIBS} )
 
 # Pack libraries into bundle and link executable appropriately
 if ( APPLE AND CREATE_BUNDLE )

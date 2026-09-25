@@ -36,6 +36,7 @@
 // xBRZ
 
 #include "Scalers/xbrz.h"
+#include "HiResLayer.h"
 
 #if (_MSC_VER >= 1400) || (defined(__MINGW32__) && defined(__SSE2__))
 
@@ -677,6 +678,8 @@ void Zoom::flipWithZoom(SDL_Surface *src, SDL_Surface *dst, int topBlackBand, in
 			SDL_BlitSurface(src, 0, glOut->surface.get(), 0); // TODO; this is less than ideal...
 
 			glOut->refresh(glOut->linear, glOut->iwidth, glOut->iheight, dst->w, dst->h, topBlackBand, bottomBlackBand, leftBlackBand, rightBlackBand);
+			// hi-res overlay pass (text now, images later), drawn at output resolution
+			HiResLayer::renderGL(glOut, dst->w, dst->h, topBlackBand, bottomBlackBand, leftBlackBand, rightBlackBand, nullptr);
 			SDL_GL_SwapBuffers();
 		}
 #endif

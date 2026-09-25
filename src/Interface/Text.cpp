@@ -25,6 +25,7 @@
 #include "../Engine/ShaderDraw.h"
 #include "../Engine/ShaderMove.h"
 #include "../Engine/Action.h"
+#include "../Engine/HiResLayer.h"
 
 namespace OpenXcom
 {
@@ -568,6 +569,11 @@ void Text::draw()
 	// Invert text by inverting the font palette on index 3 (font palettes use indices 1-5)
 	int mid = _invert ? 3 : 0;
 
+	// Hi-res overlay: glyphs the TTF font can draw are recorded as draw commands
+	// (drawn later at output resolution) instead of being blitted as bitmap glyphs.
+	const bool hires = HiResLayer::recording();
+	auto paletteShift = [&](int src) { return (Uint8)(color + src * mul + (mid ? 2 * (mid - src) : 0)); };
+
 	// Draw each letter one by one
 	for (UString::const_iterator c = s.begin(); c != s.end(); ++c)
 	{
@@ -632,10 +638,32 @@ void Text::draw()
 		{
 			if (dir < 0)
 				x += dir * font->getCharSize(*c).w;
-			auto chr = font->getChar(*c);
-			chr.setX(x);
-			chr.setY(y);
-			ShaderDraw<PaletteShift>(ShaderSurface(this, 0, 0), ShaderCrop(chr), ShaderScalar(color), ShaderScalar(mul), ShaderScalar(mid));
+			if (hires && !font->isMonospace() && HiResLayer::canRenderGlyph(*c))
+			{
+				HiResCmd cmd;
+				cmd.kind = HiResCmdKind::Glyph;
+				cmd.code = *c;
+				cmd.x = x;
+				cmd.y = y;
+				cmd.w = font->getCharSize(*c).w;
+				cmd.h = font->getHeight();
+				cmd.cellH = font->getHeight();
+				cmd.refW = font->hasChar(0xAC00) ? font->getCharSize(0xAC00).w : 0;
+				cmd.clipX = 0;
+				cmd.clipY = 0;
+				cmd.clipW = getWidth();
+				cmd.clipH = getHeight();
+				cmd.fillIdx = paletteShift(1); // bitmap fonts: 1 = glyph body
+				cmd.lineIdx = paletteShift(4); //               4 = outline
+				HiResLayer::record(getSurface(), cmd);
+			}
+			else
+			{
+				auto chr = font->getChar(*c);
+				chr.setX(x);
+				chr.setY(y);
+				ShaderDraw<PaletteShift>(ShaderSurface(this, 0, 0), ShaderCrop(chr), ShaderScalar(color), ShaderScalar(mul), ShaderScalar(mid));
+			}
 			if (dir > 0)
 				x += dir * font->getCharSize(*c).w;
 		}

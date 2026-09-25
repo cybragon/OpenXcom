@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Game.h"
+#include "HiResLayer.h"
 #include "../resource.h"
 #include <algorithm>
 #include <cmath>
@@ -86,6 +87,9 @@ Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0
 	SDL_EnableUNICODE(1);
 	Unicode::getUtf8Locale();
 
+	// Hi-res overlay layer (reads options.cfg, loads TTF fonts); must precede the Screen
+	HiResLayer::init();
+
 	// Create display
 	_screen = new Screen();
 
@@ -127,6 +131,7 @@ Game::~Game()
 	delete _mod;
 	delete _screen;
 	delete _fpsCounter;
+	HiResLayer::shutdown();
 
 	Mix_CloseAudio();
 

@@ -75,6 +75,10 @@ public:
 	int getSpacing() const;
 	/// Gets the size of a particular character;
 	SDL_Rect getCharSize(UCode c) const;
+	/// Is this a monospace (terminal) font?
+	bool isMonospace() const { return _monospace; }
+	/// Does the bitmap font contain this character?
+	bool hasChar(UCode c) const { return _chars.find(c) != _chars.end(); }
 };
 
 }

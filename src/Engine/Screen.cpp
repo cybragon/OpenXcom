@@ -34,6 +34,7 @@
 #include "FileMap.h"
 #include "Zoom.h"
 #include "Timer.h"
+#include "HiResLayer.h"
 #include <SDL.h>
 
 namespace OpenXcom
@@ -236,6 +237,7 @@ void Screen::clear()
 {
 	Surface::CleanSdlSurface(_surface.get());
 	Surface::CleanSdlSurface(_screen);
+	HiResLayer::beginFrame();
 }
 
 /**
@@ -375,6 +377,7 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 		}
 #endif
 		_screen = SDL_SetVideoMode(width, height, _bpp, _flags);
+		HiResLayer::onContextLost();
 		if (_screen == 0)
 		{
 			Log(LOG_ERROR) << SDL_GetError();
@@ -498,6 +501,9 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 	{
 		setPalette(getPalette());
 	}
+
+	// prototype: the hi-res overlay is only rendered by the OpenGL output path
+	HiResLayer::setScreen(_surface.get(), useOpenGL());
 }
 
 /**

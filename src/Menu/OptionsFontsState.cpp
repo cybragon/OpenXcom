@@ -155,12 +155,32 @@ OptionsFontsState::OptionsFontsState(OptionsOrigin origin) : OptionsBaseState(or
 		if (!spec.empty())
 		{
 			auto it = std::find(_specs.begin(), _specs.end(), spec);
+			if (it == _specs.end() && spec.find(';') == std::string::npos)
+			{
+				// same font given another way (absolute path, other slashes/case): match by resolved file
+				int idx = 0;
+				std::string want = HiResFont::normalizePath(HiResFont::resolvePath(spec, &idx));
+				const auto &fonts = HiResFont::enumerateSystemFonts();
+				for (size_t k = 0; !want.empty() && k < fonts.size() && k + 1 < _specs.size(); ++k)
+				{
+					if (fonts[k].index == idx && HiResFont::normalizePath(fonts[k].path) == want)
+					{
+						it = _specs.begin() + k + 1;
+						break;
+					}
+				}
+			}
 			if (it == _specs.end())
 			{
 				// custom value from options.cfg (path, list...): keep it selectable
+				// show just the file name(s) of a custom path
+				std::string shown = spec;
+				size_t slash = shown.find_last_of("/\\");
+				if (slash != std::string::npos && spec.find(';') == std::string::npos)
+					shown = shown.substr(slash + 1);
 				_specs.push_back(spec);
-				names.push_back(spec);
-				rowNames.push_back(spec);
+				names.push_back(shown);
+				rowNames.push_back(shown);
 				sel = _specs.size() - 1;
 			}
 			else

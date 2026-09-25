@@ -44,10 +44,84 @@ namespace OpenXcom
 
 namespace
 {
+/// UTF-8 path aware existence check (std::ifstream/fopen use the ANSI code page on Windows).
 bool fileExists(const std::string &p)
 {
-	std::ifstream f(p, std::ios::binary);
-	return f.good();
+	std::error_code ec;
+	return std::filesystem::is_regular_file(std::filesystem::u8path(p), ec);
+}
+#ifdef _WIN32
+std::wstring toWide(const std::string &s)
+{
+	int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+	if (n <= 1) return std::wstring();
+	std::wstring w(n - 1, L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &w[0], n);
+	return w;
+}
+std::string fromWide(const wchar_t *w)
+{
+	int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+	if (n <= 1) return std::string();
+	std::string s(n - 1, '\0');
+	WideCharToMultiByte(CP_UTF8, 0, w, -1, &s[0], n, nullptr, nullptr);
+	return s;
+}
+/// Environment variable as UTF-8 (getenv() returns ANSI code page text, which mangles e.g. Korean user names).
+std::string envUtf8(const wchar_t *name)
+{
+	const wchar_t *v = _wgetenv(name);
+	return v ? fromWide(v) : std::string();
+}
+unsigned long ftStreamRead(FT_Stream stream, unsigned long offset, unsigned char *buffer, unsigned long count)
+{
+	FILE *f = (FILE*)stream->descriptor.pointer;
+	if (_fseeki64(f, (long long)offset, SEEK_SET) != 0)
+		return count == 0 ? 1 : 0; // count == 0: seek request, non-zero result means error
+	if (count == 0)
+		return 0;
+	return (unsigned long)fread(buffer, 1, count, f);
+}
+void ftStreamClose(FT_Stream stream)
+{
+	if (stream->descriptor.pointer)
+		fclose((FILE*)stream->descriptor.pointer);
+	delete stream;
+}
+#endif
+/// FT_New_Face replacement that accepts UTF-8 paths on every platform.
+/// On Windows FreeType's builtin stream uses fopen() (ANSI code page), so open the file with _wfopen
+/// and hand FreeType a custom stream instead (no need to read the whole file into memory).
+FT_Error openFace(FT_Library lib, const std::string &path, FT_Long index, FT_Face *face)
+{
+#ifdef _WIN32
+	std::wstring w = toWide(path);
+	FILE *f = w.empty() ? nullptr : _wfopen(w.c_str(), L"rb");
+	if (!f)
+		return FT_Err_Cannot_Open_Resource;
+	_fseeki64(f, 0, SEEK_END);
+	long long size = _ftelli64(f);
+	_fseeki64(f, 0, SEEK_SET);
+	if (size <= 0 || size > 0x7fffffffLL)
+	{
+		fclose(f);
+		return FT_Err_Cannot_Open_Stream;
+	}
+	FT_Stream stream = new FT_StreamRec();
+	stream->size = (unsigned long)size;
+	stream->pos = 0;
+	stream->descriptor.pointer = f;
+	stream->read = ftStreamRead;
+	stream->close = ftStreamClose;
+	FT_Open_Args args;
+	memset(&args, 0, sizeof(args));
+	args.flags = FT_OPEN_STREAM;
+	args.stream = stream;
+	// FreeType calls stream->close (which frees the stream) also when FT_Open_Face fails
+	return FT_Open_Face(lib, &args, index, face);
+#else
+	return FT_New_Face(lib, path.c_str(), index, face);
+#endif
 }
 void copyBitmap(const FT_Bitmap &bm, std::vector<uint8_t> &out, int &w, int &h)
 {
@@ -88,15 +162,13 @@ HiResFont::~HiResFont()
 std::vector<std::string> HiResFont::fontDirs()
 {
 	std::vector<std::string> dirs;
-	if (const char *windir = std::getenv("WINDIR"))
-	{
-		dirs.push_back(std::string(windir) + "/Fonts/");
-	}
-	if (const char *local = std::getenv("LOCALAPPDATA"))
-	{
-		dirs.push_back(std::string(local) + "/Microsoft/Windows/Fonts/"); // per-user installed fonts (Win10+)
-	}
 #ifdef _WIN32
+	std::string windir = envUtf8(L"WINDIR");
+	if (!windir.empty())
+		dirs.push_back(windir + "/Fonts/");
+	std::string local = envUtf8(L"LOCALAPPDATA");
+	if (!local.empty())
+		dirs.push_back(local + "/Microsoft/Windows/Fonts/"); // per-user installed fonts (Win10+)
 	dirs.push_back("C:/Windows/Fonts/");
 #elif defined(__APPLE__)
 	if (const char *home = std::getenv("HOME"))
@@ -150,7 +222,7 @@ void scanDir(const std::filesystem::path &dir, int depth, std::vector<std::strin
 		else
 		{
 			std::string p = it->path().u8string();
-			if (isFontFile(p) && seen.insert(lower(p)).second)
+			if (isFontFile(p) && seen.insert(HiResFont::normalizePath(p)).second)
 				out.push_back(p);
 		}
 	}
@@ -183,7 +255,7 @@ void registryFonts(std::vector<std::string> &out, std::set<std::string> &seen, c
 			WideCharToMultiByte(CP_UTF8, 0, w, -1, &file[0], n, nullptr, nullptr);
 			if (file.find(':') == std::string::npos && file.find('\\') != 0)
 				file = winFonts + file;
-			if (isFontFile(file) && seen.insert(lower(file)).second)
+			if (isFontFile(file) && seen.insert(HiResFont::normalizePath(file)).second)
 				out.push_back(file);
 		}
 		RegCloseKey(key);
@@ -222,8 +294,9 @@ const std::vector<HiResFontInfo> &HiResFont::enumerateSystemFonts(bool rescan)
 	}
 #ifdef _WIN32
 	std::string winFonts = "C:/Windows/Fonts/";
-	if (const char *windir = std::getenv("WINDIR"))
-		winFonts = std::string(windir) + "/Fonts/";
+	std::string windir = envUtf8(L"WINDIR");
+	if (!windir.empty())
+		winFonts = windir + "/Fonts/";
 	registryFonts(files, seen, winFonts);
 #endif
 	FT_Library lib;
@@ -232,13 +305,13 @@ const std::vector<HiResFontInfo> &HiResFont::enumerateSystemFonts(bool rescan)
 	for (const auto &file : files)
 	{
 		FT_Face face;
-		if (FT_New_Face(lib, file.c_str(), -1, &face) != 0)
+		if (openFace(lib, file, -1, &face) != 0)
 			continue;
 		FT_Long n = face->num_faces;
 		FT_Done_Face(face);
 		for (FT_Long i = 0; i < n && i < 64; ++i)
 		{
-			if (FT_New_Face(lib, file.c_str(), i, &face) != 0)
+			if (openFace(lib, file, i, &face) != 0)
 				continue;
 			if (FT_IS_SCALABLE(face) && FT_Select_Charmap(face, FT_ENCODING_UNICODE) == 0 && face->family_name)
 			{
@@ -278,10 +351,24 @@ const std::vector<HiResFontInfo> &HiResFont::enumerateSystemFonts(bool rescan)
 		std::string shortSpec = baseName(info.path) + (info.index ? "#" + std::to_string(info.index) : "");
 		int idx = 0;
 		std::string resolved = resolvePath(shortSpec, &idx);
-		info.spec = (lower(resolved) == lower(info.path)) ? shortSpec : info.path + (info.index ? "#" + std::to_string(info.index) : "");
+		info.spec = (normalizePath(resolved) == normalizePath(info.path)) ? shortSpec : info.path + (info.index ? "#" + std::to_string(info.index) : "");
 	}
 	Log(LOG_INFO) << "HiResFont: found " << list.size() << " scalable faces in " << files.size() << " font files";
 	return list;
+}
+
+std::string HiResFont::normalizePath(const std::string &path)
+{
+	std::string out;
+	out.reserve(path.size());
+	for (char c : path)
+	{
+		char n = (c == '\\') ? '/' : (char)std::tolower((unsigned char)c);
+		if (n == '/' && !out.empty() && out.back() == '/')
+			continue;
+		out += n;
+	}
+	return out;
 }
 
 std::string HiResFont::resolvePath(const std::string &specIn, int *faceIndex)
@@ -337,7 +424,7 @@ int HiResFont::load(const std::vector<std::string> &specs, const Settings &setti
 			continue;
 		}
 		FT_Face face;
-		if (FT_New_Face((FT_Library)_lib, path.c_str(), index, &face) != 0)
+		if (openFace((FT_Library)_lib, path, index, &face) != 0)
 		{
 			Log(LOG_WARNING) << "HiResFont: failed to open font " << path;
 			continue;

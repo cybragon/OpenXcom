@@ -105,6 +105,8 @@ public:
 	static const std::vector<HiResFontInfo> &enumerateSystemFonts(bool rescan = false);
 	/// Font folders searched for relative font specs.
 	static std::vector<std::string> fontDirs();
+	/// Canonical form of a font path for comparisons (lower case, forward slashes, "//" collapsed).
+	static std::string normalizePath(const std::string &path);
 	/// Drops all cached glyphs.
 	void clearCache() { _cache.clear(); }
 	/// Bounds the cache (call only when no glyph references are held). An LRU is a TODO.

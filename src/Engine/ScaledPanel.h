@@ -19,6 +19,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <vector>
+#include <cstdint>
 #include <SDL.h>
 
 namespace OpenXcom
@@ -48,6 +49,16 @@ private:
 	std::vector<Surface*> _members;
 	SDL_Color _palette[256];
 	bool _paletteSet;
+	// filtered (HQX/XBRZ) picture of the magnified canvas, recomputed only when the canvas,
+	// palette, factor or filter change (content hash)
+	Uint32 _imageId;
+	std::vector<Uint32> _image, _imageSrc;
+	uint64_t _imageHash;
+	int _imageFilter;
+	/// Magnifies the canvas into _scaled (nearest or the Scale filter).
+	void magnify8(int filter);
+	/// Updates the filtered picture; false if the current filter cannot be used.
+	bool updateImage(int filter);
 public:
 	/// Creates a panel of logical size w x h, shown magnified 'scale' times at (x, y) on the screen.
 	ScaledPanel(int w, int h, int scale, int x, int y);
@@ -74,7 +85,9 @@ public:
 	void beginFrame(const SDL_Color *palette);
 	/// Draws a member onto the logical canvas.
 	void blitMember(Surface *surface);
-	/// Magnifies the canvas onto the screen.
+	/// Magnifies the canvas onto the screen. In "x1, UI optimized" with a software filter selected
+	/// (Scale / HQX / xBRZ, see UiImageScaler::uiFilter) the magnification uses that filter: Scale on
+	/// the 8bpp pixels, HQX/xBRZ as a true-colour picture drawn by HiResLayer under the text.
 	void present(SDL_Surface *screen);
 	/// Maps a (mouse) action from screen space into the logical space of the panel.
 	Action mapAction(const Action *action) const;

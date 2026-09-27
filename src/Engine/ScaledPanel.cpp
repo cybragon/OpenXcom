@@ -21,6 +21,7 @@
 #include "Surface.h"
 #include "Action.h"
 #include "HiResLayer.h"
+#include "UiImageScaler.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -33,7 +34,7 @@ ScaledPanel::ScaledPanel(int w, int h, int scale, int x, int y) : ScaledPanel(w,
 }
 
 ScaledPanel::ScaledPanel(int canvasW, int canvasH, int srcX, int srcY, int srcW, int srcH, int scale, int x, int y) :
-	_scale(std::max(1, scale)), _x(x), _y(y), _paletteSet(false)
+	_scale(std::max(1, scale)), _x(x), _y(y), _paletteSet(false), _imageId(0), _imageHash(0), _imageFilter(-1)
 {
 	_canvas = new Surface(canvasW, canvasH, 0, 0);
 	// the source rect must lie inside the canvas
@@ -53,6 +54,8 @@ bool ScaledPanel::matches(int canvasW, int canvasH, int srcX, int srcY, int srcW
 
 ScaledPanel::~ScaledPanel()
 {
+	if (_imageId)
+		HiResLayer::dropImage(_imageId);
 	delete _canvas;
 	delete _scaled;
 }
@@ -86,32 +89,101 @@ void ScaledPanel::blitMember(Surface *surface)
 	surface->blit(_canvas->getSurface());
 }
 
-void ScaledPanel::present(SDL_Surface *screen)
+void ScaledPanel::magnify8(int filter)
 {
 	SDL_Surface *src = _canvas->getSurface();
 	SDL_Surface *dst = _scaled->getSurface();
 	const int k = _scale;
 	SDL_LockSurface(src);
 	SDL_LockSurface(dst);
-	for (int y = 0; y < _srcH; ++y)
+	const Uint8 *s0 = (const Uint8*)src->pixels + _srcY * src->pitch + _srcX;
+	if (!UiImageScaler::scale8((UiImageScaler::Filter)filter, k, s0, src->pitch, _srcW, _srcH, (Uint8*)dst->pixels, dst->pitch))
 	{
-		const Uint8 *sp = (const Uint8*)src->pixels + (y + _srcY) * src->pitch + _srcX;
-		Uint8 *row = (Uint8*)dst->pixels + (y * k) * dst->pitch;
-		Uint8 *dp = row;
-		for (int x = 0; x < _srcW; ++x)
+		for (int y = 0; y < _srcH; ++y)
 		{
-			std::memset(dp, sp[x], k);
-			dp += k;
+			const Uint8 *sp = s0 + y * src->pitch;
+			Uint8 *row = (Uint8*)dst->pixels + (y * k) * dst->pitch;
+			Uint8 *dp = row;
+			for (int x = 0; x < _srcW; ++x)
+			{
+				std::memset(dp, sp[x], k);
+				dp += k;
+			}
+			for (int r = 1; r < k; ++r)
+				std::memcpy(row + r * dst->pitch, row, _srcW * k);
 		}
-		for (int r = 1; r < k; ++r)
-			std::memcpy(row + r * dst->pitch, row, _srcW * k);
 	}
 	SDL_UnlockSurface(dst);
 	SDL_UnlockSurface(src);
+}
+
+bool ScaledPanel::updateImage(int filter)
+{
+	const int k = _scale;
+	if (!UiImageScaler::supports((UiImageScaler::Filter)filter, k))
+		return false;
+	SDL_Surface *src = _canvas->getSurface();
+	// content hash (FNV-1a over the pixels, palette and parameters)
+	uint64_t hsh = 1469598103934665603ull;
+	auto mix = [&](const void *p, size_t n) { const Uint8 *b = (const Uint8*)p; for (size_t i = 0; i < n; ++i) { hsh ^= b[i]; hsh *= 1099511628211ull; } };
+	SDL_LockSurface(src);
+	for (int y = 0; y < _srcH; ++y)
+		mix((const Uint8*)src->pixels + (y + _srcY) * src->pitch + _srcX, _srcW);
+	mix(_palette, sizeof(_palette));
+	int params[3] = { filter, k, _srcW * 65536 + _srcH };
+	mix(params, sizeof(params));
+	if (_imageId && hsh == _imageHash && filter == _imageFilter && !_image.empty())
+	{
+		SDL_UnlockSurface(src);
+		return true;
+	}
+	_imageSrc.resize((size_t)_srcW * _srcH);
+	for (int y = 0; y < _srcH; ++y)
+	{
+		const Uint8 *sp = (const Uint8*)src->pixels + (y + _srcY) * src->pitch + _srcX;
+		Uint32 *dp = &_imageSrc[(size_t)y * _srcW];
+		for (int x = 0; x < _srcW; ++x)
+		{
+			const SDL_Color &c = _palette[sp[x]];
+			dp[x] = sp[x] ? (0xFF000000u | ((Uint32)c.r << 16) | ((Uint32)c.g << 8) | c.b) : 0u; // index 0 = transparent
+		}
+	}
+	SDL_UnlockSurface(src);
+	_image.resize((size_t)_srcW * k * _srcH * k);
+	if (!UiImageScaler::scaleArgb((UiImageScaler::Filter)filter, k, _imageSrc.data(), _srcW, _srcH, _image.data()))
+		return false;
+	if (!_imageId)
+		_imageId = HiResLayer::newImageId();
+	HiResLayer::setImage(_imageId, _image.data(), _srcW * k, _srcH * k);
+	_imageHash = hsh;
+	_imageFilter = filter;
+	return true;
+}
+
+void ScaledPanel::present(SDL_Surface *screen)
+{
+	const UiImageScaler::Filter filter = (_scale > 1 && HiResLayer::recording() && HiResLayer::isScreen(screen)) ? UiImageScaler::uiFilter() : UiImageScaler::Filter::Nearest;
+	const bool trueColor = filter == UiImageScaler::Filter::HQX || filter == UiImageScaler::Filter::XBRZ;
+	// the 8bpp magnification stays: it is what the screen buffer holds (occlusion, screenshots of
+	// the base buffer, fallback); true-colour filters are drawn over it by the overlay
+	magnify8((int)(trueColor ? UiImageScaler::Filter::Nearest : filter));
+	SDL_Surface *src = _canvas->getSurface();
+	SDL_Surface *dst = _scaled->getSurface();
 	if (HiResLayer::recording())
 	{
 		// the overlay commands follow the magnification (drawn at output resolution, not magnified)
-		HiResLayer::transferScaled(src, _srcX, _srcY, _srcW, _srcH, dst, k);
+		HiResLayer::transferScaled(src, _srcX, _srcY, _srcW, _srcH, dst, _scale);
+		if (trueColor && updateImage((int)filter))
+		{
+			HiResCmd img;
+			img.kind = HiResCmdKind::Image;
+			img.imageId = _imageId;
+			img.x = 0; img.y = 0;
+			img.w = (Sint16)dst->w; img.h = (Sint16)dst->h;
+			img.clipX = 0; img.clipY = 0;
+			img.clipW = (Sint16)dst->w; img.clipH = (Sint16)dst->h;
+			HiResLayer::record(dst, img);
+		}
 	}
 	_scaled->setX(_x);
 	_scaled->setY(_y);

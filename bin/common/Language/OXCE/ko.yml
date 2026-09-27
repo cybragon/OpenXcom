@@ -420,6 +420,8 @@ ko:
   STR_SELF_DESTRUCT_CANCELLED: "자폭 취소"
   STR_MISSILE_DAMAGED: ">>> 미사일이 손상됨 <<<"
   STR_MISSILE_DESTROYED: ">>> 미사일이 파괴됨 <<<"
+  STR_OCEAN_INDICATOR: ""
+  STR_OCEAN_INDICATOR_RNG: ""
   STR_EXTENDED_LINKS: "링크"
   STR_AUTO_PATROL: "자동 순찰"
   STR_ETA: "예상도착시간:>{ALT}{0}"

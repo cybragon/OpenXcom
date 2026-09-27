@@ -56,7 +56,7 @@ Game* State::_game = 0;
  * By default states are full-screen.
  * @param game Pointer to the core game.
  */
-State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0), _ruleInterfaceParent(0), _customSound(nullptr), _uiPanel(nullptr), _uiCanvasExempt(false)
+State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0), _ruleInterfaceParent(0), _customSound(nullptr), _uiPanel(nullptr), _uiCanvasExempt(false), _uiPartial(false), _uiPartialTop(false), _uiCornerPanel(nullptr), _uiCornerW(0), _uiCornerH(0)
 {
 	// initialize palette to all black
 	memset(_palette, 0, sizeof(_palette));
@@ -69,6 +69,7 @@ State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0
 State::~State()
 {
 	delete _uiPanel;
+	delete _uiCornerPanel;
 	// Surfaces are deleted in reverse order of adding, same like local variables
 	for (auto* surface : Collections::reverse(Collections::range(_surfacesOwned)))
 	{
@@ -356,19 +357,30 @@ void State::handle(Action *action)
 	if (_uiPanel && getUiCanvasFactor() > 1)
 	{
 		// the state lives on the magnified UI canvas: mouse coordinates in its logical space
+		// (partial/corner canvases: each surface gets the coordinates of the space it is drawn in)
 		Action mapped = _uiPanel->mapAction(action);
+		Action cornerMapped = _uiCornerPanel ? _uiCornerPanel->mapAction(action) : Action(*action);
+		auto actionFor = [&](const Surface *surface) -> Action*
+		{
+			switch (uiCanvasOf(surface))
+			{
+			case 1: return &mapped;
+			case 2: return _uiCornerPanel ? &cornerMapped : action;
+			default: return action;
+			}
+		};
 		if (!_modal)
 		{
 			for (std::vector<Surface*>::reverse_iterator i = _surfaces.rbegin(); i != _surfaces.rend(); ++i)
 			{
 				InteractiveSurface* j = dynamic_cast<InteractiveSurface*>(*i);
 				if (j != 0)
-					j->handle(&mapped, this);
+					j->handle(actionFor(j), this);
 			}
 		}
 		else
 		{
-			_modal->handle(&mapped, this);
+			_modal->handle(actionFor(_modal), this);
 		}
 		return;
 	}
@@ -400,18 +412,64 @@ void State::blit()
 		// all surfaces are drawn on the canvas at their own (centered 320x200) coordinates, then that
 		// 320x200 rect is magnified to the screen center; color 0 stays transparent (the globe behind
 		// keeps being drawn at the full resolution), text commands follow at 'k' x output resolution
-		_uiPanel->beginFrame(screen->format->palette ? screen->format->palette->colors : _palette);
+		const SDL_Color *pal = screen->format->palette ? screen->format->palette->colors : _palette;
+		_uiPanel->beginFrame(pal);
+		if (_uiCornerPanel)
+			_uiCornerPanel->beginFrame(pal);
 		for (auto* surface : _surfaces)
 		{
-			_uiPanel->blitMember(surface);
+			switch (uiCanvasOf(surface))
+			{
+			case 1: _uiPanel->blitMember(surface); break;
+			case 2: if (_uiCornerPanel) { _uiCornerPanel->blitMember(surface); break; } [[fallthrough]];
+			default: surface->blit(screen); break;
+			}
 		}
 		_uiPanel->present(screen);
+		if (_uiCornerPanel)
+			_uiCornerPanel->present(screen);
 		return;
 	}
 	for (auto* surface : _surfaces)
 	{
 		surface->blit(screen);
 	}
+}
+
+/**
+ * Which canvas a surface is drawn on: 0 = directly on the screen, 1 = main canvas, 2 = corner canvas.
+ */
+int State::uiCanvasOf(const Surface *surface) const
+{
+	if (std::find(_uiCornerMembers.begin(), _uiCornerMembers.end(), surface) != _uiCornerMembers.end())
+		return 2;
+	if (_uiPartial && std::find(_uiPartialMembers.begin(), _uiPartialMembers.end(), surface) == _uiPartialMembers.end())
+		return 0;
+	return 1;
+}
+
+/**
+ * Magnifies only some surfaces of this state.
+ */
+void State::setUiCanvasPartial(const std::vector<Surface*> &members, bool top)
+{
+	_uiPartial = true;
+	_uiPartialTop = top;
+	_uiPartialMembers = members;
+	delete _uiPanel;
+	_uiPanel = nullptr;
+}
+
+/**
+ * Magnifies some surfaces of this state from the top-left screen corner.
+ */
+void State::setUiCanvasCorner(const std::vector<Surface*> &members, int w, int h)
+{
+	_uiCornerMembers = members;
+	_uiCornerW = w;
+	_uiCornerH = h;
+	delete _uiCornerPanel;
+	_uiCornerPanel = nullptr;
 }
 
 /**
@@ -469,12 +527,23 @@ bool State::prepareUiPanel(int k)
 	const int sw = Screen::ORIGINAL_WIDTH, sh = Screen::ORIGINAL_HEIGHT;
 	if (sw * k > w || sh * k > h)
 		return false;
-	const int srcX = _game->getScreen()->getDX(), srcY = _game->getScreen()->getDY();
-	const int x = (w - sw * k) / 2, y = (h - sh * k) / 2;
+	const int srcX = _game->getScreen()->getDX();
+	const int srcY = (_uiPartial && _uiPartialTop) ? 0 : _game->getScreen()->getDY();
+	const int x = (w - sw * k) / 2;
+	const int y = (_uiPartial && _uiPartialTop) ? 0 : (h - sh * k) / 2;
 	if (!_uiPanel || !_uiPanel->matches(w, h, srcX, srcY, sw, sh, k, x, y))
 	{
 		delete _uiPanel;
 		_uiPanel = new ScaledPanel(w, h, srcX, srcY, sw, sh, k, x, y);
+	}
+	if (!_uiCornerMembers.empty())
+	{
+		const int cw = std::min(_uiCornerW, w / k), ch = std::min(_uiCornerH, h / k);
+		if (!_uiCornerPanel || !_uiCornerPanel->matches(w, h, 0, 0, cw, ch, k, 0, 0))
+		{
+			delete _uiCornerPanel;
+			_uiCornerPanel = new ScaledPanel(w, h, 0, 0, cw, ch, k, 0, 0);
+		}
 	}
 	return true;
 }

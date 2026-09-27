@@ -50,7 +50,6 @@ namespace OpenXcom
  */
 BuildNewBaseState::BuildNewBaseState(Base *base, Globe *globe, bool first) : _base(base), _globe(globe), _first(first), _oldlat(0), _oldlon(0), _mousex(0), _mousey(0)
 {
-	setUiCanvasExempt(); // globe overlay: laid out on the whole geoscape (own handling)
 	int dx = _game->getScreen()->getDX();
 	int dy = _game->getScreen()->getDY();
 	_screen = false;
@@ -110,6 +109,9 @@ BuildNewBaseState::BuildNewBaseState(Base *base, Globe *globe, bool first) : _ba
 	add(_window, "genericWindow", "geoscape");
 	add(_btnCancel, "genericButton2", "geoscape");
 	add(_txtTitle, "genericText", "geoscape");
+
+	// "x1, UI optimized": only the top bar is magnified; the sidebar hotspots and the globe keep screen coordinates
+	setUiCanvasPartial({ _window, _btnCancel, _txtTitle }, true);
 
 	// Set up objects
 	_globe->onMouseClick((ActionHandler)&BuildNewBaseState::globeClick);
@@ -247,7 +249,7 @@ void BuildNewBaseState::globeClick(Action *action)
 	_globe->cartToPolar(mouseX, mouseY, &lon, &lat);
 
 	// Ignore window clicks
-	if (mouseY < 28)
+	if (mouseY < 28 * getUiCanvasFactor())
 	{
 		return;
 	}

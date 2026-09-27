@@ -66,6 +66,8 @@ public:
 	/// Screen position of the magnified panel.
 	int getX() const { return _x; }
 	int getY() const { return _y; }
+	/// Moves the magnified panel on the screen.
+	void setPosition(int x, int y) { _x = x; _y = y; }
 	/// Geometry check (to reuse the panel while nothing changed).
 	bool matches(int canvasW, int canvasH, int srcX, int srcY, int srcW, int srcH, int scale, int x, int y) const;
 	/// Starts a frame: clears the logical canvas and syncs its palette.

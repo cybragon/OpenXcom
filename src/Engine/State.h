@@ -66,6 +66,15 @@ protected:
 	/// magnified by the sidebar factor (text still rendered by HiResLayer at the output resolution).
 	ScaledPanel *_uiPanel;
 	bool _uiCanvasExempt;
+	/// Partial canvas: only these surfaces are magnified (the others are drawn/handled as usual).
+	bool _uiPartial, _uiPartialTop;
+	std::vector<Surface*> _uiPartialMembers;
+	/// Corner canvas: these surfaces (laid out from the top-left screen corner) are magnified from that corner.
+	ScaledPanel *_uiCornerPanel;
+	std::vector<Surface*> _uiCornerMembers;
+	int _uiCornerW, _uiCornerH;
+	/// Which canvas a surface belongs to: 0 = none (direct), 1 = main, 2 = corner.
+	int uiCanvasOf(const Surface *surface) const;
 	/// Creates/updates the UI canvas for a factor (returns false if it does not fit).
 	bool prepareUiPanel(int k);
 public:
@@ -154,6 +163,11 @@ public:
 
 	/// Excludes this state from the UI canvas (states that lay themselves out on the whole screen).
 	void setUiCanvasExempt(bool exempt = true);
+	/// Magnifies only 'members' (e.g. the top bar of a globe overlay); with 'top' their 320x200 frame
+	/// starts at the top of the screen instead of the vertical center.
+	void setUiCanvasPartial(const std::vector<Surface*> &members, bool top);
+	/// Magnifies 'members' (laid out in the w x h area at the top-left screen corner) from that corner.
+	void setUiCanvasCorner(const std::vector<Surface*> &members, int w, int h);
 	/// Magnification of this state's UI canvas (1 = drawn directly, as usual).
 	int getUiCanvasFactor() const;
 	/// The UI canvas factor states get at the current geoscape resolution (1 = off).

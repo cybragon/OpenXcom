@@ -49,7 +49,6 @@ namespace OpenXcom
  */
 SelectDestinationState::SelectDestinationState(std::vector<Craft*> crafts, Globe *globe) : _crafts(std::move(crafts)), _globe(globe)
 {
-	setUiCanvasExempt(); // globe overlay: laid out on the whole geoscape (own handling)
 	int dx = _game->getScreen()->getDX();
 	int dy = _game->getScreen()->getDY();
 	_screen = false;
@@ -104,6 +103,9 @@ SelectDestinationState::SelectDestinationState(std::vector<Craft*> crafts, Globe
 	add(_btnCancel, "genericButton1", "geoscape");
 	add(_btnCydonia, "genericButton1", "geoscape");
 	add(_txtTitle, "genericText", "geoscape");
+
+	// "x1, UI optimized": only the top bar is magnified; the sidebar hotspots and the globe keep screen coordinates
+	setUiCanvasPartial({ _window, _btnCancel, _btnCydonia, _txtTitle }, true);
 
 	// Set up objects
 	_globe->onMouseClick((ActionHandler)&SelectDestinationState::globeClick);
@@ -245,7 +247,7 @@ void SelectDestinationState::globeClick(Action *action)
 	_globe->cartToPolar(mouseX, mouseY, &lon, &lat);
 
 	// Ignore window clicks
-	if (mouseY < 28)
+	if (mouseY < 28 * getUiCanvasFactor())
 	{
 		return;
 	}

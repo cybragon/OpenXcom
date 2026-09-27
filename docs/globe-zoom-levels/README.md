@@ -29,6 +29,7 @@ regions:
 - 도시는 마커와 이름이 함께 나타납니다. 기지 이름은 순정처럼 3단계부터입니다.
 - `missionZones`는 목록 전체가 교체되므로 구역 순서와 내용을 원본과 같게 유지하세요 (미션이 구역 번호를 씁니다).
 - 예제: `test-mod/globe_zoom_test` (나이지리아 3, 라고스 4, 킨샤사 5).
+- 일반 OXCE에서는 `missionZones` 7번째 값과 펀딩 국가 `zoomLevel`이 오류 없이 무시됩니다 (OXCE 8.7.1 코드 기준).
 
 ## English
 
@@ -45,3 +46,4 @@ Without a value the original behaviour is kept.
 - A city's marker and name appear together. Base names stay at zoom 3 (original).
 - `missionZones` replaces the whole list: keep the zones in the original order (missions refer to zone numbers).
 - Example: `test-mod/globe_zoom_test` (Nigeria 3, Lagos 4, Kinshasa 5).
+- Plain OXCE ignores the 7th `missionZones` value and a funding country's `zoomLevel` without errors (checked against the OXCE 8.7.1 code).

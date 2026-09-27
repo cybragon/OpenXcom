@@ -251,7 +251,6 @@ DogfightState::DogfightState(GeoscapeState *state, Craft *craft, Ufo *ufo, bool 
 	_interceptionNumber(0), _interceptionsCount(0), _x(0), _y(0), _minimizedIconX(0), _minimizedIconY(0), _firedAtLeastOnce(false), _experienceAwarded(false),
 	_delayedRecolorDone(false)
 {
-	setUiCanvasExempt(); // placed and drawn by the geoscape (interception ports)
 	_screen = false;
 	_craft->setInDogfight(true);
 	_weaponNum = _craft->getRules()->getWeapons();
@@ -395,6 +394,9 @@ DogfightState::DogfightState(GeoscapeState *state, Craft *craft, Ufo *ufo, bool 
 	add(_txtStatus, "text", "dogfight", _window);
 	add(_btnMinimizedIcon);
 	add(_txtInterceptionNumber, "minimizedNumber", "dogfight");
+	// "x1, UI optimized": the windows use the magnified 320x200 frame like other states, the minimized
+	// icons (top-left screen corner, up to 4 stacked) are magnified from that corner
+	setUiCanvasCorner({ _btnMinimizedIcon, _txtInterceptionNumber }, 40, 100);
 
 	_btnStandoff->invalidate(false);
 	_btnCautious->invalidate(false);

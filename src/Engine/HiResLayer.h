@@ -60,6 +60,7 @@ struct HiResCmd
 	Uint32 run = 0;                  ///< text run id (one line of one Text draw); glyphs of a run are laid out together
 	Uint32 lineId = 0;               ///< text line id (one line of one Text draw, may hold several runs); 0 = n/a
 	Sint16 boxW = 0;                 ///< width of the Text box (base px, holder scale): a line wider than this is squeezed
+	Sint16 boxDy = 0, boxH = 0;      ///< top of the Text box relative to y, and its height (base px, holder scale)
 	Uint8 cellH = 0;                 ///< font cell height in base px (glyphs are centred on the cell)
 	Uint8 lineH = 0;                 ///< font line height in base px (Font.dat height + spacing): drives the glyph pixel size
 	Uint8 refW = 0;                  ///< advance of U+AC00 in the bitmap font (base px), 0 = n/a (informative, not used for sizing)

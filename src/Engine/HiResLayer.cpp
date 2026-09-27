@@ -238,9 +238,10 @@ struct SlotSize
 };
 std::unordered_map<SizeKey, SlotSize, SizeKeyHash> slotSizeCache;
 
-/// Reference glyphs for the vertical extent of a font: Latin ascenders/descenders and Hangul
-/// (a text line of any language must fit the line height, so all share one extent).
-const UCode EXTENT_REFS[] = { 'H', 'b', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'p', 'q', 'y', 0xAC00, 0xAC01, 0xD7A3, 0xBDC1 };
+/// Reference glyphs for the size of a font type: Latin capitals and Hangul (tall syllables with
+/// complex vowels / double finals). Latin descenders (g, p, y...) are NOT included: they may reach
+/// into the outline of the next line, while capitals and Hangul never overlap the neighbouring lines.
+const UCode EXTENT_REFS[] = { 'H', 'O', 'E', 'A', 0xAC00, 0xAC01, 0xD7A3, 0xBDC1, 0xD55C, 0xAE00 };
 
 /// Union ink extent (above / below the baseline) of the reference glyphs at size 'px'.
 bool inkExtent(HiResFont *font, int px, int bold64, double &asc, double &desc)
@@ -261,9 +262,10 @@ bool inkExtent(HiResFont *font, int px, int bold64, double &asc, double &desc)
 	return any;
 }
 
-/// Pixel size of a font type: the whole glyph height - union ink extent of Latin and Hangul
-/// reference glyphs, emboldening and outline included - fits the line height of the bitmap font
-/// (Font.dat height + spacing, times the output scale). Hangul and Latin use the same size.
+/// Pixel size of a font type: the largest size whose glyph height - union ink extent of the Latin
+/// capital and Hangul reference glyphs, emboldening and outline included - fits the line height of
+/// the bitmap font (Font.dat height + spacing, times the output scale). Hangul and Latin use the
+/// same size.
 /// Depends only on the font (slot), its line height, the output scale and the size options -
 /// never on the text or its box. The size options (%) are applied on top.
 const SlotSize &slotSize(HiResFont *font, int slot, int lineH, double sy)
@@ -287,6 +289,9 @@ const SlotSize &slotSize(HiResFont *font, int slot, int lineH, double sy)
 		// hinting/rounding can make the real extent a little larger: step down until it fits
 		while (px > 1 && inkExtent(font, px, bold64ForPx(px), a, d) && a + d > avail)
 			--px;
+		// ...and up while the next size still fits (fills the line up to the last pixel)
+		while (px < 4000 && inkExtent(font, px + 1, bold64ForPx(px + 1), a, d) && a + d <= avail)
+			++px;
 	}
 	else
 	{
@@ -419,8 +424,10 @@ struct Placed
 	int pen = 0, baseline = 0;
 };
 
-/// Vertical placement + pixel size for one glyph command: the extent box of the font type is
-/// centred on the bitmap cell (so consecutive lines, 'lineH' apart, never overlap).
+/// Vertical placement + pixel size for one glyph command: the extent box of the font type (capitals
+/// and Hangul, outline included) is centred on the bitmap cell, so consecutive lines, 'lineH'
+/// apart, never overlap. If that box sticks out of the clip rect (a Text box lower than the line)
+/// but fits in it, it is moved inside, so capitals and Hangul are never cut.
 void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int &px, int &baseline)
 {
 	(void)sx;
@@ -429,7 +436,19 @@ void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int
 	const SlotSize &ss = slotSize(font, c.slot, c.lineH > 0 ? c.lineH : c.cellH, ms);
 	px = ss.px;
 	const double centre = c.y * sy + c.cellH * ms / 2.0;
-	baseline = (int)std::lround(centre - (ss.asc + ss.desc) / 2.0 + ss.asc);
+	const double r = outlineRadius(ms);
+	const double extH = ss.asc + ss.desc + 2.0 * r;
+	double top = centre - extH / 2.0;
+	// the Text box itself (not the clip rect, which may be cut further by parents or the screen)
+	const double clipT = (c.y + c.boxDy) * sy, clipB = (c.y + c.boxDy + c.boxH) * sy;
+	if (c.boxH > 0 && extH <= clipB - clipT)
+	{
+		if (top < clipT)
+			top = clipT;
+		else if (top + extH > clipB)
+			top = clipB - extH;
+	}
+	baseline = (int)std::lround(top + r + ss.asc);
 }
 
 /// Composes the current frame into S.rgba (dstW x dstH). Returns the dirty rect of this frame;
@@ -937,6 +956,8 @@ void HiResLayer::transferScaled(SDL_Surface *src, int x, int y, int w, int h, SD
 		c.y = (Sint16)((c0.y - y) * k);
 		c.w = (Sint16)(c0.w * k);
 		c.boxW = (Sint16)(c0.boxW * k);
+		c.boxDy = (Sint16)(c0.boxDy * k);
+		c.boxH = (Sint16)(c0.boxH * k);
 		c.h = (Sint16)(c0.h * k);
 		c.clipX = (Sint16)(cx * k);
 		c.clipY = (Sint16)(cy * k);

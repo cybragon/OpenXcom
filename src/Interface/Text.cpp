@@ -586,6 +586,8 @@ void Text::draw()
 		cmd.run = run;
 		cmd.lineId = lineId;
 		cmd.boxW = (Sint16)getWidth();
+		cmd.boxDy = (Sint16)-y;
+		cmd.boxH = (Sint16)getHeight();
 		cmd.x = gx;
 		cmd.y = y;
 		cmd.w = gw;

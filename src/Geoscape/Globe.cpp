@@ -1393,8 +1393,7 @@ void Globe::drawDetail()
 		_countries->unlock();
 	}
 
-	// Draw the country names
-	if (_zoom >= 2)
+	// Draw the country names (from the country's zoomLevel, default 2 like the original)
 	{
 		Text *label = new Text(150, 9, 0, 0);
 		label->setPalette(getPalette());
@@ -1404,6 +1403,8 @@ void Globe::drawDetail()
 		Sint16 x, y;
 		for (auto* country : *_game->getSavedGame()->getCountries())
 		{
+			if ((int)(_zoom) < country->getRules()->getCountryLabelZoomLevel())
+				continue;
 			// Don't draw if label is facing back
 			if (pointBack(country->getRules()->getLabelLongitude(), country->getRules()->getLabelLatitude()))
 				continue;
@@ -1459,8 +1460,7 @@ void Globe::drawDetail()
 		delete label;
 	}
 
-	// Draw the city and base markers
-	if (_zoom >= 3)
+	// Draw the city markers and names (from the city's zoomLevel, default 3 like the original) and the base names
 	{
 		Text *label = new Text(100, 9, 0, 0);
 		label->setPalette(getPalette());
@@ -1473,6 +1473,9 @@ void Globe::drawDetail()
 		{
 			for (auto* city : *region->getRules()->getCities())
 			{
+				// the marker goes with the name: a city is shown from its zoom level on
+				if ((int)(_zoom) < city->getZoomLevel())
+					continue;
 				drawTarget(city, _countries);
 
 				// Don't draw if city is facing back
@@ -1491,6 +1494,8 @@ void Globe::drawDetail()
 		// Draw bases names
 		for (auto* xbase : *_game->getSavedGame()->getBases())
 		{
+			if (_zoom < 3)
+				break;
 			if (xbase->getMarker() == -1 || pointBack(xbase->getLongitude(), xbase->getLatitude()))
 				continue;
 			polarToCart(xbase->getLongitude(), xbase->getLatitude(), &x, &y);

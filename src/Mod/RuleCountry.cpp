@@ -21,6 +21,8 @@
 #include "../Engine/RNG.h"
 #include "../Engine/ScriptBind.h"
 #include "../fmath.h"
+#include "../Engine/Logger.h"
+#include <algorithm>
 
 namespace OpenXcom
 {
@@ -30,7 +32,7 @@ namespace OpenXcom
  * type of country.
  * @param type String defining the type.
  */
-RuleCountry::RuleCountry(const std::string &type) : _type(type), _fundingBase(0), _fundingCap(0), _labelLon(0.0), _labelLat(0.0), _labelColor(0), _zoomLevel(0)
+RuleCountry::RuleCountry(const std::string &type) : _type(type), _fundingBase(0), _fundingCap(0), _labelLon(0.0), _labelLat(0.0), _labelColor(0), _zoomLevel(0), _zoomLevelSet(false)
 {
 }
 
@@ -61,7 +63,11 @@ void RuleCountry::load(const YAML::YamlNodeReader& reader, const ModScript& pars
 	if (reader["labelLat"])
 		_labelLat = Deg2Rad(reader["labelLat"].readVal<double>());
 	reader.tryRead("labelColor", _labelColor);
-	reader.tryRead("zoomLevel", _zoomLevel);
+	if (reader["zoomLevel"])
+	{
+		reader.tryRead("zoomLevel", _zoomLevel);
+		_zoomLevelSet = true;
+	}
 	std::vector< std::vector<double> > areas;
 	reader.tryRead("areas", areas);
 	for (size_t i = 0; i != areas.size(); ++i)
@@ -87,6 +93,13 @@ void RuleCountry::load(const YAML::YamlNodeReader& reader, const ModScript& pars
  */
 void RuleCountry::afterLoad(const Mod* mod)
 {
+	// funding countries only (extraGlobeLabels keep their raw value, as before)
+	if (_zoomLevelSet && (_zoomLevel < 0 || _zoomLevel > 5))
+	{
+		int clamped = std::max(0, std::min(5, _zoomLevel));
+		Log(LOG_WARNING) << "Country " << _type << ": zoomLevel " << _zoomLevel << " is out of range 0-5, using " << clamped;
+		_zoomLevel = clamped;
+	}
 	mod->linkRule(_signedPactEvent, _signedPactEventName);
 	mod->linkRule(_rejoinedXcomEvent, _rejoinedXcomEventName);
 }
@@ -177,8 +190,8 @@ int RuleCountry::getLabelColor() const
 }
 
 /**
- * Gets the minimum zoom level required to display the label.
- * Note: this works for extraGlobeLabels only, not for vanilla countries.
+ * Gets the minimum zoom level required to display the label of an extraGlobeLabels entry.
+ * Funding countries use getCountryLabelZoomLevel() (default 2 instead of 0).
  * @return The zoom level.
  */
 int RuleCountry::getZoomLevel() const

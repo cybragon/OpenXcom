@@ -28,7 +28,7 @@ namespace OpenXcom
  * @param lon Longitude of the city.
  * @param lat Latitude of the city.
  */
-City::City(const std::string &name, double lon, double lat) : Target()
+City::City(const std::string &name, double lon, double lat, int zoomLevel) : Target(), _zoomLevel(zoomLevel)
 {
 	_name = name;
 	_lon = lon;

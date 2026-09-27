@@ -21,6 +21,7 @@
 #include "Mod.h"
 #include "City.h"
 #include "../Engine/Logger.h"
+#include <algorithm>
 #include "../Engine/RNG.h"
 
 namespace OpenXcom
@@ -93,6 +94,12 @@ void RuleRegion::load(const YAML::YamlNodeReader& reader, Mod* mod)
 				if (a.isPoint() != firstAreaType)
 				{
 					Log(LOG_WARNING) << "Mixed area types (point vs non-point), region: " << _type << ", zone: " << zn << ", area: " << an;
+				}
+				if (a.zoomLevel < 0 || a.zoomLevel > 5)
+				{
+					int clamped = std::max(0, std::min(5, a.zoomLevel));
+					Log(LOG_WARNING) << "City zoomLevel " << a.zoomLevel << " is out of range 0-5, using " << clamped << ", region: " << _type << ", zone: " << zn << ", area: " << an << (a.name.empty() ? "" : ", city: " + a.name);
+					a.zoomLevel = clamped;
 				}
 				if (a.lonMin > a.lonMax)
 				{
@@ -184,7 +191,7 @@ std::vector<City*> *RuleRegion::getCities()
 			{
 				if (ma.isPoint() && !ma.name.empty())
 				{
-					_cities.push_back(new City(ma.name, ma.lonMin, ma.latMin));
+					_cities.push_back(new City(ma.name, ma.lonMin, ma.latMin, ma.zoomLevel));
 				}
 			}
 		}
@@ -258,6 +265,8 @@ bool read(ryml::ConstNodeRef const& n, MissionArea* val)
 		val->texture = reader[4].readVal<int>();
 	if (count >= 6)
 		val->name = reader[5].readVal<std::string>();
+	if (count >= 7)
+		val->zoomLevel = reader[6].readVal<int>(); // cities: [lon, lon, lat, lat, texture, name, zoomLevel]
 	return true;
 }
 

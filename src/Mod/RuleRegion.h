@@ -36,8 +36,11 @@ struct MissionArea
 	double lonMin, lonMax, latMin, latMax;
 	int texture;
 	std::string name;
+	int zoomLevel; ///< cities (named points) only: minimum globe zoom level showing the city marker and name
 
-	MissionArea() : lonMin(0.0), lonMax(360.0), latMin(-90.0), latMax(90.0), texture(0) { }
+	static const int CITY_DEFAULT_ZOOM = 3;
+
+	MissionArea() : lonMin(0.0), lonMax(360.0), latMin(-90.0), latMax(90.0), texture(0), zoomLevel(CITY_DEFAULT_ZOOM) { }
 
 	bool operator== (const MissionArea& ma) const
 	{

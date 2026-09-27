@@ -36,13 +36,17 @@ private:
 	std::string getType() const  override { return ""; }
 public:
 	/// Creates a new city at a certain position.
-	City(const std::string &name, double lon, double lat);
+	City(const std::string &name, double lon, double lat, int zoomLevel = 3);
 	/// Cleans up the city.
 	~City();
 	/// Gets the city's name.
 	std::string getName(Language *lang) const override;
 	/// Gets the city's marker.
 	int getMarker() const override;
+	/// Gets the minimum globe zoom level showing the city (marker and name).
+	int getZoomLevel() const { return _zoomLevel; }
+private:
+	int _zoomLevel;
 };
 
 }

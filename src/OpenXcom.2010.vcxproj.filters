@@ -518,6 +518,9 @@
     <ClCompile Include="Basescape\ManufactureState.cpp">
       <Filter>Basescape</Filter>
     </ClCompile>
+    <ClCompile Include="Basescape\MaximizedBasescape.cpp">
+      <Filter>Basescape</Filter>
+    </ClCompile>
     <ClCompile Include="Geoscape\ResearchCompleteState.cpp">
       <Filter>Geoscape</Filter>
     </ClCompile>
@@ -1245,6 +1248,9 @@
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="Basescape\ManufactureState.h">
+      <Filter>Basescape</Filter>
+    </ClInclude>
+    <ClInclude Include="Basescape\MaximizedBasescape.h">
       <Filter>Basescape</Filter>
     </ClInclude>
     <ClInclude Include="Basescape\ManageAlienContainmentState.h">

@@ -49,6 +49,9 @@ namespace OpenXcom
  */
 PlaceLiftState::PlaceLiftState(Base *base, Globe *globe, bool first) : _base(base), _globe(globe), _first(first)
 {
+	// a basescape screen: maximized like the basescape it leads to (maximizeInfoScreens)
+	_maximized.enter(_game);
+
 	// Create objects
 	_view = new BaseView(192, 192, 0, 8);
 	_txtTitle = new Text(320, 9, 0, 0);

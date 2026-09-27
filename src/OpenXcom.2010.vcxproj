@@ -371,6 +371,7 @@
     <ClCompile Include="Basescape\ManageAlienContainmentState.cpp" />
     <ClCompile Include="Basescape\ManufactureDependenciesTreeState.cpp" />
     <ClCompile Include="Basescape\ManufactureState.cpp" />
+    <ClCompile Include="Basescape\MaximizedBasescape.cpp" />
     <ClCompile Include="Basescape\NewManufactureListState.cpp" />
     <ClCompile Include="Basescape\ManufactureInfoState.cpp" />
     <ClCompile Include="Basescape\MiniBaseView.cpp" />
@@ -856,6 +857,7 @@
     <ClInclude Include="Basescape\ManageAlienContainmentState.h" />
     <ClInclude Include="Basescape\ManufactureInfoState.h" />
     <ClInclude Include="Basescape\ManufactureState.h" />
+    <ClInclude Include="Basescape\MaximizedBasescape.h" />
     <ClInclude Include="Basescape\MiniBaseView.h" />
     <ClInclude Include="Basescape\MonthlyCostsState.h" />
     <ClInclude Include="Basescape\NewResearchListState.h" />

@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "InventoryState.h"
+#include "../Basescape/MaximizedBasescape.h"
 #include "InventoryLoadState.h"
 #include "InventorySaveState.h"
 #include "InventoryPersonalState.h"
@@ -98,7 +99,9 @@ InventoryState::InventoryState(bool tu, BattlescapeState *parent, Base *base, bo
 	{
 		Options::baseXResolution = Screen::ORIGINAL_WIDTH;
 		Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
-		_game->getScreen()->resetDisplay(false);
+		// from a maximized basescape the display is already 320x200: no reset (no flicker)
+		if (!MaximizedBasescape::active())
+			_game->getScreen()->resetDisplay(false);
 	}
 	else if (_battleGame->isBaseCraftInventory())
 	{
@@ -376,6 +379,12 @@ InventoryState::~InventoryState()
 		}
 		_battleGame->getTileEngine()->calculateLighting(LL_ITEMS); // dropping/picking up flares
 		_battleGame->getTileEngine()->recalculateFOV();
+	}
+	else if (MaximizedBasescape::active())
+	{
+		// back to the maximized basescape: stay at 320x200
+		Options::baseXResolution = Screen::ORIGINAL_WIDTH;
+		Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
 	}
 	else
 	{

@@ -62,6 +62,7 @@
 #include "UfoTrackerState.h"
 #include "InterceptState.h"
 #include "../Basescape/BasescapeState.h"
+#include "../Basescape/MaximizedBasescape.h"
 #include "../Basescape/SellState.h"
 #include "../Basescape/ManageAlienContainmentState.h"
 #include "../Basescape/TechTreeViewerState.h"
@@ -4782,6 +4783,13 @@ void GeoscapeState::resize(int &dX, int &dY)
 {
 	if (_game->getSavedGame()->getSavedBattle())
 		return;
+	// maximized basescape on top: the base resolution is 320x200, relayout from the geoscape resolution
+	const bool maximizedBase = MaximizedBasescape::active();
+	if (maximizedBase)
+	{
+		Options::baseXResolution = _sidebarLayout.screenW;
+		Options::baseYResolution = _sidebarLayout.screenH;
+	}
 	dX = Options::baseXResolution;
 	dY = Options::baseYResolution;
 	int divisor = 1;
@@ -4819,6 +4827,11 @@ void GeoscapeState::resize(int &dX, int &dY)
 	default:
 		dX = 0;
 		dY = 0;
+		if (maximizedBase)
+		{
+			Options::baseXResolution = Screen::ORIGINAL_WIDTH;
+			Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
+		}
 		return;
 	}
 
@@ -4872,6 +4885,15 @@ void GeoscapeState::resize(int &dX, int &dY)
 	_sideLine->drawRect(0, 0, _sideLine->getWidth(), _sideLine->getHeight(), 15);
 
 	createSidebarPanel();
+
+	if (maximizedBase)
+	{
+		// the basescape screens above keep their 320x200 layout
+		Options::baseXResolution = Screen::ORIGINAL_WIDTH;
+		Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
+		dX = 0;
+		dY = 0;
+	}
 }
 bool GeoscapeState::buttonsDisabled()
 {

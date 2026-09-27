@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include "MaximizedBasescape.h"
 
 namespace OpenXcom
 {
@@ -37,6 +38,7 @@ class Globe;
 class BasescapeState : public State
 {
 private:
+	MaximizedBasescape _maximized; ///< 320x200 base resolution while in the basescape (maximizeInfoScreens)
 	BaseView *_view;
 	MiniBaseView *_mini;
 	Text *_txtFacility, *_txtLocation, *_txtFunds;

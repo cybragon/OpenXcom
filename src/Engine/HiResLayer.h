@@ -58,7 +58,7 @@ struct HiResCmd
 	UCode code = 0;                  ///< unicode code point
 	Uint32 run = 0;                  ///< text run id (one line of one Text draw); glyphs of a run are laid out together
 	Uint8 cellH = 0;                 ///< font cell height in base px (drives the glyph pixel size)
-	Uint8 refW = 0;                  ///< advance of U+AC00 in the bitmap font (base px), 0 = n/a; caps glyph width
+	Uint8 refW = 0;                  ///< advance of U+AC00 in the bitmap font (base px), 0 = n/a (informative, not used for sizing)
 	Uint8 fillIdx = 0;               ///< palette index of the glyph body   (font pixel value 1)
 	Uint8 lineIdx = 0;               ///< palette index of the glyph outline (font pixel value 4)
 	Uint8 slot = 0;                  ///< font slot (one per Font.dat font id, see registerFontId)
@@ -72,6 +72,7 @@ struct HiResCmd
 	SDL_Color line = {0, 0, 0, 0};
 	Uint32 stamp = 0;                ///< id of the screen blit that delivered this command (occlusion)
 	const void *origin = nullptr;    ///< surface that propagated this command into its current holder
+	Sint16 originX = 0, originY = 0; ///< position 'origin' was blitted at
 };
 
 /**

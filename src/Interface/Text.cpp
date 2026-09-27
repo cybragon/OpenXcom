@@ -680,7 +680,17 @@ void Text::draw()
 				x += dir * font->getCharSize(*c).w;
 			if (hires && !font->isMonospace() && HiResLayer::canRenderGlyph(*c, font->getHiResSlot()))
 			{
-				HiResLayer::record(getSurface(), makeCmd(*c, x, font->getCharSize(*c).w));
+				HiResCmd cmd = makeCmd(*c, x, font->getCharSize(*c).w);
+				// Dot leaders (TextList::addRow pads columns with '.') and ellipses: each dot keeps
+				// the exact bitmap position (cell mode, run 0) and splits the run, otherwise a row
+				// of TTF dots, slightly wider than the 1-2 px bitmap dots, would make the pen-mode
+				// run much wider than its span and push it into the next column.
+				if (*c == '.' && ((c + 1 != s.end() && *(c + 1) == '.') || (c != s.begin() && *(c - 1) == '.')))
+				{
+					cmd.run = 0;
+					if (run) run = HiResLayer::newRun();
+				}
+				HiResLayer::record(getSurface(), cmd);
 			}
 			else
 			{

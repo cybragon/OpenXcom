@@ -21,6 +21,7 @@
 #include "OpenGL.h"
 #include "Options.h"
 #include "Logger.h"
+#include "UiImageScaler.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -85,6 +86,15 @@ struct LayerState
 };
 
 LayerState S;
+
+/// The layer is also needed without hi-res text: in "x1, UI optimized" (software path) the UI
+/// panels magnified with HQX/xBRZ are true-colour pictures drawn by this layer (image commands).
+/// Text stays bitmap then (canRenderGlyph/textConfigured are false).
+bool uiImagesWanted()
+{
+	const UiImageScaler::Filter f = UiImageScaler::uiFilter();
+	return f == UiImageScaler::Filter::HQX || f == UiImageScaler::Filter::XBRZ;
+}
 
 struct ImageRef
 {
@@ -679,7 +689,7 @@ void HiResLayer::reconfigure()
 		else
 			Log(LOG_ERROR) << "HiResLayer: no usable TTF font found, hi-res text disabled";
 	}
-	_recording = _textConfigured && S.outputSupported;
+	_recording = (_textConfigured || uiImagesWanted()) && S.outputSupported;
 	if (_recording && S.stamps.size() != (size_t)S.baseW * S.baseH)
 		S.stamps.assign((size_t)S.baseW * S.baseH, 0);
 	if (wasRecording != _recording)
@@ -700,7 +710,7 @@ bool HiResLayer::consumeModeChanged()
 
 bool HiResLayer::wantsTrueColor()
 {
-	return Options::oxceHiResOverlay && Options::oxceHiResText;
+	return (Options::oxceHiResOverlay && Options::oxceHiResText) || uiImagesWanted();
 }
 
 void HiResLayer::shutdown()
@@ -721,7 +731,7 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 	S.baseH = screenBuffer ? screenBuffer->h : 0;
 	S.outputSupported = supportedOutput;
 	bool was = _recording;
-	_recording = _textConfigured && S.outputSupported;
+	_recording = (_textConfigured || uiImagesWanted()) && S.outputSupported;
 	if (_recording)
 		S.stamps.assign((size_t)S.baseW * S.baseH, 0);
 	else

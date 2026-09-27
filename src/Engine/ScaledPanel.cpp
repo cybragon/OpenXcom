@@ -162,7 +162,9 @@ bool ScaledPanel::updateImage(int filter)
 
 void ScaledPanel::present(SDL_Surface *screen)
 {
-	const UiImageScaler::Filter filter = (_scale > 1 && HiResLayer::recording() && HiResLayer::isScreen(screen)) ? UiImageScaler::uiFilter() : UiImageScaler::Filter::Nearest;
+	// the filter does not depend on the hi-res text option: Scale works on the 8bpp pixels, HQX/xBRZ
+	// keep the overlay layer active (HiResLayer::uiImagesWanted) even when hi-res text is off
+	const UiImageScaler::Filter filter = (_scale > 1 && HiResLayer::isScreen(screen)) ? UiImageScaler::uiFilter() : UiImageScaler::Filter::Nearest;
 	const bool trueColor = filter == UiImageScaler::Filter::HQX || filter == UiImageScaler::Filter::XBRZ;
 	// the 8bpp magnification stays: it is what the screen buffer holds (occlusion, screenshots of
 	// the base buffer, fallback); true-colour filters are drawn over it by the overlay

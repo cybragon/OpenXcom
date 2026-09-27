@@ -49,7 +49,7 @@ enum class HiResCmdKind : Uint8
  */
 struct HiResCmd
 {
-	enum : Uint8 { GLYPH_SPACE = 1, GLYPH_ALIGN_CENTER = 2, GLYPH_ALIGN_RIGHT = 4 };
+	enum : Uint8 { GLYPH_SPACE = 1, GLYPH_ALIGN_CENTER = 2, GLYPH_ALIGN_RIGHT = 4, GLYPH_NBSP = 8 };
 	HiResCmdKind kind = HiResCmdKind::Glyph;
 	Sint16 x = 0, y = 0;            ///< layout box (base px): glyph advance box / image destination
 	Sint16 w = 0, h = 0;

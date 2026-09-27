@@ -524,7 +524,15 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 					if (prev && prevPx == px)
 						pen64 += (long long)font->getKerning64(*prev, g, px) * hs / 256;
 					p.pen = (int)(pen64 >> 6); // relative for now
-					pen64 += g.adv64 + (space ? 0 : bold64);
+					if (c.flags & HiResCmd::GLYPH_NBSP)
+					{
+						// thousands separator: half the advance of a digit (TTF spaces are ~0.25-0.3 em,
+						// digits ~0.55-0.6 em; the bitmap fonts use width/4)
+						const HiResGlyph &digit = font->getGlyph('0', px, 0, bold64, hs);
+						pen64 += digit.ok ? (digit.adv64 + bold64) / 2 : g.adv64;
+					}
+					else
+						pen64 += g.adv64 + (space ? 0 : bold64);
 					prev = &g;
 					prevPx = px;
 				}

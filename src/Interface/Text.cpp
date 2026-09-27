@@ -614,10 +614,14 @@ void Text::draw()
 	{
 		if (Unicode::isSpace(*c) || *c == '\t')
 		{
-			if (run && *c == ' ' && !font->isMonospace() && HiResLayer::canRenderGlyph(' ', font->getHiResSlot()))
+			// spaces and non-breaking spaces (thousands separators) stay inside the run, so a number
+			// like "2 100" is laid out as a whole by the overlay (NBSP: see HiResCmd::GLYPH_NBSP)
+			if (run && (*c == ' ' || *c == Unicode::TOK_NBSP) && !font->isMonospace() && HiResLayer::canRenderGlyph(' ', font->getHiResSlot()))
 			{
 				HiResCmd cmd = makeCmd(' ', x, font->getCharSize(*c).w);
 				cmd.flags |= HiResCmd::GLYPH_SPACE;
+				if (*c == Unicode::TOK_NBSP)
+					cmd.flags |= HiResCmd::GLYPH_NBSP;
 				HiResLayer::record(getSurface(), cmd);
 			}
 			else if (run)

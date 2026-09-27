@@ -576,6 +576,7 @@ void Text::draw()
 	// glyphs of one line are laid out together by the overlay (pen advance + kerning) inside the
 	// span the bitmap layout reserved for them; a bitmap-drawn glyph or a new line starts a new run
 	Uint32 run = (hires && dir > 0) ? HiResLayer::newRun() : 0;
+	Uint32 lineId = run ? HiResLayer::newRun() : 0; // squeeze: all runs of one line together
 	Uint8 alignFlags = _align == ALIGN_CENTER ? HiResCmd::GLYPH_ALIGN_CENTER : (_align == ALIGN_RIGHT ? HiResCmd::GLYPH_ALIGN_RIGHT : 0);
 	auto makeCmd = [&](UCode code, int gx, int gw)
 	{
@@ -583,11 +584,14 @@ void Text::draw()
 		cmd.kind = HiResCmdKind::Glyph;
 		cmd.code = code;
 		cmd.run = run;
+		cmd.lineId = lineId;
+		cmd.boxW = (Sint16)getWidth();
 		cmd.x = gx;
 		cmd.y = y;
 		cmd.w = gw;
 		cmd.h = font->getHeight();
 		cmd.cellH = font->getHeight();
+		cmd.lineH = (Uint8)std::max(1, font->getHeight() + font->getSpacing());
 		cmd.refW = font->hasChar(0xAC00) ? font->getCharSize(0xAC00).w : 0;
 		cmd.slot = (Uint8)std::max(0, font->getHiResSlot());
 		cmd.flags = alignFlags;
@@ -623,6 +627,7 @@ void Text::draw()
 		else if (Unicode::isLinebreak(*c))
 		{
 			if (run) run = HiResLayer::newRun();
+			if (lineId) lineId = HiResLayer::newRun();
 			line++;
 			y += font->getCharSize(*c).h;
 			x = getLineX(line);

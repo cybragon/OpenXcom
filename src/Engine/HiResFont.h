@@ -94,7 +94,9 @@ public:
 	int faceFor(UCode c);
 	bool hasGlyph(UCode c) { return faceFor(c) >= 0; }
 	/// Renders (or fetches from cache) a glyph at a pixel size with an outline radius and emboldening (both in 1/64 pixel).
-	const HiResGlyph &getGlyph(UCode c, int px, int outline64, int bold64 = 0);
+	/// hscale256: horizontal scale of the glyph (256 = none, 205..255 = narrowed, for text squeezed
+	/// into its box); applied to the outline before emboldening/stroking, so stroke widths stay the same.
+	const HiResGlyph &getGlyph(UCode c, int px, int outline64, int bold64 = 0, int hscale256 = 256);
 	/// Ascender (positive) and descender (negative) of the primary face at a pixel size.
 	std::pair<int,int> getMetrics(int px);
 	/// Advance width of a glyph at a pixel size (no outline), -1 if missing.

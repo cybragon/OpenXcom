@@ -498,9 +498,11 @@ int HiResFont::getKerning64(const HiResGlyph &left, const HiResGlyph &right, int
 	return (int)k.x;
 }
 
-const HiResGlyph &HiResFont::getGlyph(UCode c, int px, int outline64, int bold64)
+const HiResGlyph &HiResFont::getGlyph(UCode c, int px, int outline64, int bold64, int hscale256)
 {
-	uint64_t key = ((uint64_t)c << 32) | ((uint64_t)(px & 0xFFF) << 20) | ((uint64_t)(outline64 & 0x3FF) << 10) | (uint64_t)(bold64 & 0x3FF);
+	hscale256 = std::max(128, std::min(256, hscale256));
+	uint64_t key = ((uint64_t)c << 32) | ((uint64_t)(px & 0xFFF) << 20) | ((uint64_t)(outline64 & 0x3FF) << 10) | (uint64_t)(bold64 & 0x3FF)
+		| ((uint64_t)(256 - hscale256) << 53);
 	auto it = _cache.find(key);
 	if (it != _cache.end())
 		return it->second;
@@ -525,6 +527,20 @@ const HiResGlyph &HiResFont::getGlyph(UCode c, int px, int outline64, int bold64
 	g.adv64 = (int)(f->glyph->linearHoriAdvance >> 10); // 16.16 -> 26.6
 	g.face = face;
 	g.glyphIndex = FT_Get_Char_Index(f, c);
+	if (hscale256 != 256)
+	{
+		g.adv64 = (int)(((long long)g.adv64 * hscale256 + 128) >> 8);
+		g.advance = (g.adv64 + 32) >> 6;
+		if (f->glyph->format == FT_GLYPH_FORMAT_OUTLINE)
+		{
+			FT_Matrix m;
+			m.xx = (FT_Fixed)hscale256 << 8; // 16.16
+			m.xy = 0;
+			m.yx = 0;
+			m.yy = 0x10000;
+			FT_Outline_Transform(&f->glyph->outline, &m);
+		}
+	}
 	if (bold64 > 0 && f->glyph->format == FT_GLYPH_FORMAT_OUTLINE)
 	{
 		// thicken strokes (the bitmap fonts have 1 base-pixel wide strokes)

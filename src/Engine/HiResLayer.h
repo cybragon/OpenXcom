@@ -31,7 +31,8 @@ class HiResFont;
 
 /**
  * Kind of a deferred draw command of the hi-res overlay layer.
- * Only Glyph is implemented; Image is reserved for hi-res sprite/background
+ * Glyph: TTF text. Image: a true-colour picture at output resolution (the filtered magnified UI
+ * of ScaledPanel), drawn under the glyphs of the same blit
  * replacement that will be drawn by the same layer later.
  */
 enum class HiResCmdKind : Uint8
@@ -57,7 +58,10 @@ struct HiResCmd
 	// --- Glyph payload
 	UCode code = 0;                  ///< unicode code point
 	Uint32 run = 0;                  ///< text run id (one line of one Text draw); glyphs of a run are laid out together
-	Uint8 cellH = 0;                 ///< font cell height in base px (drives the glyph pixel size)
+	Uint32 lineId = 0;               ///< text line id (one line of one Text draw, may hold several runs); 0 = n/a
+	Sint16 boxW = 0;                 ///< width of the Text box (base px, holder scale): a line wider than this is squeezed
+	Uint8 cellH = 0;                 ///< font cell height in base px (glyphs are centred on the cell)
+	Uint8 lineH = 0;                 ///< font line height in base px (Font.dat height + spacing): drives the glyph pixel size
 	Uint8 refW = 0;                  ///< advance of U+AC00 in the bitmap font (base px), 0 = n/a (informative, not used for sizing)
 	Uint8 fillIdx = 0;               ///< palette index of the glyph body   (font pixel value 1)
 	Uint8 lineIdx = 0;               ///< palette index of the glyph outline (font pixel value 4)
@@ -67,7 +71,7 @@ struct HiResCmd
 	                                 ///< (cellH, ink rows) are in widget px, i.e. 'scale' base px each
 	Sint8 inkTopL = -1, inkBotL = -1; ///< body rows of 'H' in the bitmap font (Latin size/baseline reference)
 	Sint8 inkTopK = -1, inkBotK = -1; ///< body rows of U+AC00 in the bitmap font (Hangul/CJK reference)
-	// --- Image payload (reserved)
+	// --- Image payload: picture registered with HiResLayer::setImage (x/y/w/h = where it is shown)
 	Uint32 imageId = 0;
 	// --- resolved when the command reaches the screen buffer
 	SDL_Color fill = {0, 0, 0, 0};
@@ -138,9 +142,16 @@ public:
 	/// Can the hi-res font of this slot draw this code point?
 	static bool canRenderGlyph(UCode c, int slot);
 	/// Layout advance (base px) for a code point missing from a bitmap font, -1 if unknown.
-	static int baseAdvance(UCode c, int cellH, int slot);
+	static int baseAdvance(UCode c, int lineH, int slot);
 	/// Next text run id.
 	static Uint32 newRun();
+	/// Image commands: a picture id, its straight-alpha ARGB pixels (kept by the caller, must stay
+	/// valid until replaced or dropped) and their size.
+	static Uint32 newImageId();
+	static void setImage(Uint32 id, const Uint32 *argb, int w, int h);
+	static void dropImage(Uint32 id);
+	/// Is this the (8bpp) screen buffer the overlay follows?
+	static bool isScreen(const SDL_Surface *surface);
 
 	// --- per game font (Font.dat id) configuration
 	/// Registers a Font.dat font id, returns its slot (stable for the process lifetime).

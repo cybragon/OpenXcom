@@ -271,7 +271,7 @@ SDL_Rect Font::getCharSize(UCode c) const
 			}
 			else
 			{
-				int adv = HiResLayer::baseAdvance(c, getHeight(), _hiresSlot);
+				int adv = HiResLayer::baseAdvance(c, getHeight() + getSpacing(), _hiresSlot);
 				if (adv > 0)
 				{
 					size.w = adv + getSpacing();

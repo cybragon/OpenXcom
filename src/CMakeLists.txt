@@ -150,6 +150,7 @@ set ( engine_src
   Engine/HiResFont.cpp
   Engine/HiResLayer.cpp
   Engine/ScaledPanel.cpp
+  Engine/UiImageScaler.cpp
   Engine/Game.cpp
   Engine/GMCat.cpp
   Engine/InteractiveSurface.cpp

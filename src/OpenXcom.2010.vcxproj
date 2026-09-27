@@ -487,6 +487,7 @@
     <ClCompile Include="Engine\HiResFont.cpp" />
     <ClCompile Include="Engine\HiResLayer.cpp" />
     <ClCompile Include="Engine\ScaledPanel.cpp" />
+    <ClCompile Include="Engine\UiImageScaler.cpp" />
     <ClCompile Include="Engine\Game.cpp" />
     <ClCompile Include="Engine\GMCat.cpp" />
     <ClCompile Include="Engine\InteractiveSurface.cpp" />
@@ -974,6 +975,7 @@
     <ClInclude Include="Engine\HiResFont.h" />
     <ClInclude Include="Engine\HiResLayer.h" />
     <ClInclude Include="Engine\ScaledPanel.h" />
+    <ClInclude Include="Engine\UiImageScaler.h" />
     <ClInclude Include="Engine\Functions.h" />
     <ClInclude Include="Engine\Game.h" />
     <ClInclude Include="Engine\GMCat.h" />

@@ -51,6 +51,7 @@ class GeoscapeState : public State
 {
 private:
 	Surface *_bg, *_sideLine, *_sidebar;
+	bool _bgDrawn = false;
 	GeoSidebarLayout _sidebarLayout;
 	std::vector<Surface*> _sidebarSurfaces; ///< widgets of the sidebar (laid out in the original 320x200 way)
 	std::unique_ptr<ScaledPanel> _sidebarPanel; ///< magnified sidebar (tall resolutions only), null = original layout
@@ -205,6 +206,8 @@ private:
 	bool attemptAlienRaceEvolution(int month, AlienBase* ab) const;
 	/// Process each individual mission script command.
 	bool processCommand(RuleMissionScript *command);
+	/// Places (and in "x1, UI optimized" magnifies) the space background behind the globe.
+	void layoutBackground();
 	bool buttonsDisabled();
 	void updateSlackingIndicator();
 };

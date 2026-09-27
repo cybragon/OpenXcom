@@ -29,6 +29,7 @@
 #include "../Mod/Mod.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Screen.h"
+#include "../Engine/UiImageScaler.h"
 #include "../Engine/Sound.h"
 #include "../Engine/Surface.h"
 #include "../Engine/ScaledPanel.h"
@@ -162,8 +163,6 @@ GeoscapeState::GeoscapeState() : _pause(false), _zoomInEffectDone(false), _zoomO
 	_sidebar = new Surface(64, 200, sideW - 64, sideH / 2 - 100);
 
 	_globe = new Globe(_game, _sidebarLayout.globeWidth()/2, screenHeight/2, _sidebarLayout.globeWidth(), screenHeight, 0, 0);
-	_bg->setX((_globe->getWidth() - _bg->getWidth()) / 2);
-	_bg->setY((_globe->getHeight() - _bg->getHeight()) / 2);
 
 	_btnIntercept = new TextButton(63, 11, sideW-63, sideH/2-100);
 	_btnBases = new TextButton(63, 11, sideW-63, sideH/2-88);
@@ -285,7 +284,7 @@ GeoscapeState::GeoscapeState() : _pause(false), _zoomInEffectDone(false), _zoomO
 	geobord->setX(_sidebar->getX() - geobord->getWidth() + _sidebar->getWidth());
 	geobord->setY(_sidebar->getY());
 	_sidebar->copy(geobord);
-	_game->getMod()->getSurface("ALTGEOBORD.SCR")->blitNShade(_bg, 0, 0);
+	layoutBackground();
 
 	_sideLine->drawRect(0, 0, _sideLine->getWidth(), _sideLine->getHeight(), 15);
 
@@ -4868,8 +4867,7 @@ void GeoscapeState::resize(int &dX, int &dY)
 		}
 	}
 
-	_bg->setX((_globe->getWidth() - _bg->getWidth()) / 2);
-	_bg->setY((_globe->getHeight() - _bg->getHeight()) / 2);
+	layoutBackground();
 
 	int height = (_sidebarLayout.spaceH() - Screen::ORIGINAL_HEIGHT) / 2 + 10;
 	_sideTop->setHeight(height);
@@ -4897,6 +4895,39 @@ void GeoscapeState::resize(int &dX, int &dY)
 		dY = 0;
 	}
 }
+/**
+ * Places the space background behind the globe. In the geoscape scale "x1, UI optimized" a picture
+ * smaller than the globe area is magnified to cover it (aspect kept, edges cropped); otherwise
+ * (and in the other scales) the picture keeps its size, centred on the globe area.
+ */
+void GeoscapeState::layoutBackground()
+{
+	Surface *img = _game->getMod()->getSurface("ALTGEOBORD.SCR");
+	const int gw = _globe->getWidth(), gh = _globe->getHeight();
+	const bool cover = Options::geoscapeScale == SCALE_SCREEN_UI && UiImageScaler::coverFactor(img->getWidth(), img->getHeight(), gw, gh) > 1.0;
+	const int w = cover ? gw : img->getWidth(), h = cover ? gh : img->getHeight();
+	const bool resized = _bg->getWidth() != w || _bg->getHeight() != h;
+	if (resized)
+	{
+		_bg->setWidth(w);
+		_bg->setHeight(h);
+	}
+	if (cover)
+	{
+		_bg->clear();
+		UiImageScaler::blitCover(img, _bg);
+	}
+	else if (resized || !_bgDrawn)
+	{
+		_bg->clear();
+		img->blitNShade(_bg, 0, 0);
+	}
+	_bgDrawn = true;
+	_bg->invalidate(false); // setWidth/setHeight ask for a redraw, which would clear the picture
+	_bg->setX(_globe->getX() + (gw - w) / 2);
+	_bg->setY(_globe->getY() + (gh - h) / 2);
+}
+
 bool GeoscapeState::buttonsDisabled()
 {
 	return _zoomInEffectTimer->isRunning() || _zoomOutEffectTimer->isRunning();

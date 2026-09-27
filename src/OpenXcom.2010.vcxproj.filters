@@ -95,6 +95,9 @@
     <ClCompile Include="Engine\ScaledPanel.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\UiImageScaler.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Game.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
@@ -1353,6 +1356,9 @@
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\ScaledPanel.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\UiImageScaler.h">
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Game.h">

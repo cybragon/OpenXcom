@@ -63,6 +63,8 @@ struct HiResCmd
 	Uint8 lineIdx = 0;               ///< palette index of the glyph outline (font pixel value 4)
 	Uint8 slot = 0;                  ///< font slot (one per Font.dat font id, see registerFontId)
 	Uint8 flags = 0;                 ///< GLYPH_* flags
+	Uint8 scale = 1;                 ///< magnification of the widget that recorded it (ScaledPanel): cell metrics
+	                                 ///< (cellH, ink rows) are in widget px, i.e. 'scale' base px each
 	Sint8 inkTopL = -1, inkBotL = -1; ///< body rows of 'H' in the bitmap font (Latin size/baseline reference)
 	Sint8 inkTopK = -1, inkBotK = -1; ///< body rows of U+AC00 in the bitmap font (Hangul/CJK reference)
 	// --- Image payload (reserved)
@@ -127,6 +129,10 @@ public:
 	static void forgetSurface(SDL_Surface *holder);
 	/// A surface was blitted at (x,y) onto dst. Propagates commands, stamps occlusion if dst is the screen.
 	static void onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y);
+	/// The rect (x,y,w,h) of src was magnified 'scale' times into dst (at 0,0), replacing its contents.
+	/// Commands are moved along with scaled geometry; their glyphs are later rendered at
+	/// scale x output resolution (not magnified from bitmaps).
+	static void transferScaled(SDL_Surface *src, int x, int y, int w, int h, SDL_Surface *dst, int scale);
 
 	// --- glyph helpers
 	/// Can the hi-res font of this slot draw this code point?

@@ -320,7 +320,9 @@ void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int
 	const bool wide = isWide(c.code);
 	int inkTop = wide ? c.inkTopK : c.inkTopL, inkBot = wide ? c.inkBotK : c.inkBotL;
 	bool haveInk = inkTop >= 0 && inkBot >= inkTop;
-	px = pixelSize(font, c.slot, wide, haveInk ? inkBot - inkTop + 1 : 0, c.cellH, sy);
+	// geometry (c.x/c.y) is in base px; cell metrics are in widget px (magnified widgets: 'scale' base px each)
+	const double ms = sy * std::max<int>(1, c.scale);
+	px = pixelSize(font, c.slot, wide, haveInk ? inkBot - inkTop + 1 : 0, c.cellH, ms);
 	const int bold64 = bold64ForPx(px);
 	UCode ref = wide ? 0xAC00 : 'H';
 	if (!font->hasGlyph(ref))
@@ -329,24 +331,24 @@ void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int
 	const double y0 = c.y * sy;
 	if (!rg.ok || rg.fillH <= 0)
 	{
-		baseline = (int)std::lround(y0 + c.cellH * sy * 0.8);
+		baseline = (int)std::lround(y0 + c.cellH * ms * 0.8);
 		return;
 	}
 	if (!haveInk)
 	{
 		// centre the reference ink in the cell
-		baseline = (int)std::lround(y0 + (c.cellH * sy - rg.fillH) / 2.0 + rg.fillT);
+		baseline = (int)std::lround(y0 + (c.cellH * ms - rg.fillH) / 2.0 + rg.fillT);
 	}
 	else if (wide)
 	{
 		// centre the reference ink on the bitmap body rows of U+AC00
-		double centre = y0 + (inkTop + inkBot + 1) * sy / 2.0;
+		double centre = y0 + (inkTop + inkBot + 1) * ms / 2.0;
 		baseline = (int)std::lround(centre - rg.fillH / 2.0 + rg.fillT);
 	}
 	else
 	{
 		// bottom of 'H' on the bottom body row of the bitmap 'H' (= bitmap baseline)
-		double bottom = y0 + (inkBot + 1) * sy;
+		double bottom = y0 + (inkBot + 1) * ms;
 		baseline = (int)std::lround(bottom + (rg.fillT - rg.fillH));
 	}
 }
@@ -371,8 +373,7 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 	for (auto &f : S.fonts)
 		if (f.second) f.second->trimCache(16384);
 	SDL_Rect dirty = {0, 0, 0, 0};
-	const double r = outlineRadius(sy);
-	const int outline64 = (int)std::lround(r * 64.0);
+	auto outline64For = [&](const HiResCmd &c) { return (int)std::lround(outlineRadius(sy * std::max<int>(1, c.scale)) * 64.0); };
 	std::vector<Placed> placed;
 	// Commands delivered by the same blit (one text widget / button) are drawn in two
 	// passes - all outlines, then all bodies - like the bitmap font whose outline never
@@ -415,7 +416,7 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 				int px, baseline;
 				placeVertical(c, font, sx, sy, px, baseline);
 				const int bold64 = bold64ForPx(px);
-				const HiResGlyph &g = font->getGlyph(c.code, px, (c.flags & HiResCmd::GLYPH_SPACE) ? 0 : outline64, (c.flags & HiResCmd::GLYPH_SPACE) ? 0 : bold64);
+				const HiResGlyph &g = font->getGlyph(c.code, px, (c.flags & HiResCmd::GLYPH_SPACE) ? 0 : outline64For(c), (c.flags & HiResCmd::GLYPH_SPACE) ? 0 : bold64);
 				if (!g.ok)
 					continue;
 				p.g = &g;
@@ -777,6 +778,41 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 		}
 		dl->push_back(c);
 	}
+}
+
+void HiResLayer::transferScaled(SDL_Surface *src, int x, int y, int w, int h, SDL_Surface *dst, int scale)
+{
+	if (!_recording || !src || !dst)
+		return;
+	clearSurface(dst);
+	auto it = S.lists.find(src);
+	if (it == S.lists.end() || it->second.empty())
+		return;
+	const int k = std::max(1, scale);
+	std::vector<HiResCmd> out;
+	out.reserve(it->second.size());
+	for (const HiResCmd &c0 : it->second)
+	{
+		int cx = c0.clipX - x, cy = c0.clipY - y, cw = c0.clipW, ch = c0.clipH;
+		if (!intersect(cx, cy, cw, ch, 0, 0, w, h))
+			continue;
+		HiResCmd c = c0;
+		c.x = (Sint16)((c0.x - x) * k);
+		c.y = (Sint16)((c0.y - y) * k);
+		c.w = (Sint16)(c0.w * k);
+		c.h = (Sint16)(c0.h * k);
+		c.clipX = (Sint16)(cx * k);
+		c.clipY = (Sint16)(cy * k);
+		c.clipW = (Sint16)(cw * k);
+		c.clipH = (Sint16)(ch * k);
+		c.scale = (Uint8)std::min(255, std::max<int>(1, c0.scale) * k);
+		c.origin = src;
+		c.originX = (Sint16)-x;
+		c.originY = (Sint16)-y;
+		out.push_back(c);
+	}
+	auto &dl = S.lists[dst];
+	dl.insert(dl.end(), out.begin(), out.end());
 }
 
 bool HiResLayer::canRenderGlyph(UCode c, int slot)

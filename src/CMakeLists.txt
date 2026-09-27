@@ -148,6 +148,7 @@ set ( engine_src
   Engine/Font.cpp
   Engine/HiResFont.cpp
   Engine/HiResLayer.cpp
+  Engine/ScaledPanel.cpp
   Engine/Game.cpp
   Engine/GMCat.cpp
   Engine/InteractiveSurface.cpp

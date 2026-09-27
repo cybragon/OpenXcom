@@ -485,6 +485,7 @@
     <ClCompile Include="Engine\Font.cpp" />
     <ClCompile Include="Engine\HiResFont.cpp" />
     <ClCompile Include="Engine\HiResLayer.cpp" />
+    <ClCompile Include="Engine\ScaledPanel.cpp" />
     <ClCompile Include="Engine\Game.cpp" />
     <ClCompile Include="Engine\GMCat.cpp" />
     <ClCompile Include="Engine\InteractiveSurface.cpp" />
@@ -970,6 +971,7 @@
     <ClInclude Include="Engine\Font.h" />
     <ClInclude Include="Engine\HiResFont.h" />
     <ClInclude Include="Engine\HiResLayer.h" />
+    <ClInclude Include="Engine\ScaledPanel.h" />
     <ClInclude Include="Engine\Functions.h" />
     <ClInclude Include="Engine\Game.h" />
     <ClInclude Include="Engine\GMCat.h" />
@@ -1048,6 +1050,7 @@
     <ClInclude Include="Geoscape\ProductionCompleteState.h" />
     <ClInclude Include="Geoscape\GeoscapeState.h" />
     <ClInclude Include="Geoscape\Globe.h" />
+    <ClInclude Include="Geoscape\GeoSidebarLayout.h" />
     <ClInclude Include="Geoscape\GraphsState.h" />
     <ClInclude Include="Geoscape\InterceptState.h" />
     <ClInclude Include="Geoscape\ItemsArrivingState.h" />

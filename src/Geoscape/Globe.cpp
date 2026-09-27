@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Globe.h"
+#include "GeoSidebarLayout.h"
 #include "../fmath.h"
 #include "../Engine/Action.h"
 #include "../Engine/SurfaceSet.h"
@@ -2078,7 +2079,7 @@ void Globe::toggleRadarLines()
 void Globe::resize()
 {
 	Surface *surfaces[4] = {this, _markers, _countries, _radars};
-	int width = Options::baseXGeoscape - 64;
+	int width = GeoSidebarLayout::compute(Options::baseXGeoscape, Options::baseYGeoscape).globeWidth();
 	int height = Options::baseYGeoscape;
 
 	for (int i = 0; i < 4; ++i)

@@ -18,7 +18,10 @@
  * along with OpenXcom.  If not, see <http:///www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include "GeoSidebarLayout.h"
 #include <list>
+#include <memory>
+#include <vector>
 
 namespace OpenXcom
 {
@@ -38,6 +41,7 @@ class Base;
 class RuleMissionScript;
 class RuleEvent;
 class AlienBase;
+class ScaledPanel;
 
 /**
  * Geoscape screen which shows an overview of
@@ -47,6 +51,11 @@ class GeoscapeState : public State
 {
 private:
 	Surface *_bg, *_sideLine, *_sidebar;
+	GeoSidebarLayout _sidebarLayout;
+	std::vector<Surface*> _sidebarSurfaces; ///< widgets of the sidebar (laid out in the original 320x200 way)
+	std::unique_ptr<ScaledPanel> _sidebarPanel; ///< magnified sidebar (tall resolutions only), null = original layout
+	/// Creates the magnified sidebar panel if the layout needs one.
+	void createSidebarPanel();
 	Globe *_globe;
 	TextButton *_btnIntercept, *_btnBases, *_btnGraphs, *_btnUfopaedia, *_btnOptions, *_btnFunding;
 	TextButton *_timeSpeed;

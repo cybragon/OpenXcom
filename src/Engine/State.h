@@ -33,6 +33,7 @@ class Action;
 class SavedBattleGame;
 class RuleInterface;
 class Sound;
+class ScaledPanel;
 
 enum SoldierGender : char;
 
@@ -61,6 +62,12 @@ protected:
 
 	SDL_Color _palette[256];
 	Uint8 _cursorColor;
+	/// Geoscape scale "x1, UI optimized": the state's 320x200 layout is drawn on a virtual canvas
+	/// magnified by the sidebar factor (text still rendered by HiResLayer at the output resolution).
+	ScaledPanel *_uiPanel;
+	bool _uiCanvasExempt;
+	/// Creates/updates the UI canvas for a factor (returns false if it does not fit).
+	bool prepareUiPanel(int k);
 public:
 	/// Creates a new state linked to a game.
 	State();
@@ -144,6 +151,13 @@ public:
 	virtual void resize(int &dX, int &dY);
 	/// Re-orients all the surfaces in the state.
 	virtual void recenter(int dX, int dY);
+
+	/// Excludes this state from the UI canvas (states that lay themselves out on the whole screen).
+	void setUiCanvasExempt(bool exempt = true);
+	/// Magnification of this state's UI canvas (1 = drawn directly, as usual).
+	int getUiCanvasFactor() const;
+	/// The UI canvas factor states get at the current geoscape resolution (1 = off).
+	static int uiCanvasFactorForGeoscape();
 
 	/// Gets cursor X coordinate.
 	int getCursorX() const;

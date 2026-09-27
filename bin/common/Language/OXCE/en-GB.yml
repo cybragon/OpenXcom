@@ -720,3 +720,4 @@ en-GB:
   STR_FOR_DIFFICULTY: "for difficulty: {0}"
 #UfopaediaSelectState.cpp
   STR_NOT_AWARDED_YET: "Not awarded yet"
+  STR_GEOSCAPE_SCALE_X1_UI: "x1, UI optimised"

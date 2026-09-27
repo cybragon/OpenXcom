@@ -49,6 +49,7 @@ namespace OpenXcom
  */
 SelectDestinationState::SelectDestinationState(std::vector<Craft*> crafts, Globe *globe) : _crafts(std::move(crafts)), _globe(globe)
 {
+	setUiCanvasExempt(); // globe overlay: laid out on the whole geoscape (own handling)
 	int dx = _game->getScreen()->getDX();
 	int dy = _game->getScreen()->getDY();
 	_screen = false;

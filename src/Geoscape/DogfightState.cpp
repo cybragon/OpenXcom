@@ -251,6 +251,7 @@ DogfightState::DogfightState(GeoscapeState *state, Craft *craft, Ufo *ufo, bool 
 	_interceptionNumber(0), _interceptionsCount(0), _x(0), _y(0), _minimizedIconX(0), _minimizedIconY(0), _firedAtLeastOnce(false), _experienceAwarded(false),
 	_delayedRecolorDone(false)
 {
+	setUiCanvasExempt(); // placed and drawn by the geoscape (interception ports)
 	_screen = false;
 	_craft->setInDogfight(true);
 	_weaponNum = _craft->getRules()->getWeapons();

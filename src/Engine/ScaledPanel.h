@@ -44,12 +44,16 @@ class ScaledPanel
 private:
 	Surface *_canvas, *_scaled;
 	int _scale, _x, _y;
+	int _srcX, _srcY, _srcW, _srcH; ///< the part of the canvas that is magnified
 	std::vector<Surface*> _members;
 	SDL_Color _palette[256];
 	bool _paletteSet;
 public:
 	/// Creates a panel of logical size w x h, shown magnified 'scale' times at (x, y) on the screen.
 	ScaledPanel(int w, int h, int scale, int x, int y);
+	/// Creates a canvas of size canvasW x canvasH (members keep their own coordinates) of which the
+	/// rect (srcX, srcY, srcW, srcH) is shown magnified 'scale' times at (x, y) on the screen.
+	ScaledPanel(int canvasW, int canvasH, int srcX, int srcY, int srcW, int srcH, int scale, int x, int y);
 	~ScaledPanel();
 	ScaledPanel(const ScaledPanel&) = delete;
 	ScaledPanel &operator=(const ScaledPanel&) = delete;
@@ -62,6 +66,8 @@ public:
 	/// Screen position of the magnified panel.
 	int getX() const { return _x; }
 	int getY() const { return _y; }
+	/// Geometry check (to reuse the panel while nothing changed).
+	bool matches(int canvasW, int canvasH, int srcX, int srcY, int srcW, int srcH, int scale, int x, int y) const;
 	/// Starts a frame: clears the logical canvas and syncs its palette.
 	void beginFrame(const SDL_Color *palette);
 	/// Draws a member onto the logical canvas.
@@ -70,6 +76,9 @@ public:
 	void present(SDL_Surface *screen);
 	/// Maps a (mouse) action from screen space into the logical space of the panel.
 	Action mapAction(const Action *action) const;
+	/// Maps a screen point into the logical space of the panel.
+	int mapX(int screenX) const { return (screenX - _x) / _scale + _srcX; }
+	int mapY(int screenY) const { return (screenY - _y) / _scale + _srcY; }
 };
 
 }

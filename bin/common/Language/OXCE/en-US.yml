@@ -721,6 +721,7 @@ en-US:
 #UfopaediaSelectState.cpp
   STR_NOT_AWARDED_YET: "Not awarded yet"
 #OptionsFontsState.cpp (hi-res text overlay, local prototype)
+  STR_GEOSCAPE_SCALE_X1_UI: "x1, UI optimized"
   STR_HIRES_FONTS: "FONTS"
   STR_HIRES_TEXT: "Hi-res TTF text"
   STR_HIRES_TEXT_DESC: "Draws game text with system TrueType fonts at the output resolution. Off = original bitmap fonts."

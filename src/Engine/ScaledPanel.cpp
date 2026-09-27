@@ -28,11 +28,27 @@
 namespace OpenXcom
 {
 
-ScaledPanel::ScaledPanel(int w, int h, int scale, int x, int y) : _scale(std::max(1, scale)), _x(x), _y(y), _paletteSet(false)
+ScaledPanel::ScaledPanel(int w, int h, int scale, int x, int y) : ScaledPanel(w, h, 0, 0, w, h, scale, x, y)
 {
-	_canvas = new Surface(w, h, 0, 0);
-	_scaled = new Surface(w * _scale, h * _scale, x, y);
+}
+
+ScaledPanel::ScaledPanel(int canvasW, int canvasH, int srcX, int srcY, int srcW, int srcH, int scale, int x, int y) :
+	_scale(std::max(1, scale)), _x(x), _y(y), _paletteSet(false)
+{
+	_canvas = new Surface(canvasW, canvasH, 0, 0);
+	// the source rect must lie inside the canvas
+	_srcX = std::max(0, std::min(srcX, canvasW - 1));
+	_srcY = std::max(0, std::min(srcY, canvasH - 1));
+	_srcW = std::max(1, std::min(srcW, canvasW - _srcX));
+	_srcH = std::max(1, std::min(srcH, canvasH - _srcY));
+	_scaled = new Surface(_srcW * _scale, _srcH * _scale, x, y);
 	std::memset(_palette, 0, sizeof(_palette));
+}
+
+bool ScaledPanel::matches(int canvasW, int canvasH, int srcX, int srcY, int srcW, int srcH, int scale, int x, int y) const
+{
+	return _canvas->getWidth() == canvasW && _canvas->getHeight() == canvasH && _srcX == srcX && _srcY == srcY &&
+		_srcW == srcW && _srcH == srcH && _scale == std::max(1, scale) && _x == x && _y == y;
 }
 
 ScaledPanel::~ScaledPanel()
@@ -77,25 +93,25 @@ void ScaledPanel::present(SDL_Surface *screen)
 	const int k = _scale;
 	SDL_LockSurface(src);
 	SDL_LockSurface(dst);
-	for (int y = 0; y < src->h; ++y)
+	for (int y = 0; y < _srcH; ++y)
 	{
-		const Uint8 *sp = (const Uint8*)src->pixels + y * src->pitch;
+		const Uint8 *sp = (const Uint8*)src->pixels + (y + _srcY) * src->pitch + _srcX;
 		Uint8 *row = (Uint8*)dst->pixels + (y * k) * dst->pitch;
 		Uint8 *dp = row;
-		for (int x = 0; x < src->w; ++x)
+		for (int x = 0; x < _srcW; ++x)
 		{
 			std::memset(dp, sp[x], k);
 			dp += k;
 		}
 		for (int r = 1; r < k; ++r)
-			std::memcpy(row + r * dst->pitch, row, src->w * k);
+			std::memcpy(row + r * dst->pitch, row, _srcW * k);
 	}
 	SDL_UnlockSurface(dst);
 	SDL_UnlockSurface(src);
 	if (HiResLayer::recording())
 	{
 		// the overlay commands follow the magnification (drawn at output resolution, not magnified)
-		HiResLayer::transferScaled(src, 0, 0, src->w, src->h, dst, k);
+		HiResLayer::transferScaled(src, _srcX, _srcY, _srcW, _srcH, dst, k);
 	}
 	_scaled->setX(_x);
 	_scaled->setY(_y);
@@ -104,10 +120,10 @@ void ScaledPanel::present(SDL_Surface *screen)
 
 Action ScaledPanel::mapAction(const Action *action) const
 {
-	// logical = (screen - panelPos) / scale, with screen = (window - band) / screenScale
+	// logical = (screen - panelPos) / scale + srcPos, with screen = (window - band) / screenScale
 	const double sx = action->getXScale(), sy = action->getYScale();
-	const int left = action->getLeftBlackBand() + (int)std::lround(_x * sx);
-	const int top = action->getTopBlackBand() + (int)std::lround(_y * sy);
+	const int left = action->getLeftBlackBand() + (int)std::lround(_x * sx - _srcX * sx * _scale);
+	const int top = action->getTopBlackBand() + (int)std::lround(_y * sy - _srcY * sy * _scale);
 	return Action(action->getDetails(), sx * _scale, sy * _scale, top, left);
 }
 

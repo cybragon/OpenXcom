@@ -146,6 +146,7 @@ namespace OpenXcom
  */
 GeoscapeState::GeoscapeState() : _pause(false), _zoomInEffectDone(false), _zoomOutEffectDone(false), _minimizedDogfights(0), _slowdownCounter(0)
 {
+	setUiCanvasExempt(); // the geoscape itself: globe at full resolution, own magnified sidebar
 	int screenWidth = Options::baseXGeoscape;
 	int screenHeight = Options::baseYGeoscape;
 	_sidebarLayout = GeoSidebarLayout::compute(screenWidth, screenHeight);
@@ -4823,6 +4824,7 @@ void GeoscapeState::resize(int &dX, int &dY)
 		divisor = 2;
 		break;
 	case SCALE_SCREEN:
+	case SCALE_SCREEN_UI:
 		break;
 	default:
 		dX = 0;

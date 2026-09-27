@@ -374,6 +374,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceEnablePaletteFlickerFix", &oxceEnablePaletteFlickerFix, false));
 	// hi-res overlay layer prototype (hidden, options.cfg only)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResOverlay", &oxceHiResOverlay, false));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceGeoscapeUiOptimized", &oxceGeoscapeUiOptimized, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResText", &oxceHiResText, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFont", &oxceHiResFont, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontFallback", &oxceHiResFontFallback, ""));
@@ -1234,6 +1235,19 @@ void setFolders()
  * Updates the game's options with those in the configuration
  * file, if it exists yet, and any supplied on the command line.
  */
+/**
+ * The geoscape scale "x1, UI optimized" (SCALE_SCREEN_UI) only exists in memory: the config file keeps
+ * geoscapeScale at 1x (SCALE_SCREEN), a value every build understands, plus the separate key
+ * oxceGeoscapeUiOptimized (other builds ignore it on load and preserve it on save).
+ */
+static void geoscapeUiFromConfig()
+{
+	if (geoscapeScale == SCALE_SCREEN_UI)
+		oxceGeoscapeUiOptimized = true;
+	else if (oxceGeoscapeUiOptimized && geoscapeScale == SCALE_SCREEN)
+		geoscapeScale = SCALE_SCREEN_UI;
+}
+
 void updateOptions()
 {
 	// Load existing options
@@ -1264,6 +1278,7 @@ void updateOptions()
 	{
 		optionInfo.load(_commandLine, true);
 	}
+	geoscapeUiFromConfig();
 }
 
 /**
@@ -1298,6 +1313,7 @@ bool load(const std::string &filename)
 		{
 			_setDefaultMods();
 		}
+		geoscapeUiFromConfig();
 	}
 	catch (YAML::Exception &e)
 	{
@@ -1316,6 +1332,18 @@ bool save(bool reset, const std::string& filename)
 {
 	std::string yaml;
 	std::string filepath = _configFolder + filename + ".cfg";
+	// see geoscapeUiFromConfig(): write 1x + oxceGeoscapeUiOptimized instead of the in-memory SCALE_SCREEN_UI
+	struct GeoscapeUiSaveGuard
+	{
+		int scale; bool ui;
+		GeoscapeUiSaveGuard() : scale(geoscapeScale), ui(oxceGeoscapeUiOptimized)
+		{
+			oxceGeoscapeUiOptimized = (geoscapeScale == SCALE_SCREEN_UI);
+			if (geoscapeScale == SCALE_SCREEN_UI)
+				geoscapeScale = SCALE_SCREEN;
+		}
+		~GeoscapeUiSaveGuard() { geoscapeScale = scale; oxceGeoscapeUiOptimized = ui; }
+	} geoscapeUiGuard;
 	try
 	{
 		YAML::YamlRootNodeWriter writer;

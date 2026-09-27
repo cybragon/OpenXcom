@@ -319,6 +319,7 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	_scales.push_back(5); // 8
 	_scales.push_back(9);
 	_scales.push_back(10);
+	_scales.push_back(11); // SCALE_SCREEN_UI (geoscape only)
 
 	_reverseScales.push_back(5); // 0
 	_reverseScales.push_back(4); // 1
@@ -331,11 +332,15 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	_reverseScales.push_back(2); // 8
 	_reverseScales.push_back(9);
 	_reverseScales.push_back(10);
+	_reverseScales.push_back(SCALE_SCREEN_UI); // geoscape list only
 
-	if (Options::geoscapeScale < 0 || Options::geoscapeScale > 10) Options::geoscapeScale = 0;
+	if (Options::geoscapeScale < 0 || Options::geoscapeScale > SCALE_SCREEN_UI) Options::geoscapeScale = 0;
 	if (Options::battlescapeScale < 0 || Options::battlescapeScale > 10) Options::battlescapeScale = 0;
 
-	_cbxGeoScale->setOptions(scales);
+	// "x1, UI optimized" is a geoscape-only entry (not in the battlescape list)
+	std::vector<std::string> geoScales = scales;
+	geoScales.push_back(tr("STR_GEOSCAPE_SCALE_X1_UI"));
+	_cbxGeoScale->setOptions(geoScales);
 	_cbxGeoScale->setSelected(_scales[Options::geoscapeScale]);
 	_cbxGeoScale->onChange((ActionHandler)&OptionsVideoState::updateGeoscapeScale);
 	_cbxGeoScale->setTooltip("STR_GEOSCAPESCALE_SCALE_DESC");

@@ -599,6 +599,7 @@ ko:
   STR_FOR_DIFFICULTY: "다음 난이도에서: {0}"
   STR_NOT_AWARDED_YET: "아직 포상을 받지 못함"
 #OptionsFontsState.cpp (hi-res text overlay, local prototype)
+  STR_GEOSCAPE_SCALE_X1_UI: "x1, UI 최적화"
   STR_HIRES_FONTS: "글꼴"
   STR_HIRES_TEXT: "고해상도 TTF 글자"
   STR_HIRES_TEXT_DESC: "게임 글자를 시스템 트루타입 글꼴로 출력 해상도에 맞춰 그립니다. 끄면 원래 비트맵 글꼴을 씁니다."

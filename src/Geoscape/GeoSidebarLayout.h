@@ -19,6 +19,8 @@
  */
 #include <SDL.h>
 #include <algorithm>
+#include <cmath>
+#include "../Engine/Options.h"
 
 namespace OpenXcom
 {
@@ -26,39 +28,51 @@ namespace OpenXcom
 /**
  * Placement of the geoscape sidebar (the 64 px wide column of the original 320x200 layout).
  *
- * On tall geoscape resolutions the sidebar keeps its original 320x200 layout but is shown
- * magnified by an integer factor, so that the original 200 px of height take the integer
- * multiple closest to 75% of the screen height. The sidebar widgets then live in a small
- * "logical" panel (64 x height/scale) that is magnified onto the right edge of the screen,
- * while the globe keeps the full geoscape resolution.
- *
- * Scale 1 (heights below 300, e.g. 320x200) is exactly the original layout.
+ * The sidebar keeps its original 320x200 layout but can be shown magnified by an integer factor
+ * (in geoscape/base pixels). The factor depends on the real output height: below 600 output
+ * pixels it is 1 (the original layout); from 600 up the original 200 px of height take the
+ * integer multiple closest to 75% of the output height, ties going to the smaller one
+ * (e.g. 1280x800 at geoscape scale x2: 50% and 100% are equally close -> 50%, i.e. factor 1).
+ * Limits: the original block must fit, and the globe keeps at least 2/3 of the width.
+ * The sidebar widgets then live in a small "logical" panel (64 x height/scale) that is
+ * magnified onto the right edge of the screen, while the globe keeps the full geoscape resolution.
  */
 struct GeoSidebarLayout
 {
 	static const int BASE_WIDTH = 64;    ///< original sidebar width
 	static const int BASE_HEIGHT = 200;  ///< original sidebar block height
-	static const int MIN_SCREEN_HEIGHT = 300;
+	static const int MIN_OUTPUT_HEIGHT = 600; ///< below this output height: factor 1
 
 	int scale = 1;          ///< magnification factor (1 = original layout)
 	int screenW = 0, screenH = 0;
 	int logicalW = 0, logicalH = 0; ///< size of the logical panel (scale > 1 only)
 	int x = 0, y = 0;       ///< screen position of the magnified panel (scale > 1 only)
 
-	/// Computes the layout for a geoscape resolution (base/game pixels).
+	/// The magnification factor for a geoscape resolution w x h (base/game pixels) shown on
+	/// an output 'outputH' pixels high: closest integer to 75% of the output height, ties down.
+	static int factor(int w, int h, int outputH)
+	{
+		if (outputH < MIN_OUTPUT_HEIGHT || h <= 0)
+			return 1;
+		// 75% of the output height, in base pixels per original pixel: 0.75 * outputH / 200 / (outputH / h)
+		const double v = 0.75 * h / BASE_HEIGHT;
+		int k = (int)std::ceil(v - 0.5 - 1e-9);    // round half down
+		k = std::min(k, h / BASE_HEIGHT);          // the original block must fit
+		k = std::min(k, w / (BASE_WIDTH * 3));     // keep at least 2/3 of the width for the globe
+		return std::max(k, 1);
+	}
+	/// Computes the layout for a geoscape resolution (base/game pixels) on the current output.
 	static GeoSidebarLayout compute(int w, int h)
+	{
+		return compute(w, h, Options::displayHeight);
+	}
+	/// Computes the layout for a geoscape resolution (base/game pixels) on an output 'outputH' high.
+	static GeoSidebarLayout compute(int w, int h, int outputH)
 	{
 		GeoSidebarLayout l;
 		l.screenW = w;
 		l.screenH = h;
-		int k = 1;
-		if (h >= MIN_SCREEN_HEIGHT)
-		{
-			k = (int)(0.75 * h / BASE_HEIGHT + 0.5);
-			k = std::min(k, h / BASE_HEIGHT);          // the original block must fit
-			k = std::min(k, w / (BASE_WIDTH * 3));     // keep at least 2/3 of the width for the globe
-			k = std::max(k, 1);
-		}
+		int k = factor(w, h, outputH);
 		l.scale = k;
 		if (k > 1)
 		{

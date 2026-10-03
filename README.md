@@ -1,3 +1,7 @@
+> **Modified version.** This tree is the "hi-res overlay" fork of OpenXcom Extended 8.7.1,
+> modified 2026-09-25 – 2026-10-03. See [CHANGELOG-hires.md](CHANGELOG-hires.md) for the
+> changes and the list of modified files. License: GPLv3 (LICENSE.txt), unchanged.
+
 # OpenXcom [![Workflow Status][workflow-badge]][actions-url]
 
 [workflow-badge]: https://github.com/OpenXcom/OpenXcom/workflows/ci/badge.svg

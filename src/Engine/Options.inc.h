@@ -129,7 +129,7 @@ OPT bool oxceEnablePaletteFlickerFix;
 OPT bool oxceHiResOverlay, oxceHiResText, oxceHiResTextAntialias;
 // saved next to geoscapeScale 1x (SCALE_SCREEN): other builds read a valid 1x and keep this key untouched
 OPT bool oxceGeoscapeUiOptimized;
-OPT int oxceHiResFontSize, oxceHiResTextOutline, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
+OPT int oxceHiResFontSize, oxceHiResTextOutlineScale, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
 OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap;
 OPT bool oxceRecommendedOptionsWereSet;
 OPT std::string password;

@@ -62,7 +62,7 @@ struct HiResCmd
 	Sint16 boxW = 0;                 ///< width of the Text box (base px, holder scale): a line wider than this is squeezed
 	Sint16 boxDy = 0, boxH = 0;      ///< top of the Text box relative to y, and its height (base px, holder scale)
 	Uint8 cellH = 0;                 ///< font cell height in base px (glyphs are centred on the cell)
-	Uint8 lineH = 0;                 ///< font line height in base px (Font.dat height + spacing): drives the glyph pixel size
+	Uint8 lineH = 0;                 ///< font line height in base px (Font.dat height + spacing): glyph size of font types without a size rule
 	Uint8 refW = 0;                  ///< advance of U+AC00 in the bitmap font (base px), 0 = n/a (informative, not used for sizing)
 	Uint8 fillIdx = 0;               ///< palette index of the glyph body   (font pixel value 1)
 	Uint8 lineIdx = 0;               ///< palette index of the glyph outline (font pixel value 4)

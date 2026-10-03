@@ -455,42 +455,43 @@ int HiResFont::faceFor(UCode c)
 	return found;
 }
 
-int HiResFont::selectFace(int face, int px)
+int HiResFont::selectFace(int face, int size4)
 {
 	FT_Face f = (FT_Face)_faces[face];
-	if (FT_Set_Pixel_Sizes(f, 0, px) != 0)
+	// 26.6 character size at 72 dpi = pixel size
+	if (FT_Set_Char_Size(f, 0, (FT_F26Dot6)size4 * 16, 72, 72) != 0)
 		return -1;
 	return face;
 }
 
-std::pair<int,int> HiResFont::getMetrics(int px)
+std::pair<int,int> HiResFont::getMetrics(int size4)
 {
-	auto it = _metrics.find(px);
+	auto it = _metrics.find(size4);
 	if (it != _metrics.end())
 		return it->second;
-	std::pair<int,int> m(px * 4 / 5, -px / 5);
-	if (!_faces.empty() && selectFace(0, px) >= 0)
+	std::pair<int,int> m(size4 / 5, -size4 / 20);
+	if (!_faces.empty() && selectFace(0, size4) >= 0)
 	{
 		FT_Face f = (FT_Face)_faces[0];
 		m.first = (int)(f->size->metrics.ascender >> 6);
 		m.second = (int)(f->size->metrics.descender >> 6);
 	}
-	_metrics[px] = m;
+	_metrics[size4] = m;
 	return m;
 }
 
-int HiResFont::getAdvance(UCode c, int px)
+int HiResFont::getAdvance(UCode c, int size4)
 {
-	const HiResGlyph &g = getGlyph(c, px, 0);
+	const HiResGlyph &g = getGlyph(c, size4, 0);
 	return g.ok ? g.advance : -1;
 }
 
-int HiResFont::getKerning64(const HiResGlyph &left, const HiResGlyph &right, int px)
+int HiResFont::getKerning64(const HiResGlyph &left, const HiResGlyph &right, int size4)
 {
 	if (!left.ok || !right.ok || left.face < 0 || left.face != right.face)
 		return 0;
 	FT_Face f = (FT_Face)_faces[left.face];
-	if (!FT_HAS_KERNING(f) || selectFace(left.face, px) < 0)
+	if (!FT_HAS_KERNING(f) || selectFace(left.face, size4) < 0)
 		return 0;
 	FT_Vector k;
 	if (FT_Get_Kerning(f, left.glyphIndex, right.glyphIndex, FT_KERNING_UNFITTED, &k) != 0)
@@ -498,17 +499,17 @@ int HiResFont::getKerning64(const HiResGlyph &left, const HiResGlyph &right, int
 	return (int)k.x;
 }
 
-const HiResGlyph &HiResFont::getGlyph(UCode c, int px, int outline64, int bold64, int hscale256)
+const HiResGlyph &HiResFont::getGlyph(UCode c, int size4, int outline64, int bold64, int hscale256)
 {
 	hscale256 = std::max(128, std::min(256, hscale256));
-	uint64_t key = ((uint64_t)c << 32) | ((uint64_t)(px & 0xFFF) << 20) | ((uint64_t)(outline64 & 0x3FF) << 10) | (uint64_t)(bold64 & 0x3FF)
+	uint64_t key = ((uint64_t)c << 32) | ((uint64_t)(size4 & 0xFFF) << 20) | ((uint64_t)(outline64 & 0x3FF) << 10) | (uint64_t)(bold64 & 0x3FF)
 		| ((uint64_t)(256 - hscale256) << 53);
 	auto it = _cache.find(key);
 	if (it != _cache.end())
 		return it->second;
 	HiResGlyph &g = _cache[key];
 	int face = faceFor(c);
-	if (face < 0 || px <= 0 || selectFace(face, px) < 0)
+	if (face < 0 || size4 <= 0 || selectFace(face, size4) < 0)
 		return g;
 	FT_Face f = (FT_Face)_faces[face];
 

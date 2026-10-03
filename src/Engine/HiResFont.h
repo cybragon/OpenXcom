@@ -77,8 +77,8 @@ private:
 	Settings _settings;
 	std::unordered_map<UCode, int> _faceForCode;              ///< -1 = none
 	std::unordered_map<uint64_t, HiResGlyph> _cache;
-	std::unordered_map<uint64_t, std::pair<int,int>> _metrics; ///< px -> (ascender, descender) of primary face
-	int selectFace(int face, int px);
+	std::unordered_map<uint64_t, std::pair<int,int>> _metrics; ///< size4 -> (ascender, descender) of primary face
+	int selectFace(int face, int size4);
 public:
 	HiResFont();
 	~HiResFont();
@@ -93,16 +93,17 @@ public:
 	/// Index of first face providing the code point, -1 if none.
 	int faceFor(UCode c);
 	bool hasGlyph(UCode c) { return faceFor(c) >= 0; }
-	/// Renders (or fetches from cache) a glyph at a pixel size with an outline radius and emboldening (both in 1/64 pixel).
+	/// Sizes ('size4') are pixel sizes (em) in 1/4 pixel, so fractional sizes can be used.
+	/// Renders (or fetches from cache) a glyph at a size with an outline radius and emboldening (both in 1/64 pixel).
 	/// hscale256: horizontal scale of the glyph (256 = none, 205..255 = narrowed, for text squeezed
 	/// into its box); applied to the outline before emboldening/stroking, so stroke widths stay the same.
-	const HiResGlyph &getGlyph(UCode c, int px, int outline64, int bold64 = 0, int hscale256 = 256);
-	/// Ascender (positive) and descender (negative) of the primary face at a pixel size.
-	std::pair<int,int> getMetrics(int px);
-	/// Advance width of a glyph at a pixel size (no outline), -1 if missing.
-	int getAdvance(UCode c, int px);
+	const HiResGlyph &getGlyph(UCode c, int size4, int outline64, int bold64 = 0, int hscale256 = 256);
+	/// Ascender (positive) and descender (negative) of the primary face at a size (1/4 px).
+	std::pair<int,int> getMetrics(int size4);
+	/// Advance width of a glyph at a size (1/4 px, no outline), -1 if missing.
+	int getAdvance(UCode c, int size4);
 	/// Kerning between two glyphs (from getGlyph) in 1/64 px, 0 if unknown/different faces. Legacy 'kern' table only (no GPOS).
-	int getKerning64(const HiResGlyph &left, const HiResGlyph &right, int px);
+	int getKerning64(const HiResGlyph &left, const HiResGlyph &right, int size4);
 	/// Scans the system font folders (and on Windows the registry font list) for scalable faces. Cached after the first call.
 	static const std::vector<HiResFontInfo> &enumerateSystemFonts(bool rescan = false);
 	/// Font folders searched for relative font specs.

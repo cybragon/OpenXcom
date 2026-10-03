@@ -381,7 +381,8 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontMap", &oxceHiResFontMap, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontSize", &oxceHiResFontSize, 100));
-	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextOutline", &oxceHiResTextOutline, 200));
+	// outline thickness in % of the default of each font type (FONT_BIG/GEO_BIG 1 px, FONT_SMALL/GEO_SMALL 0.5 px at x1), 0..400
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextOutlineScale", &oxceHiResTextOutlineScale, 100));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextBold", &oxceHiResTextBold, 45));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextHinting", &oxceHiResTextHinting, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextAntialias", &oxceHiResTextAntialias, true));

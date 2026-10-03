@@ -81,7 +81,7 @@ struct LayerState
 	GLuint tex = 0;
 	int texW = 0, texH = 0;
 #endif
-	int sizePct = 100, outlinePct = 200, boldPct = 40, layout = 1;
+	int sizePct = 100, outlinePct = 100, boldPct = 40, layout = 1;
 	HiResFont::Settings settings;
 };
 
@@ -233,89 +233,122 @@ inline bool isWide(UCode c)
 		(c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFF00 && c <= 0xFFEF) || (c >= 0x3130 && c <= 0x318F);
 }
 
-inline double outlineRadius(double sy) { return std::max(0.0, sy * S.outlinePct / 100.0 * 0.5); }
 /// Emboldening in 1/64 px, proportional to the glyph size: oxceHiResTextBold is in 1/10 % of the em
 /// (40 = 4% em; bitmap fonts have ~0.11-0.125 em strokes, typical TTF regular weights ~0.07-0.08 em).
 inline double boldRatio() { return S.boldPct / 1000.0; }
-inline int bold64ForPx(int px) { return (int)std::lround(px * boldRatio() * 64.0); }
+/// Font sizes are kept in 1/4 px ("size4"), see HiResFont.
+inline int bold64ForSize(int size4) { return (int)std::lround(size4 / 4.0 * boldRatio() * 64.0); }
 
-/// Size of one font type (slot) at one output scale: the pixel size and the vertical extent of
-/// its glyphs (output px, emboldening included, outline excluded).
+/// Glyph body height (Latin capital 'H', Hangul '각') and outline thickness of a font type, in base
+/// (1x) pixels; both are multiplied by the output scale and the size options.
+struct FontRule
+{
+	double body, outline;
+};
+FontRule fontRule(int slot, int lineH)
+{
+	static const std::pair<const char*, FontRule> rules[] = {
+		{ "FONT_BIG", { 11.0, 1.0 } },      // line 16
+		{ "FONT_SMALL", { 7.0, 0.5 } },     // line 9
+		{ "FONT_GEO_BIG", { 7.0, 1.0 } },   // line 9
+		{ "FONT_GEO_SMALL", { 5.0, 0.5 } }, // line 7
+	};
+	if (slot >= 0 && slot < (int)S.slotIds.size())
+		for (const auto &r : rules)
+			if (S.slotIds[slot] == r.first)
+				return r.second;
+	// other font types (mods): about the proportions of the original fonts
+	const double h = std::max(1, lineH);
+	return FontRule{ std::max(1.0, std::round(h * 0.7)), h >= 12 ? 1.0 : 0.5 };
+}
+
+/// Glyph classes with their own size: Latin and everything else (reference 'H'), and wide
+/// glyphs - Hangul, Chinese, Japanese (reference '각'). Latin descenders (g p q y j) and Hangul
+/// taller than '각' (뷁...) may extend beyond the body.
+enum { CLS_LATIN = 0, CLS_WIDE = 1, CLS_COUNT = 2 };
+const UCode CLASS_REF[CLS_COUNT] = { 'H', 0xAC01 };
+inline int glyphClass(UCode c) { return isWide(c) ? CLS_WIDE : CLS_LATIN; }
+
+/// Size of one font type (slot) at one output scale.
 struct SlotSize
 {
-	int px = 1;
-	double asc = 0.0, desc = 0.0;   ///< ink above / below the baseline (union of the reference glyphs)
+	struct Cls
+	{
+		int size4 = 4;              ///< font size in 1/4 px
+		double asc = 0.0, desc = 0.0; ///< ink of the reference glyph above / below the baseline (emboldening included)
+	} cls[CLS_COUNT];
+	double r = 0.0;                 ///< outline thickness (stroke radius, output px)
+	double target = 0.0;            ///< wanted body height (output px)
 };
 std::unordered_map<SizeKey, SlotSize, SizeKeyHash> slotSizeCache;
 
-/// Reference glyphs for the size of a font type: Latin capitals and Hangul (tall syllables with
-/// complex vowels / double finals). Latin descenders (g, p, y...) are NOT included: they may reach
-/// into the outline of the next line, while capitals and Hangul never overlap the neighbouring lines.
-const UCode EXTENT_REFS[] = { 'H', 'O', 'E', 'A', 0xAC00, 0xAC01, 0xD7A3, 0xBDC1, 0xD55C, 0xAE00 };
-
-/// Union ink extent (above / below the baseline) of the reference glyphs at size 'px'.
-bool inkExtent(HiResFont *font, int px, int bold64, double &asc, double &desc)
+/// Ink extent (above / below the baseline) of a reference glyph.
+bool inkExtent(HiResFont *font, UCode ref, int size4, double &asc, double &desc)
 {
-	bool any = false;
 	asc = 0.0; desc = 0.0;
-	for (UCode ref : EXTENT_REFS)
-	{
-		if (!font->hasGlyph(ref))
-			continue;
-		const HiResGlyph &g = font->getGlyph(ref, px, 0, bold64);
-		if (!g.ok || g.fillH <= 0)
-			continue;
-		asc = any ? std::max(asc, (double)g.fillT) : (double)g.fillT;
-		desc = any ? std::max(desc, (double)(g.fillH - g.fillT)) : (double)(g.fillH - g.fillT);
-		any = true;
-	}
-	return any;
+	if (!font->hasGlyph(ref))
+		return false;
+	const HiResGlyph &g = font->getGlyph(ref, size4, 0, bold64ForSize(size4));
+	if (!g.ok || g.fillH <= 0)
+		return false;
+	asc = g.fillT;
+	desc = g.fillH - g.fillT;
+	return true;
 }
 
-/// Pixel size of a font type: the largest size whose glyph height - union ink extent of the Latin
-/// capital and Hangul reference glyphs, emboldening and outline included - fits the line height of
-/// the bitmap font (Font.dat height + spacing, times the output scale). Hangul and Latin use the
-/// same size.
-/// Depends only on the font (slot), its line height, the output scale and the size options -
-/// never on the text or its box. The size options (%) are applied on top.
+/// Font size of a font type: per glyph class, the largest size (in 1/4 px steps) whose reference
+/// glyph ('H' / '각', emboldening included) is not taller than the body height
+/// fontRule().body x output scale x size options (ink heights are whole pixels: a fractional target
+/// is rounded down). The outline is fontRule().outline x output scale x size options x
+/// oxceHiResTextOutlineScale. Depends only on the font type, the output scale and the options -
+/// never on the text or its box.
 const SlotSize &slotSize(HiResFont *font, int slot, int lineH, double sy)
 {
-	const double r = outlineRadius(sy);
-	const double lineOut = std::max(1, lineH) * sy;
+	const FontRule rule = fontRule(slot, lineH);
 	const int pct = S.sizePct * slotState(slot).sizePct / 100;
-	SizeKey key{ slot, (int)std::lround(lineOut * 64), (int)std::lround(r * 64), pct };
+	SizeKey key{ slot, (int)std::lround(sy * 64), S.outlinePct, pct * 1000 + std::min(999, std::max(0, lineH)) };
 	auto it = slotSizeCache.find(key);
 	if (it != slotSizeCache.end())
 		return it->second;
 	SlotSize ss;
-	const double avail = std::max(1.0, lineOut - 2.0 * r);
-	const int probe = 64;
-	double a, d;
-	int px;
-	if (inkExtent(font, probe, 0, a, d) && a + d > 0)
+	ss.target = rule.body * sy * pct / 100.0;
+	ss.r = rule.outline * sy * pct / 100.0 * S.outlinePct / 100.0;
+	const double limit = std::max(1.0, std::floor(ss.target + 1e-6));
+	bool found[CLS_COUNT] = { false, false };
+	for (int k = 0; k < CLS_COUNT; ++k)
 	{
-		// emboldening grows the ink by em * boldRatio: em * ((a + d) / probe + b) = avail
-		px = std::max(1, (int)std::floor(avail / ((a + d) / probe + boldRatio())));
-		// hinting/rounding can make the real extent a little larger: step down until it fits
-		while (px > 1 && inkExtent(font, px, bold64ForPx(px), a, d) && a + d > avail)
-			--px;
-		// ...and up while the next size still fits (fills the line up to the last pixel)
-		while (px < 4000 && inkExtent(font, px + 1, bold64ForPx(px + 1), a, d) && a + d <= avail)
-			++px;
+		const UCode ref = CLASS_REF[k];
+		double a, d;
+		const int probe4 = 64 * 4;
+		if (!font->hasGlyph(ref) || !inkExtent(font, ref, probe4, a, d) || a + d <= 0)
+			continue;
+		// emboldening grows the ink by em * boldRatio: em * ((a + d) / 64 + b) = target
+		int s4 = std::max(4, (int)std::floor(4.0 * ss.target / ((a + d) / 64.0 + boldRatio())));
+		while (s4 > 4 && inkExtent(font, ref, s4, a, d) && a + d > limit)
+			--s4;
+		while (s4 < 16000 && inkExtent(font, ref, s4 + 1, a, d) && a + d <= limit)
+			++s4;
+		ss.cls[k].size4 = s4;
+		inkExtent(font, ref, s4, ss.cls[k].asc, ss.cls[k].desc);
+		found[k] = true;
 	}
-	else
+	for (int k = 0; k < CLS_COUNT; ++k)
 	{
-		px = std::max(1, (int)std::floor(avail / 1.2));
-	}
-	ss.px = std::max(1, (int)std::lround(px * pct / 100.0));
-	if (!inkExtent(font, ss.px, bold64ForPx(ss.px), ss.asc, ss.desc))
-	{
-		ss.asc = ss.px * 0.8;
-		ss.desc = ss.px * 0.2;
+		if (found[k])
+			continue;
+		if (found[1 - k])
+			ss.cls[k] = ss.cls[1 - k];
+		else
+		{
+			ss.cls[k].size4 = std::max(4, (int)std::lround(4.0 * ss.target / 0.72));
+			ss.cls[k].asc = ss.target;
+			ss.cls[k].desc = 0.0;
+		}
 	}
 	Log(LOG_INFO) << "HiResText: " << (slot >= 0 && slot < (int)S.slotIds.size() ? S.slotIds[slot] : std::string("default"))
-		<< " line " << lineH << " x" << sy << " = " << lineOut << " px (outline " << r << ") -> size " << ss.px
-		<< " px, extent " << (ss.asc + ss.desc + 2.0 * r);
+		<< " x" << sy << ": body " << rule.body << " -> " << ss.target << " px, outline " << ss.r
+		<< " px; Latin size " << ss.cls[CLS_LATIN].size4 / 4.0 << " px (H " << ss.cls[CLS_LATIN].asc + ss.cls[CLS_LATIN].desc
+		<< "), Hangul/CJK size " << ss.cls[CLS_WIDE].size4 / 4.0 << " px (" << "\xEA\xB0\x81 " << ss.cls[CLS_WIDE].asc + ss.cls[CLS_WIDE].desc << ")";
 	return slotSizeCache[key] = ss;
 }
 
@@ -434,31 +467,40 @@ struct Placed
 	int pen = 0, baseline = 0;
 };
 
-/// Vertical placement + pixel size for one glyph command: the extent box of the font type (capitals
-/// and Hangul, outline included) is centred on the bitmap cell, so consecutive lines, 'lineH'
-/// apart, never overlap. If that box sticks out of the clip rect (a Text box lower than the line)
-/// but fits in it, it is moved inside, so capitals and Hangul are never cut.
-void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int &px, int &baseline)
+/// Vertical placement, font size and outline of one glyph command. The body of its glyph class
+/// (ink box of 'H' / '각') is centred on the body of the bitmap capital 'H' of the same font (its
+/// top line and baseline; bitmap '가' or the cell if the bitmap font has no 'H'). If the body plus
+/// outline sticks out of the Text box but fits in it, it is moved inside; descenders and taller
+/// glyphs may still stick out.
+void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int &size4, int &baseline, int &outline64)
 {
 	(void)sx;
 	// geometry (c.x/c.y) is in base px; cell metrics are in widget px (magnified widgets: 'scale' base px each)
 	const double ms = sy * std::max<int>(1, c.scale);
 	const SlotSize &ss = slotSize(font, c.slot, c.lineH > 0 ? c.lineH : c.cellH, ms);
-	px = ss.px;
-	const double centre = c.y * sy + c.cellH * ms / 2.0;
-	const double r = outlineRadius(ms);
-	const double extH = ss.asc + ss.desc + 2.0 * r;
-	double top = centre - extH / 2.0;
+	const SlotSize::Cls &k = ss.cls[glyphClass(c.code)];
+	size4 = k.size4;
+	outline64 = (int)std::lround(ss.r * 64.0);
+	const double bodyH = k.asc + k.desc;
+	const double cellTop = c.y * sy;
+	double centre;
+	if (c.inkTopL >= 0 && c.inkBotL >= c.inkTopL)
+		centre = cellTop + (c.inkTopL + c.inkBotL + 1) * ms / 2.0;
+	else if (c.inkTopK >= 0 && c.inkBotK >= c.inkTopK)
+		centre = cellTop + (c.inkTopK + c.inkBotK + 1) * ms / 2.0;
+	else
+		centre = cellTop + c.cellH * ms / 2.0;
+	double top = centre - bodyH / 2.0;
 	// the Text box itself (not the clip rect, which may be cut further by parents or the screen)
-	const double clipT = (c.y + c.boxDy) * sy, clipB = (c.y + c.boxDy + c.boxH) * sy;
-	if (c.boxH > 0 && extH <= clipB - clipT)
+	const double boxT = (c.y + c.boxDy) * sy, boxB = (c.y + c.boxDy + c.boxH) * sy;
+	if (c.boxH > 0 && bodyH + 2.0 * ss.r <= boxB - boxT)
 	{
-		if (top < clipT)
-			top = clipT;
-		else if (top + extH > clipB)
-			top = clipB - extH;
+		if (top - ss.r < boxT)
+			top = boxT + ss.r;
+		else if (top + bodyH + ss.r > boxB)
+			top = boxB - ss.r - bodyH;
 	}
-	baseline = (int)std::lround(top + r + ss.asc);
+	baseline = (int)std::lround(top + k.asc);
 }
 
 /// Composes the current frame into S.rgba (dstW x dstH). Returns the dirty rect of this frame;
@@ -482,7 +524,6 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 	for (auto &f : S.fonts)
 		if (f.second) f.second->trimCache(16384);
 	SDL_Rect dirty = {0, 0, 0, 0};
-	auto outline64For = [&](const HiResCmd &c) { return (int)std::lround(outlineRadius(sy * std::max<int>(1, c.scale)) * 64.0); };
 	std::vector<Placed> placed;
 	// Commands delivered by the same blit (one text widget / button) are drawn in two
 	// passes - all outlines, then all bodies - like the bitmap font whose outline never
@@ -515,11 +556,12 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 				p.g = nullptr;
 				if (!font)
 					continue;
-				int px, baseline;
-				placeVertical(c, font, sx, sy, px, baseline);
-				const int bold64 = bold64ForPx(px);
+				int px, baseline; // px: font size in 1/4 px
+				int outline64;
+				placeVertical(c, font, sx, sy, px, baseline, outline64);
+				const int bold64 = bold64ForSize(px);
 				const bool space = (c.flags & HiResCmd::GLYPH_SPACE) != 0;
-				const HiResGlyph &g = font->getGlyph(c.code, px, space ? 0 : outline64For(c), space ? 0 : bold64, hs);
+				const HiResGlyph &g = font->getGlyph(c.code, px, space ? 0 : outline64, space ? 0 : bold64, hs);
 				if (!g.ok)
 					continue;
 				p.g = &g;
@@ -661,7 +703,7 @@ void HiResLayer::reconfigure()
 {
 	const bool wasRecording = _recording;
 	S.sizePct = std::max(10, Options::oxceHiResFontSize);
-	S.outlinePct = std::max(0, Options::oxceHiResTextOutline);
+	S.outlinePct = std::min(400, std::max(0, Options::oxceHiResTextOutlineScale));
 	S.boldPct = std::max(0, Options::oxceHiResTextBold);
 	S.layout = Options::oxceHiResTextLayout;
 	S.settings.hinting = Options::oxceHiResTextHinting;
@@ -1004,7 +1046,7 @@ int HiResLayer::baseAdvance(UCode c, int lineH, int slot)
 	if (!canRenderGlyph(c, slot))
 		return -1;
 	HiResFont *f = slotFont(slot);
-	int px = slotSize(f, slot, lineH, 1.0).px;
+	int px = slotSize(f, slot, lineH, 1.0).cls[glyphClass(c)].size4;
 	int adv = f->getAdvance(c, px);
 	return adv < 0 ? -1 : std::max(1, adv);
 }

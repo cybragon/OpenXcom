@@ -386,6 +386,11 @@ bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std
 	{
 		if (!enabled() || !palBattle)
 			throw;
+		if (CrossPlatform::compareExt(filename, "jpg") || CrossPlatform::compareExt(filename, "jpeg"))
+		{
+			Log(LOG_WARNING) << "HiResAssets: " << type << ": " << filename << ": JPEG pictures are not allowed for a battlescape resource: ignored";
+			return false;
+		}
 		std::shared_ptr<Picture> pic = decode(filename);
 		if (!pic || !pic->trueColor)
 			throw;

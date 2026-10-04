@@ -167,6 +167,9 @@ bool ExtraSprites::isImageFile(const std::string &filename)
 		if (CrossPlatform::compareExt(filename, exts[i]))
 			return true;
 	}
+	// hi-res assets: JPEG pictures (true colour) only with the option; without it they are ignored as before
+	if (HiResAssets::enabled() && (CrossPlatform::compareExt(filename, "JPG") || CrossPlatform::compareExt(filename, "JPEG")))
+		return true;
 	return false;
 }
 

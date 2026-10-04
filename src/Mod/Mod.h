@@ -180,6 +180,8 @@ private:
 	std::map<std::string, RuleUfo*> _ufos;
 	std::map<std::string, RuleTerrain*> _terrains;
 	std::map<std::string, MapDataSet*> _mapDataSets;
+	/// hi-res assets: resources loaded before the battlescape ones (not battlescape)
+	std::set<std::string> _hiResGeoTypes;
 	std::map<std::string, RuleSkill*> _skills;
 	std::map<std::string, RuleSoldier*> _soldiers;
 	std::map<std::string, Unit*> _units;
@@ -399,6 +401,8 @@ private:
 	void loadVanillaResources();
 	/// Loads resources from extra rulesets.
 	void loadExtraResources();
+	/// Hi-res assets: battlescape images from the rules (no 32-bit pictures).
+	void classifyHiResBattleTypes();
 	/// Loads surfaces on demand.
 	void lazyLoadSurface(const std::string &name);
 	/// Loads an external sprite.

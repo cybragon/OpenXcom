@@ -5525,7 +5525,6 @@ void Mod::loadVanillaResources()
 		std::string s2 = "INTERWIN.DAT";
 		_surfaces[s2] = new Surface(160, 600);
 		_surfaces[s2]->loadScr(s1);
-		HiResAssets::allowTrueColor(s2); // hi-res assets: geoscape/base-only images may be replaced by 32-bit pictures
 	}
 
 	const auto& geographFiles = FileMap::getVFolderContents("GEOGRAPH");
@@ -5536,7 +5535,6 @@ void Mod::loadVanillaResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadScr("GEOGRAPH/" + fname);
-		HiResAssets::allowTrueColor(fname);
 	}
 	auto bdys = FileMap::filterFiles(geographFiles, "BDY");
 	for (const auto& name : bdys)
@@ -5545,7 +5543,6 @@ void Mod::loadVanillaResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadBdy("GEOGRAPH/" + fname);
-		HiResAssets::allowTrueColor(fname);
 	}
 
 	auto spks = FileMap::filterFiles(geographFiles, "SPK");
@@ -5555,7 +5552,6 @@ void Mod::loadVanillaResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadSpk("GEOGRAPH/" + fname);
-		HiResAssets::allowTrueColor(fname);
 	}
 
 	// Load surface sets
@@ -5576,7 +5572,6 @@ void Mod::loadVanillaResources()
 			s2 << "GEOGRAPH/" << tab;
 			_sets[sets[i]] = new SurfaceSet(32, 40);
 			_sets[sets[i]]->loadPck(s.str(), s2.str());
-			HiResAssets::allowTrueColor(sets[i]); // BASEBITS.PCK, INTICON.PCK: geoscape/base only (TEXTURE.DAT: globe, not hi-res)
 		}
 		else
 		{
@@ -5771,6 +5766,19 @@ void Mod::loadVanillaResources()
  */
 void Mod::loadBattlescapeResources()
 {
+	// hi-res assets: every resource loaded here is a battlescape resource (no 32-bit pictures)
+	struct DenyLoaded
+	{
+		Mod *m;
+		~DenyLoaded()
+		{
+			for (const auto &p : m->_surfaces) if (!m->_hiResGeoTypes.count(p.first)) HiResAssets::denyTrueColor(p.first);
+			for (const auto &p : m->_sets) if (!m->_hiResGeoTypes.count(p.first)) HiResAssets::denyTrueColor(p.first);
+		}
+	} denyLoaded{ this };
+	_hiResGeoTypes.clear();
+	for (const auto &p : _surfaces) _hiResGeoTypes.insert(p.first);
+	for (const auto &p : _sets) _hiResGeoTypes.insert(p.first);
 	// Load Battlescape ICONS
 	_sets["SPICONS.DAT"] = new SurfaceSet(32, 24);
 	_sets["SPICONS.DAT"]->loadDat("UFOGRAPH/SPICONS.DAT");
@@ -5829,7 +5837,6 @@ void Mod::loadBattlescapeResources()
 	{
 		_surfaces[scrs[i]] = new Surface(320, 200);
 		_surfaces[scrs[i]]->loadScr("UFOGRAPH/" + scrs[i]);
-		HiResAssets::denyTrueColor(scrs[i]); // battlescape image: 8-bit only
 	}
 
 	// lower case so we can find them in the contents map
@@ -5889,7 +5896,6 @@ void Mod::loadBattlescapeResources()
 
 		_surfaces[spks[i]] = new Surface(320, 200);
 		_surfaces[spks[i]]->loadSpk("UFOGRAPH/" + spks[i]);
-		HiResAssets::denyTrueColor(spks[i]); // battlescape image: 8-bit only
 	}
 
 	auto bdys = FileMap::filterFiles(ufographContents, "BDY");
@@ -5922,7 +5928,6 @@ void Mod::loadBattlescapeResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadSpk("UFOGRAPH/" + fname);
-		HiResAssets::denyTrueColor(fname); // battlescape image: 8-bit only
 	}
 
 	//"fix" of color index in original solders sprites
@@ -6060,10 +6065,56 @@ void Mod::loadBattlescapeResources()
 }
 
 /**
+ * Hi-res assets: marks the mod-defined images used in the battlescape (from the rules) as not
+ * allowed to be 32-bit pictures: armor sprite sheets, inventory paperdolls (prefix) and layers
+ * (prefixes), terrain / map data set PCKs, backgrounds of battlescape interfaces. Shared vanilla
+ * battlescape resources (BIGOBS, FLOOROB, HANDOB, UNITS, TERRAIN, UFOGRAPH...) are marked by
+ * loadBattlescapeResources.
+ */
+void Mod::classifyHiResBattleTypes()
+{
+	for (const auto &a : _armors)
+	{
+		const Armor *armor = a.second;
+		HiResAssets::denyTrueColor(armor->getSpriteSheet());
+		HiResAssets::denyTrueColorPrefix(armor->getSpriteInventory());
+		if (armor->hasLayersDefinition())
+		{
+			HiResAssets::denyTrueColorPrefix(armor->getLayersDefaultPrefix() + "__");
+			for (const auto &pre : armor->getLayersSpecificPrefix())
+				HiResAssets::denyTrueColorPrefix(pre.second + "__");
+		}
+	}
+	for (const auto &m : _mapDataSets)
+	{
+		HiResAssets::denyTrueColor(m.first + ".PCK");
+	}
+	for (const auto &t : _terrains)
+	{
+		for (auto *mds : *t.second->getMapDataSets())
+			HiResAssets::denyTrueColor(mds->getName() + ".PCK");
+	}
+	for (const char *name : { "battlescape", "inventory", "medikit", "minimap", "stats" })
+	{
+		auto it = _interfaces.find(name);
+		if (it == _interfaces.end())
+			continue;
+		const std::string &bg = it->second->getBackgroundImage(this, nullptr);
+		if (!bg.empty()) HiResAssets::denyTrueColor(bg);
+		const std::string &alt = it->second->getAltBackgroundImage();
+		if (!alt.empty()) HiResAssets::denyTrueColor(alt);
+	}
+	if (HiResAssets::enabled())
+		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (32-bit pictures are converted to the battlescape palette)";
+}
+
+/**
  * Loads the extra resources defined in rulesets.
  */
 void Mod::loadExtraResources()
 {
+	classifyHiResBattleTypes();
+
 	// Load fonts
 	YAML::YamlRootNodeReader reader = FileMap::getYAML("Language/" + _fontName);
 	Log(LOG_INFO) << "Loading fonts... " << _fontName;
@@ -6246,8 +6297,9 @@ void Mod::loadExtraSprite(ExtraSprites *spritePack)
 
 	{
 		// hi-res assets: palettes to quantize 32-bit replacements of images without a palette of their own
-		auto geo = _palettes.find("PAL_GEOSCAPE"), base = _palettes.find("PAL_BASESCAPE");
-		HiResAssets::setPalettes(geo != _palettes.end() ? geo->second->getColors() : nullptr, base != _palettes.end() ? base->second->getColors() : nullptr);
+		auto geo = _palettes.find("PAL_GEOSCAPE"), base = _palettes.find("PAL_BASESCAPE"), battle = _palettes.find("PAL_BATTLESCAPE");
+		HiResAssets::setPalettes(geo != _palettes.end() ? geo->second->getColors() : nullptr, base != _palettes.end() ? base->second->getColors() : nullptr,
+			battle != _palettes.end() ? battle->second->getColors() : nullptr);
 	}
 
 	if (spritePack->getSingleImage())

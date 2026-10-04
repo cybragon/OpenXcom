@@ -204,7 +204,7 @@ Surface *ExtraSprites::loadSurface(Surface *surface)
 		: HiResAssets::loadReplacement(surface, fileName, 1 << 15, 1 << 15, nullptr, _type);
 	if (!hiRes)
 	{
-		surface->loadImage(fileName);
+		HiResAssets::loadDeniedTrueColor(surface, fileName, _type);
 		if (origW > 0)
 		{
 			HiResAssets::logMismatch(_type, fileName, origW, origH, surface->getWidth(), surface->getHeight(),
@@ -288,7 +288,7 @@ SurfaceSet *ExtraSprites::loadSurfaceSet(SurfaceSet *set)
 			else
 			{
 				Surface temp = Surface(_width, _height);
-				temp.loadImage(fileName);
+				HiResAssets::loadDeniedTrueColor(&temp, fileName, _type);
 				HiResAssets::logMismatch(_type, fileName, _width, _height, temp.getWidth(), temp.getHeight(),
 					HiResAssets::enabled() ? "not eligible: cut on the rule grid as before" : "hi-res assets off: cut on the rule grid as before");
 				int xDivision = _width / _subX;
@@ -324,7 +324,7 @@ void ExtraSprites::loadFrameImage(Surface *frame, bool existed, const std::strin
 	// box: the replaced frame, or the set frame size for a new frame
 	if (HiResAssets::loadReplacement(frame, fileName, origW, origH, existed ? origPalette.data() : nullptr, _type))
 		return;
-	frame->loadImage(fileName);
+	HiResAssets::loadDeniedTrueColor(frame, fileName, _type);
 	if (existed)
 	{
 		HiResAssets::logMismatch(_type, fileName, origW, origH, frame->getWidth(), frame->getHeight(),
@@ -352,8 +352,7 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 	const bool trueColor = HiResAssets::pictureTrueColor(*pic);
 	if (trueColor && !HiResAssets::trueColorAllowed(_type))
 	{
-		Log(LOG_WARNING) << "HiResAssets: " << _type << ": " << fileName << " is a 32-bit image; only 8-bit images are allowed for this resource (it is also used in the battlescape)";
-		return false;
+		return false; // battlescape resource: converted to the battlescape palette by the normal path
 	}
 	int fw, fh;
 	double scale;

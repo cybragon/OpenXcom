@@ -74,8 +74,8 @@ struct Entry
 std::unordered_map<const SDL_Surface*, Uint32> bySurface;
 std::unordered_map<Uint32, std::unique_ptr<Entry>> byId;
 Uint32 idCounter = 0;
-std::set<std::string> trueColorTypes;
-const SDL_Color *palGeo = nullptr, *palBase = nullptr;
+std::set<std::string> deniedTypes, deniedPrefixes;
+const SDL_Color *palGeo = nullptr, *palBase = nullptr, *palBattle = nullptr;
 
 /// Palettes 8bpp pictures were resolved with (key -> colours).
 std::unordered_map<Uint32, std::vector<SDL_Color>> palettes;
@@ -294,25 +294,60 @@ bool enabled()
 	return Options::oxceHiResAssets;
 }
 
-void allowTrueColor(const std::string &type)
-{
-	trueColorTypes.insert(type);
-}
-
 void denyTrueColor(const std::string &type)
 {
-	trueColorTypes.erase(type);
+	deniedTypes.insert(type);
+}
+
+void denyTrueColorPrefix(const std::string &prefix)
+{
+	if (!prefix.empty())
+		deniedPrefixes.insert(prefix);
 }
 
 bool trueColorAllowed(const std::string &type)
 {
-	return trueColorTypes.count(type) != 0;
+	if (deniedTypes.count(type))
+		return false;
+	for (const auto &pre : deniedPrefixes)
+		if (type.compare(0, pre.size(), pre) == 0)
+			return false;
+	return true;
 }
 
-void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape)
+size_t deniedCount()
+{
+	return deniedTypes.size() + deniedPrefixes.size();
+}
+
+void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape, const SDL_Color *battlescape)
 {
 	palGeo = geoscape;
 	palBase = basescape;
+	palBattle = battlescape;
+}
+
+bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std::string &type)
+{
+	try
+	{
+		target->loadImage(filename);
+		return true; // 8bpp (or anything the normal loader accepts): as before
+	}
+	catch (Exception &)
+	{
+		if (!enabled() || !palBattle)
+			throw;
+		std::shared_ptr<Picture> pic = decode(filename);
+		if (!pic || !pic->trueColor)
+			throw;
+		Log(LOG_WARNING) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image, not allowed for a battlescape resource: converted to the battlescape palette (" << pic->w << "x" << pic->h << ", 8-bit)";
+		forget(target->getSurface());
+		*target = Surface(pic->w, pic->h, 0, 0);
+		target->setPalette(palBattle, 0, 256);
+		makeProxy(target, *pic, 0, 0, pic->w, pic->h, pic->w, pic->h, palBattle);
+		return true;
+	}
 }
 
 int pictureWidth(const Picture &p) { return p.w; }
@@ -491,8 +526,7 @@ bool loadReplacement(Surface *target, const std::string &filename, int boxW, int
 		return false; // the normal loader reports the error
 	if (pic->trueColor && !trueColorAllowed(type))
 	{
-		Log(LOG_WARNING) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image; only 8-bit images are allowed for this resource (it is also used outside the geoscape/base screens)";
-		return false; // rejected by the normal loader, as without the option
+		return false; // battlescape resource: converted to the battlescape palette by loadDeniedTrueColor
 	}
 	int fw, fh;
 	double scale;

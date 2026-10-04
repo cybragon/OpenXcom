@@ -52,13 +52,18 @@ namespace HiResAssets
 
 	/// Option oxceHiResAssets (read at load time: changing it needs a mod reload).
 	bool enabled();
-	/// Marks a resource type (Mod surface / surface set name) as used only by geoscape/base screens:
-	/// 32bpp replacements are allowed for it (with the option).
-	void allowTrueColor(const std::string &type);
+	/// 32bpp pictures (option on) are allowed for every resource except battlescape ones: a type
+	/// (Mod surface / surface set name) or name prefix marked here (vanilla battlescape resources,
+	/// rule-referenced armor sprites / paperdolls / layers, terrain sets, battlescape backgrounds).
 	void denyTrueColor(const std::string &type);
+	void denyTrueColorPrefix(const std::string &prefix);
 	bool trueColorAllowed(const std::string &type);
+	size_t deniedCount();
 	/// Palettes used to quantize 32bpp pictures when the replaced image has no meaningful palette.
-	void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape);
+	void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape, const SDL_Color *battlescape);
+	/// Surface::loadImage, except (option on) a 32bpp picture, which is converted to the battlescape
+	/// palette with a warning instead of the fatal error (for the denied battlescape types).
+	bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std::string &type);
 
 	/// Decodes an image file: 8bpp exactly like Surface::loadImage, or 32bpp (PNG via lodepng, others via
 	/// SDL_image). Returns null if the file cannot be decoded (the normal loader then reports the error).

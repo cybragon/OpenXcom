@@ -19,6 +19,7 @@
 #include "Globe.h"
 #include "GeoSidebarLayout.h"
 #include "../fmath.h"
+#include "../Engine/HiResAssets.h"
 #include "../Engine/Action.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Engine/Timer.h"
@@ -1741,6 +1742,10 @@ void Globe::drawTarget(Target *target, Surface *surface)
 							surface->setPixel(ox + mx * s + dx, oy + my * s + dy, v);
 				}
 			}
+			if (plain && HiResAssets::any())
+			{
+				HiResAssets::onDraw(marker->getSurface(), 0, 0, mw, mh, surface->getSurface(), ox, oy, mw * s, mh * s);
+			}
 			return;
 		}
 		ShaderMove<const Uint8> surf{ marker, x - marker->getWidth() / 2, y - marker->getHeight() / 2 };
@@ -1759,6 +1764,11 @@ void Globe::drawTarget(Target *target, Surface *surface)
 				dest,
 				surf
 			);
+			if (HiResAssets::any())
+			{
+				HiResAssets::onDraw(marker->getSurface(), 0, 0, marker->getWidth(), marker->getHeight(), surface->getSurface(),
+					x - marker->getWidth() / 2, y - marker->getHeight() / 2);
+			}
 		}
 		else
 		{

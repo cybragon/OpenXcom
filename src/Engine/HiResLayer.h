@@ -74,6 +74,11 @@ struct HiResCmd
 	Sint8 inkTopK = -1, inkBotK = -1; ///< body rows of U+AC00 in the bitmap font (Hangul/CJK reference)
 	// --- Image payload: picture registered with HiResLayer::setImage (x/y/w/h = where it is shown)
 	Uint32 imageId = 0;
+	// --- hi-res asset (HiResAssets): the proxy rect srcX/Y/W/H was drawn into the box x/y/w/h
+	Uint32 assetId = 0;
+	Sint16 srcX = 0, srcY = 0, srcW = 0, srcH = 0;
+	Uint32 palKey = 0;               ///< resolved at screen delivery: palette of 8bpp pictures
+	Uint32 maskIdx = 0;              ///< resolved at screen delivery: 1 + index of the per-base-pixel snapshot mask (clip rect)
 	// --- resolved when the command reaches the screen buffer
 	SDL_Color fill = {0, 0, 0, 0};
 	SDL_Color line = {0, 0, 0, 0};
@@ -126,8 +131,11 @@ public:
 	static void onContextLost();
 
 	// --- recording API (used by widgets)
-	/// Adds a command to a surface (coordinates relative to it).
-	static void record(SDL_Surface *holder, const HiResCmd &cmd);
+	/// Adds a command to a surface (coordinates relative to it); 'front' = under the older ones.
+	static void record(SDL_Surface *holder, const HiResCmd &cmd, bool front = false);
+	/// Adds a hi-res asset command (HiResAssets) drawn by the proxy 'origin' into dst; replaces the
+	/// previous copy of the same proxy at the same place. dst = screen: delivered (checked) at once.
+	static void recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Surface *origin);
 	/// Surface contents were cleared.
 	static void clearSurface(SDL_Surface *holder);
 	/// Surface is being destroyed.

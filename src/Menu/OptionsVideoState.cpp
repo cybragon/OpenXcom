@@ -73,9 +73,11 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	_cbxBattleScale = new ComboBox(this, 104, 16, 94, 122);
 
 	_txtOptions = new Text(114, 9, 206, 82);
-	_btnLetterbox = new ToggleTextButton(104, 16, 206, 92);
-	_btnLockMouse = new ToggleTextButton(104, 16, 206, 110);
-	_btnRootWindowedMode = new ToggleTextButton(104, 16, 206, 128);
+	// four toggles in the display section (the tooltip area starts at y 148)
+	_btnLetterbox = new ToggleTextButton(104, 13, 206, 92);
+	_btnLockMouse = new ToggleTextButton(104, 13, 206, 106);
+	_btnRootWindowedMode = new ToggleTextButton(104, 13, 206, 120);
+	_btnHiResAssets = new ToggleTextButton(104, 13, 206, 134);
 
 	// Get available fullscreen modes
 	_res = SDL_ListModes(NULL, SDL_FULLSCREEN);
@@ -119,6 +121,7 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	add(_btnLetterbox, "button", "videoMenu");
 	add(_btnLockMouse, "button", "videoMenu");
 	add(_btnRootWindowedMode, "button", "videoMenu");
+	add(_btnHiResAssets, "button", "videoMenu");
 
 	add(_cbxFilter, "button", "videoMenu");
 	add(_cbxDisplayMode, "button", "videoMenu");
@@ -186,6 +189,13 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	_btnRootWindowedMode->setTooltip("STR_FIXED_WINDOW_POSITION_DESC");
 	_btnRootWindowedMode->onMouseIn((ActionHandler)&OptionsVideoState::txtTooltipIn);
 	_btnRootWindowedMode->onMouseOut((ActionHandler)&OptionsVideoState::txtTooltipOut);
+
+	_btnHiResAssets->setText(tr("STR_HIRES_ASSETS"));
+	_btnHiResAssets->setPressed(Options::oxceHiResAssets);
+	_btnHiResAssets->onMouseClick((ActionHandler)&OptionsVideoState::btnHiResAssetsClick);
+	_btnHiResAssets->setTooltip("STR_HIRES_ASSETS_DESC");
+	_btnHiResAssets->onMouseIn((ActionHandler)&OptionsVideoState::txtTooltipIn);
+	_btnHiResAssets->onMouseOut((ActionHandler)&OptionsVideoState::txtTooltipOut);
 
 	_txtLanguage->setText(tr("STR_DISPLAY_LANGUAGE"));
 
@@ -585,6 +595,20 @@ void OptionsVideoState::updateDisplayMode(Action *)
 void OptionsVideoState::btnLetterboxClick(Action *)
 {
 	Options::keepAspectRatio = _btnLetterbox->getPressed();
+}
+
+/**
+ * Changes the hi-res assets option. The images are (re)loaded with the mods: from the main menu
+ * the mods are reloaded on OK, in a game it applies after a restart.
+ * @param action Pointer to an action.
+ */
+void OptionsVideoState::btnHiResAssetsClick(Action *)
+{
+	Options::oxceHiResAssets = _btnHiResAssets->getPressed();
+	if (_origin == OPT_MENU)
+	{
+		Options::reload = true;
+	}
 }
 
 /**

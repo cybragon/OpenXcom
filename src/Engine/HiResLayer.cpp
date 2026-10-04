@@ -18,6 +18,7 @@
  */
 #include "HiResLayer.h"
 #include "HiResFont.h"
+#include "HiResAssets.h"
 #include "OpenGL.h"
 #include "Options.h"
 #include "Logger.h"
@@ -73,6 +74,7 @@ struct LayerState
 	Uint32 stampCounter = 0;
 	Uint32 runCounter = 0;
 	std::vector<HiResCmd> frame;       ///< commands that reached the screen this frame
+	std::vector<std::vector<Uint8>> masks; ///< snapshot masks of the hi-res asset commands of this frame
 	// composition buffer (premultiplied BGRA, output resolution without black bands)
 	std::vector<Uint32> rgba;
 	int bufW = 0, bufH = 0;
@@ -94,6 +96,12 @@ bool uiImagesWanted()
 {
 	const UiImageScaler::Filter f = UiImageScaler::uiFilter();
 	return f == UiImageScaler::Filter::HQX || f == UiImageScaler::Filter::XBRZ;
+}
+
+/// Hi-res assets (option oxceHiResAssets) are drawn by this layer too, with or without hi-res text.
+bool assetsWanted()
+{
+	return Options::oxceHiResAssets;
 }
 
 struct ImageRef
@@ -402,8 +410,116 @@ void drawCoverage(const std::vector<uint8_t> &bm, int bw, int bh, int ox, int oy
 	unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }
 
+/// Hi-res asset command: the replacement picture resampled to the output size of the box, drawn
+/// only on the base pixels whose proxy pixels reached the screen unchanged (mask) and not hidden later.
+void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
+{
+	if (!c.maskIdx || c.maskIdx > S.masks.size() || c.w <= 0 || c.h <= 0)
+		return;
+	const std::vector<Uint8> &mask = S.masks[c.maskIdx - 1];
+	if (mask.size() != (size_t)c.clipW * c.clipH)
+		return;
+	const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
+	const int X1 = (int)std::lround((c.x + c.w) * sx), Y1 = (int)std::lround((c.y + c.h) * sy);
+	const int outW = X1 - X0, outH = Y1 - Y0;
+	if (outW <= 0 || outH <= 0)
+		return;
+	const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, outW, outH);
+	if (!px)
+		return;
+	const int x0 = std::max(std::max(0, X0), (int)std::floor(c.clipX * sx)), y0 = std::max(std::max(0, Y0), (int)std::floor(c.clipY * sy));
+	const int x1 = std::min(std::min(dstW, X1), (int)std::ceil((c.clipX + c.clipW) * sx));
+	const int y1 = std::min(std::min(dstH, Y1), (int)std::ceil((c.clipY + c.clipH) * sy));
+	if (x0 >= x1 || y0 >= y1)
+		return;
+	const double isx = 1.0 / sx, isy = 1.0 / sy;
+	bool drawn = false;
+	for (int y = y0; y < y1; ++y)
+	{
+		const int by = std::min(S.baseH - 1, (int)(y * isy));
+		const int my = by - c.clipY;
+		if (my < 0 || my >= c.clipH)
+			continue;
+		const Uint32 *stampRow = &S.stamps[by * S.baseW];
+		const Uint8 *maskRow = &mask[(size_t)my * c.clipW];
+		const Uint32 *src = px + (size_t)(y - Y0) * outW - X0;
+		Uint32 *dst = &S.rgba[y * S.bufW];
+		for (int x = x0; x < x1; ++x)
+		{
+			const int bx = std::min(S.baseW - 1, (int)(x * isx));
+			const int mx = bx - c.clipX;
+			if (mx < 0 || mx >= c.clipW || !maskRow[mx] || stampRow[bx] > c.stamp)
+				continue;
+			const Uint32 p = src[x];
+			const unsigned a = p >> 24;
+			if (!a)
+				continue;
+			drawn = true;
+			if (a == 255)
+			{
+				dst[x] = p;
+				continue;
+			}
+			const SDL_Color col = { (Uint8)((p >> 16) & 0xFF), (Uint8)((p >> 8) & 0xFF), (Uint8)(p & 0xFF), (Uint8)255 };
+			blendPixel(dst[x], col, a);
+		}
+	}
+	if (drawn)
+		unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
+}
+
+/// A hi-res asset command reaches the screen through 'src' (8bpp, blitted at x, y): resolves its
+/// palette and the snapshot mask (base pixels showing the proxy pixel it expects). False = drop it.
+bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
+{
+	int ew = 0, eh = 0;
+	const Uint8 *e = HiResAssets::expected(c.assetId, ew, eh);
+	if (!e || !src || src->format->BitsPerPixel != 8 || c.w <= 0 || c.h <= 0 || c.srcW <= 0 || c.srcH <= 0)
+		return false;
+	int vx = c.clipX, vy = c.clipY, vw = c.clipW, vh = c.clipH;
+	if (!intersect(vx, vy, vw, vh, c.x, c.y, c.w, c.h) || !intersect(vx, vy, vw, vh, x, y, src->w, src->h))
+		return false;
+	c.clipX = (Sint16)vx; c.clipY = (Sint16)vy; c.clipW = (Sint16)vw; c.clipH = (Sint16)vh;
+	c.palKey = HiResAssets::paletteKey(c.assetId, src->format->palette);
+	std::vector<Uint8> m((size_t)vw * vh, 0);
+	bool any = false;
+	SDL_LockSurface(src);
+	for (int yy = vy; yy < vy + vh; ++yy)
+	{
+		const int v = std::min(eh - 1, std::min(c.srcY + c.srcH - 1, c.srcY + (yy - c.y) * c.srcH / c.h));
+		if (v < 0)
+			continue;
+		const Uint8 *sp = (const Uint8*)src->pixels + (yy - y) * src->pitch - x;
+		const Uint8 *ep = e + (size_t)v * ew;
+		Uint8 *mp = &m[(size_t)(yy - vy) * vw - vx];
+		for (int xx = vx; xx < vx + vw; ++xx)
+		{
+			const int u = std::min(ew - 1, std::min(c.srcX + c.srcW - 1, c.srcX + (xx - c.x) * c.srcW / c.w));
+			if (u < 0)
+				continue;
+			const Uint8 ev = ep[u];
+			if (ev && sp[xx] == ev)
+			{
+				mp[xx] = 1;
+				any = true;
+			}
+		}
+	}
+	SDL_UnlockSurface(src);
+	if (!any)
+		return false;
+	S.masks.push_back(std::move(m));
+	c.maskIdx = (Uint32)S.masks.size();
+	return true;
+}
+
 void drawImage(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
 {
+	if (c.assetId)
+	{
+		drawAsset(c, dstW, dstH, sx, sy, dirty);
+		return;
+	}
 	auto it = images.find(c.imageId);
 	if (it == images.end() || !it->second.px || c.w <= 0 || c.h <= 0)
 		return;
@@ -722,7 +838,7 @@ void HiResLayer::reconfigure()
 		else
 			Log(LOG_ERROR) << "HiResLayer: no usable TTF font found, hi-res text disabled";
 	}
-	_recording = (_textConfigured || uiImagesWanted()) && S.outputSupported;
+	_recording = (_textConfigured || uiImagesWanted() || assetsWanted()) && S.outputSupported;
 	if (_recording && S.stamps.size() != (size_t)S.baseW * S.baseH)
 		S.stamps.assign((size_t)S.baseW * S.baseH, 0);
 	if (wasRecording != _recording)
@@ -743,7 +859,7 @@ bool HiResLayer::consumeModeChanged()
 
 bool HiResLayer::wantsTrueColor()
 {
-	return (Options::oxceHiResOverlay && Options::oxceHiResText) || uiImagesWanted();
+	return (Options::oxceHiResOverlay && Options::oxceHiResText) || uiImagesWanted() || assetsWanted();
 }
 
 void HiResLayer::shutdown()
@@ -764,7 +880,7 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 	S.baseH = screenBuffer ? screenBuffer->h : 0;
 	S.outputSupported = supportedOutput;
 	bool was = _recording;
-	_recording = (_textConfigured || uiImagesWanted()) && S.outputSupported;
+	_recording = (_textConfigured || uiImagesWanted() || assetsWanted()) && S.outputSupported;
 	if (_recording)
 		S.stamps.assign((size_t)S.baseW * S.baseH, 0);
 	else
@@ -776,6 +892,7 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 		S.modeChanged = true;
 	}
 	S.frame.clear();
+	S.masks.clear();
 	S.sizeCache.clear();
 	slotSizeCache.clear();
 }
@@ -830,11 +947,49 @@ std::vector<std::string> HiResLayer::slotFaceNames(int slot)
 	return f ? f->getFaceNames() : std::vector<std::string>();
 }
 
-void HiResLayer::record(SDL_Surface *holder, const HiResCmd &cmd)
+void HiResLayer::record(SDL_Surface *holder, const HiResCmd &cmd, bool front)
 {
 	if (!_recording || !holder)
 		return;
-	S.lists[holder].push_back(cmd);
+	auto &l = S.lists[holder];
+	if (front)
+		l.insert(l.begin(), cmd);
+	else
+		l.push_back(cmd);
+}
+
+void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Surface *origin)
+{
+	if (!_recording || !dst)
+		return;
+	HiResCmd c = cmd;
+	c.origin = origin;
+	c.originX = c.x;
+	c.originY = c.y;
+	int cx = c.clipX, cy = c.clipY, cw = c.clipW, ch = c.clipH;
+	if (!intersect(cx, cy, cw, ch, 0, 0, dst->w, dst->h))
+		return;
+	c.clipX = (Sint16)cx; c.clipY = (Sint16)cy; c.clipW = (Sint16)cw; c.clipH = (Sint16)ch;
+	if (dst == S.screen)
+	{
+		// drawn straight onto the screen buffer: check it now, against the screen pixels
+		c.stamp = ++S.stampCounter;
+		if (!deliverAsset(c, dst, 0, 0))
+			return;
+		const std::vector<Uint8> &m = S.masks[c.maskIdx - 1];
+		for (int yy = 0; yy < c.clipH; ++yy)
+			for (int xx = 0; xx < c.clipW; ++xx)
+				if (m[(size_t)yy * c.clipW + xx])
+					S.stamps[(c.clipY + yy) * S.baseW + c.clipX + xx] = c.stamp;
+		S.frame.push_back(c);
+		return;
+	}
+	auto &dl = S.lists[dst];
+	dl.erase(std::remove_if(dl.begin(), dl.end(), [&](const HiResCmd &o)
+	{
+		return o.assetId == c.assetId && o.origin == origin && o.originX == c.originX && o.originY == c.originY;
+	}), dl.end());
+	dl.push_back(c);
 }
 
 void HiResLayer::clearSurface(SDL_Surface *holder)
@@ -963,6 +1118,8 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 		if (toScreen)
 		{
 			c.stamp = stamp;
+			if (c.assetId && !deliverAsset(c, src, x, y))
+				continue; // proxy pixels did not reach the screen unchanged
 			if (pal)
 			{
 				c.fill = pal->colors[c.fillIdx];
@@ -1076,6 +1233,7 @@ void HiResLayer::beginFrame()
 	if (!_recording)
 		return;
 	S.frame.clear();
+	S.masks.clear();
 	S.stampCounter = 0;
 	std::fill(S.stamps.begin(), S.stamps.end(), 0);
 }

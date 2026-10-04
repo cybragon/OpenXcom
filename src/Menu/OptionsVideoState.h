@@ -50,7 +50,7 @@ private:
 	ComboBox *_cbxLanguage, *_cbxFilter, *_cbxDisplayMode, *_cbxGeoScale, *_cbxBattleScale;
 	Text *_txtMode;
 	Text *_txtOptions;
-	ToggleTextButton *_btnLetterbox, *_btnLockMouse, *_btnRootWindowedMode;
+	ToggleTextButton *_btnLetterbox, *_btnLockMouse, *_btnRootWindowedMode, *_btnHiResAssets;
 
 	SDL_Rect** _res;
 	int _resAmount, _resCurrent;
@@ -82,6 +82,8 @@ public:
 	void btnLetterboxClick(Action *action);
 	/// Handler for clicking the Lock Mouse button.
 	void btnLockMouseClick(Action *action);
+	/// Handler for clicking the Hi-res assets button.
+	void btnHiResAssetsClick(Action *action);
 	/// Handler for clicking the Root Window Pos button.
 	void btnRootWindowedModeClick(Action *action);
 	/// Handler for updating the selected battlescape scale.

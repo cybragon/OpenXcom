@@ -147,6 +147,7 @@ set ( engine_src
   Engine/FileMap.cpp
   Engine/FlcPlayer.cpp
   Engine/Font.cpp
+  Engine/HiResAssets.cpp
   Engine/HiResFont.cpp
   Engine/HiResLayer.cpp
   Engine/ImeWin32.cpp

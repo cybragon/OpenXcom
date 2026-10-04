@@ -42,7 +42,11 @@ private:
 	int _subX, _subY;
 	bool _loaded;
 
-	Surface *getFrame(SurfaceSet *set, int index) const;
+	Surface *getFrame(SurfaceSet *set, int index, bool *existed = nullptr) const;
+	/// Loads one image file into a frame (hi-res replacement of an existing frame if eligible).
+	void loadFrameImage(Surface *frame, bool existed, const std::string &fileName) const;
+	/// Loads a subX/subY sheet as hi-res replacement, false = load it as before.
+	bool loadSheetHiRes(SurfaceSet *set, int startFrame, const std::string &fileName);
 public:
 	/// Creates a blank external sprite set.
 	ExtraSprites();

@@ -92,6 +92,9 @@
     <ClCompile Include="Engine\HiResLayer.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\HiResAssets.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\ImeWin32.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
@@ -1356,6 +1359,9 @@
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\HiResLayer.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\HiResAssets.h">
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\ImeWin32.h">

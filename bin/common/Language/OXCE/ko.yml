@@ -621,3 +621,5 @@ ko:
   STR_HIRES_FONT_SIZE_DESC: "크기 조절입니다. 배치와 줄바꿈은 비트맵 글꼴과 같게 유지됩니다."
   STR_ON_UC: "켜짐"
   STR_OFF_UC: "꺼짐"
+  STR_HIRES_ASSETS: "고해상도 이미지"
+  STR_HIRES_ASSETS_DESC: "모드가 다른 크기로 바꾼 지구·기지 화면 이미지를 화면 해상도로 그립니다. 지구·기지 전용 이미지는 32비트 PNG 허용. 모드를 다시 읽거나 재시작해야 적용됩니다."

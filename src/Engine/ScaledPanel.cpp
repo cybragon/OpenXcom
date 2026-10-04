@@ -184,7 +184,7 @@ void ScaledPanel::present(SDL_Surface *screen)
 			img.w = (Sint16)dst->w; img.h = (Sint16)dst->h;
 			img.clipX = 0; img.clipY = 0;
 			img.clipW = (Sint16)dst->w; img.clipH = (Sint16)dst->h;
-			HiResLayer::record(dst, img);
+			HiResLayer::record(dst, img, true); // under the transferred commands (text, hi-res assets)
 		}
 	}
 	_scaled->setX(_x);

@@ -18,6 +18,7 @@
  */
 #include "Surface.h"
 #include "HiResLayer.h"
+#include "HiResAssets.h"
 #include "ShaderDraw.h"
 #include "ShaderMove.h"
 #include <vector>
@@ -284,6 +285,10 @@ Surface::Surface(const Surface& other) : Surface{ }
  */
 Surface::~Surface()
 {
+	if (HiResAssets::any())
+	{
+		HiResAssets::forget(_surface.get());
+	}
 	if (HiResLayer::recording())
 	{
 		HiResLayer::forgetSurface(_surface.get());
@@ -363,6 +368,10 @@ void Surface::loadScr(const std::string& filename)
 void Surface::loadImage(const std::string &filename)
 {
 	// Destroy current surface (will be replaced)
+	if (HiResAssets::any())
+	{
+		HiResAssets::forget(_surface.get());
+	}
 	_alignedBuffer = nullptr;
 	_surface = nullptr;
 
@@ -721,6 +730,10 @@ void Surface::blit(SDL_Surface *surface)
 		{
 			// hi-res draw commands travel with the pixels (and the screen tracks occlusion)
 			HiResLayer::onBlit(_surface.get(), surface, getX(), getY());
+			if (HiResAssets::any())
+			{
+				HiResAssets::onDraw(_surface.get(), 0, 0, _surface->w, _surface->h, surface, getX(), getY());
+			}
 		}
 	}
 }
@@ -991,6 +1004,19 @@ void Surface::blitNShade(SurfaceRaw<Uint8> surface, int x, int y, int shade, boo
 }
 
 /**
+ * Same as above onto a Surface. An unshaded, whole blit of a hi-res asset proxy is also
+ * recorded for the hi-res layer (shaded, halved or recoloured blits keep the 8bpp pixels).
+ */
+void Surface::blitNShade(Surface *surface, int x, int y, int shade, bool half, int newBaseColor) const
+{
+	blitRaw(SurfaceRaw<Uint8>(surface), SurfaceRaw<const Uint8>(this), x, y, shade, half, newBaseColor);
+	if (HiResAssets::any() && surface && shade == 0 && !half && newBaseColor == 0)
+	{
+		HiResAssets::onDraw(_surface.get(), 0, 0, _surface->w, _surface->h, surface->getSurface(), x, y);
+	}
+}
+
+/**
  * Specific blit function to blit battlescape terrain data in different shades in a fast way.
  * @param surface destination blit to
  * @param x
@@ -1026,6 +1052,10 @@ void Surface::invalidate(bool valid)
  */
 void Surface::resize(int width, int height)
 {
+	if (HiResAssets::any())
+	{
+		HiResAssets::forget(_surface.get());
+	}
 	// Set up new surface
 	Uint8 bpp = _surface->format->BitsPerPixel;
 	auto alignedBuffer = NewAlignedBuffer(bpp, width, height);
@@ -1088,6 +1118,16 @@ void SurfaceCrop::blit(Surface* dest)
 			destShader,
 			srcShader
 		);
+		if (HiResAssets::any() && dest)
+		{
+			const SDL_Surface *src = const_cast<Surface*>(_surface)->getSurface();
+			int cx = 0, cy = 0, cw = src->w, ch = src->h;
+			if (_crop.w || _crop.h)
+			{
+				cx = _crop.x; cy = _crop.y; cw = _crop.w; ch = _crop.h;
+			}
+			HiResAssets::onDraw(src, cx, cy, cw, ch, dest->getSurface(), _x, _y);
+		}
 	}
 }
 

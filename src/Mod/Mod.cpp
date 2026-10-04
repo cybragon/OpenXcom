@@ -24,6 +24,7 @@
 #include <climits>
 #include <cassert>
 #include "../version.h"
+#include "../Engine/HiResAssets.h"
 #include "../Engine/CrossPlatform.h"
 #include "../Engine/FileMap.h"
 #include "../Engine/Palette.h"
@@ -5524,6 +5525,7 @@ void Mod::loadVanillaResources()
 		std::string s2 = "INTERWIN.DAT";
 		_surfaces[s2] = new Surface(160, 600);
 		_surfaces[s2]->loadScr(s1);
+		HiResAssets::allowTrueColor(s2); // hi-res assets: geoscape/base-only images may be replaced by 32-bit pictures
 	}
 
 	const auto& geographFiles = FileMap::getVFolderContents("GEOGRAPH");
@@ -5534,6 +5536,7 @@ void Mod::loadVanillaResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadScr("GEOGRAPH/" + fname);
+		HiResAssets::allowTrueColor(fname);
 	}
 	auto bdys = FileMap::filterFiles(geographFiles, "BDY");
 	for (const auto& name : bdys)
@@ -5542,6 +5545,7 @@ void Mod::loadVanillaResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadBdy("GEOGRAPH/" + fname);
+		HiResAssets::allowTrueColor(fname);
 	}
 
 	auto spks = FileMap::filterFiles(geographFiles, "SPK");
@@ -5551,6 +5555,7 @@ void Mod::loadVanillaResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadSpk("GEOGRAPH/" + fname);
+		HiResAssets::allowTrueColor(fname);
 	}
 
 	// Load surface sets
@@ -5571,6 +5576,7 @@ void Mod::loadVanillaResources()
 			s2 << "GEOGRAPH/" << tab;
 			_sets[sets[i]] = new SurfaceSet(32, 40);
 			_sets[sets[i]]->loadPck(s.str(), s2.str());
+			HiResAssets::allowTrueColor(sets[i]); // BASEBITS.PCK, INTICON.PCK: geoscape/base only (TEXTURE.DAT: globe, not hi-res)
 		}
 		else
 		{
@@ -5823,6 +5829,7 @@ void Mod::loadBattlescapeResources()
 	{
 		_surfaces[scrs[i]] = new Surface(320, 200);
 		_surfaces[scrs[i]]->loadScr("UFOGRAPH/" + scrs[i]);
+		HiResAssets::denyTrueColor(scrs[i]); // battlescape image: 8-bit only
 	}
 
 	// lower case so we can find them in the contents map
@@ -5882,6 +5889,7 @@ void Mod::loadBattlescapeResources()
 
 		_surfaces[spks[i]] = new Surface(320, 200);
 		_surfaces[spks[i]]->loadSpk("UFOGRAPH/" + spks[i]);
+		HiResAssets::denyTrueColor(spks[i]); // battlescape image: 8-bit only
 	}
 
 	auto bdys = FileMap::filterFiles(ufographContents, "BDY");
@@ -5914,6 +5922,7 @@ void Mod::loadBattlescapeResources()
 		std::transform(name.begin(), name.end(), fname.begin(), toupper);
 		_surfaces[fname] = new Surface(320, 200);
 		_surfaces[fname]->loadSpk("UFOGRAPH/" + fname);
+		HiResAssets::denyTrueColor(fname); // battlescape image: 8-bit only
 	}
 
 	//"fix" of color index in original solders sprites
@@ -6234,6 +6243,12 @@ void Mod::loadExtraSprite(ExtraSprites *spritePack)
 {
 	if (spritePack->isLoaded())
 		return;
+
+	{
+		// hi-res assets: palettes to quantize 32-bit replacements of images without a palette of their own
+		auto geo = _palettes.find("PAL_GEOSCAPE"), base = _palettes.find("PAL_BASESCAPE");
+		HiResAssets::setPalettes(geo != _palettes.end() ? geo->second->getColors() : nullptr, base != _palettes.end() ? base->second->getColors() : nullptr);
+	}
 
 	if (spritePack->getSingleImage())
 	{

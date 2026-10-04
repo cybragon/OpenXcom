@@ -2,7 +2,7 @@
 set -e
 # Cross-build static Windows x64 deps for OXCE (Debian/Ubuntu: g++-mingw-w64-x86-64-posix, cmake, make, pkg-config).
 # Sources expected in $S: zlib-1.3.1 libpng-1.6.44 libogg-1.3.5 libvorbis-1.3.7 flac-1.4.3 freetype-2.13.3
-#   SDL-1.2-main (github libsdl-org/SDL-1.2) SDL_image-1.2.12 SDL_mixer-1.2.12 SDL_gfx-2.0.26
+#   SDL-1.2-main (github libsdl-org/SDL-1.2) SDL_image-1.2.12 SDL_mixer-1.2.12 SDL_gfx-2.0.26 libjpeg-turbo-3.0.4
 H=x86_64-w64-mingw32
 P=/workspace/oxce/wdeps/prefix
 S=/workspace/oxce/wdeps/src
@@ -51,11 +51,17 @@ rm -rf $B/ft && mkdir $B/ft && cd $B/ft
 cmake $S/freetype-2.13.3 -DCMAKE_TOOLCHAIN_FILE=$TC -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DFT_REQUIRE_ZLIB=ON -DFT_REQUIRE_PNG=ON -DFT_DISABLE_BZIP2=ON -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON >/dev/null
 make -j8 install >/dev/null
 
+step libjpeg-turbo
+# static, no SIMD (no nasm needed); used by SDL_image for .jpg/.jpeg (hi-res assets option only)
+rm -rf $B/jpeg && mkdir $B/jpeg && cd $B/jpeg
+cmake $S/libjpeg-turbo-3.0.4 -DCMAKE_TOOLCHAIN_FILE=$TC -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DWITH_SIMD=OFF -DWITH_TURBOJPEG=OFF -DWITH_JPEG8=OFF >/dev/null
+make -j8 install >/dev/null
+
 step SDL
 cd $S/SDL-1.2-main && ./configure $AC --disable-stdio-redirect >/dev/null && make -j8 >/dev/null && make install >/dev/null
 export SDL_CONFIG=$P/bin/sdl-config
 step SDL_image
-cd $S/SDL_image-1.2.12 && CFLAGS="-O2 -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-int-conversion" ./configure $AC --with-sdl-prefix=$P --enable-png --disable-png-shared --disable-jpg --disable-tif --disable-webp >/dev/null && make -j8 >/dev/null && make install >/dev/null
+cd $S/SDL_image-1.2.12 && CFLAGS="-O2 -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-int-conversion" ./configure $AC --with-sdl-prefix=$P --enable-png --disable-png-shared --enable-jpg --disable-jpg-shared --disable-tif --disable-webp >/dev/null && make -j8 >/dev/null && make install >/dev/null
 step SDL_mixer
 cd $S/SDL_mixer-1.2.12 && CPPFLAGS="$CPPFLAGS -DFLAC__NO_DLL" CFLAGS="-O2 -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-int-conversion" LIBS="-lvorbis -logg -lws2_32" ./configure $AC --with-sdl-prefix=$P --enable-music-ogg --disable-music-ogg-shared --enable-music-flac --disable-music-flac-shared --disable-music-mod --disable-music-mp3 --enable-music-midi --enable-music-native-midi --disable-music-timidity-midi --disable-music-fluidsynth-midi >/dev/null && make -j8 >/dev/null && make install >/dev/null
 step SDL_gfx
@@ -63,6 +69,6 @@ cd $S/SDL_gfx-2.0.26 && ./configure $AC --with-sdl-prefix=$P --disable-mmx >/dev
 step openxcom
 mkdir -p $B/oxce && cd $B/oxce
 cmake ${OXCE_SRC:-/workspace/oxce/src} -DCMAKE_TOOLCHAIN_FILE=$TC -DCMAKE_BUILD_TYPE=Release -DDEV_BUILD=OFF -DBUILD_PACKAGE=OFF -DDEPS_DIR=/nonexistent \
-  -DCMAKE_CXX_STANDARD_LIBRARIES="-lvorbisfile -lvorbis -lFLAC -logg -lpng16 -lz -lwinmm -ldxguid -lgdi32 -luser32 -lole32 -loleaut32 -limm32 -lversion -luuid -lopengl32 -lws2_32"
+  -DCMAKE_CXX_STANDARD_LIBRARIES="-lvorbisfile -lvorbis -lFLAC -logg -ljpeg -lpng16 -lz -lwinmm -ldxguid -lgdi32 -luser32 -lole32 -loleaut32 -limm32 -lversion -luuid -lopengl32 -lws2_32"
 make -j8
 echo ALLDONE

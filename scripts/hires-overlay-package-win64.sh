@@ -27,6 +27,8 @@ cp $S/libvorbis-1.3.7/COPYING $L/libvorbis_COPYING.txt
 cp $S/flac-1.4.3/COPYING.Xiph $L/FLAC_COPYING.Xiph.txt
 cp $S/libpng-1.6.44/LICENSE $L/libpng_LICENSE.txt
 cp $S/zlib-1.3.1/LICENSE $L/zlib_LICENSE.txt
+cp $S/libjpeg-turbo-3.0.4/LICENSE.md $L/libjpeg-turbo_LICENSE.md.txt
+cp $S/libjpeg-turbo-3.0.4/README.ijg $L/libjpeg-turbo_README.ijg.txt
 cp /usr/share/doc/mingw-w64-common/copyright $L/mingw-w64_copyright.txt
 cp $R/libs/rapidyaml/LICENSE.txt $L/rapidyaml_LICENSE.txt
 cp $R/libs/miniz/LICENSE $L/miniz_LICENSE.txt

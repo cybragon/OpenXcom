@@ -18,6 +18,12 @@ Statically linked libraries (full license texts in the licenses\ folder):
 - FLAC 1.4.3 (libFLAC) .............................. BSD-3-Clause (Xiph.Org) licenses\FLAC_COPYING.Xiph.txt
 - libpng 1.6.44 ..................................... libpng license (PNG Reference Library License v2) licenses\libpng_LICENSE.txt
 - zlib 1.3.1 ........................................ zlib license        licenses\zlib_LICENSE.txt
+- libjpeg-turbo 3.0.4 (libjpeg API, no SIMD) ........ IJG License + Modified (3-clause) BSD License
+                                                      licenses\libjpeg-turbo_LICENSE.md.txt, licenses\libjpeg-turbo_README.ijg.txt
+    This software is based in part on the work of the Independent JPEG Group.
+    Copyright (C) 2009-2023 D. R. Commander. Copyright (C) 2015 Viktor Szathmary.
+    Copyright (C) 1991-2020 Thomas G. Lane, Guido Vollbeding.
+    (used only for .jpg/.jpeg pictures in mods when the hi-res assets option is on)
 - MinGW-w64 runtime, winpthreads .................... MinGW-w64 / MIT-style / public domain licenses\mingw-w64_copyright.txt
 - GCC runtime (libgcc, libstdc++) ................... GPL v3 with the GCC Runtime Library Exception
 

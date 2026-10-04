@@ -55,6 +55,7 @@ namespace OpenXcom
  */
 BriefingState::BriefingState(Craft *craft, Base *base, bool infoOnly, BriefingData *customBriefing) : _infoOnly(infoOnly), _disableCutsceneAndMusic(false)
 {
+	setUiCanvasExempt(); // the briefing is not magnified (excluded)
 	Options::baseXResolution = Options::baseXGeoscape;
 	Options::baseYResolution = Options::baseYGeoscape;
 	_game->getScreen()->resetDisplay(false);

@@ -38,6 +38,11 @@
 #include "../Interface/Cursor.h"
 #include "../Interface/FpsCounter.h"
 #include "../Savegame/SavedBattleGame.h"
+#include "../Savegame/SavedGame.h"
+#include "ScaledPanel.h"
+#include "Action.h"
+#include "Options.h"
+#include "../Geoscape/GeoSidebarLayout.h"
 #include "../Mod/RuleInterface.h"
 
 namespace OpenXcom
@@ -51,7 +56,7 @@ Game* State::_game = 0;
  * By default states are full-screen.
  * @param game Pointer to the core game.
  */
-State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0), _ruleInterfaceParent(0), _customSound(nullptr)
+State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0), _ruleInterfaceParent(0), _customSound(nullptr), _uiPanel(nullptr), _uiCanvasExempt(false), _uiPartial(false), _uiPartialTop(false), _uiCornerPanel(nullptr), _uiCornerW(0), _uiCornerH(0)
 {
 	// initialize palette to all black
 	memset(_palette, 0, sizeof(_palette));
@@ -63,6 +68,8 @@ State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0
  */
 State::~State()
 {
+	delete _uiPanel;
+	delete _uiCornerPanel;
 	// Surfaces are deleted in reverse order of adding, same like local variables
 	for (auto* surface : Collections::reverse(Collections::range(_surfacesOwned)))
 	{
@@ -347,6 +354,36 @@ void State::think()
  */
 void State::handle(Action *action)
 {
+	if (_uiPanel && getUiCanvasFactor() > 1)
+	{
+		// the state lives on the magnified UI canvas: mouse coordinates in its logical space
+		// (partial/corner canvases: each surface gets the coordinates of the space it is drawn in)
+		Action mapped = _uiPanel->mapAction(action);
+		Action cornerMapped = _uiCornerPanel ? _uiCornerPanel->mapAction(action) : Action(*action);
+		auto actionFor = [&](const Surface *surface) -> Action*
+		{
+			switch (uiCanvasOf(surface))
+			{
+			case 1: return &mapped;
+			case 2: return _uiCornerPanel ? &cornerMapped : action;
+			default: return action;
+			}
+		};
+		if (!_modal)
+		{
+			for (std::vector<Surface*>::reverse_iterator i = _surfaces.rbegin(); i != _surfaces.rend(); ++i)
+			{
+				InteractiveSurface* j = dynamic_cast<InteractiveSurface*>(*i);
+				if (j != 0)
+					j->handle(actionFor(j), this);
+			}
+		}
+		else
+		{
+			_modal->handle(actionFor(_modal), this);
+		}
+		return;
+	}
 	if (!_modal)
 	{
 		for (std::vector<Surface*>::reverse_iterator i = _surfaces.rbegin(); i != _surfaces.rend(); ++i)
@@ -368,10 +405,147 @@ void State::handle(Action *action)
  */
 void State::blit()
 {
+	SDL_Surface *screen = _game->getScreen()->getSurface();
+	const int k = getUiCanvasFactor();
+	if (k > 1 && prepareUiPanel(k))
+	{
+		// all surfaces are drawn on the canvas at their own (centered 320x200) coordinates, then that
+		// 320x200 rect is magnified to the screen center; color 0 stays transparent (the globe behind
+		// keeps being drawn at the full resolution), text commands follow at 'k' x output resolution
+		const SDL_Color *pal = screen->format->palette ? screen->format->palette->colors : _palette;
+		_uiPanel->beginFrame(pal);
+		if (_uiCornerPanel)
+			_uiCornerPanel->beginFrame(pal);
+		for (auto* surface : _surfaces)
+		{
+			switch (uiCanvasOf(surface))
+			{
+			case 1: _uiPanel->blitMember(surface); break;
+			case 2: if (_uiCornerPanel) { _uiCornerPanel->blitMember(surface); break; } [[fallthrough]];
+			default: surface->blit(screen); break;
+			}
+		}
+		_uiPanel->present(screen);
+		if (_uiCornerPanel)
+			_uiCornerPanel->present(screen);
+		return;
+	}
 	for (auto* surface : _surfaces)
 	{
-		surface->blit(_game->getScreen()->getSurface());
+		surface->blit(screen);
 	}
+}
+
+/**
+ * Which canvas a surface is drawn on: 0 = directly on the screen, 1 = main canvas, 2 = corner canvas.
+ */
+int State::uiCanvasOf(const Surface *surface) const
+{
+	if (std::find(_uiCornerMembers.begin(), _uiCornerMembers.end(), surface) != _uiCornerMembers.end())
+		return 2;
+	if (_uiPartial && std::find(_uiPartialMembers.begin(), _uiPartialMembers.end(), surface) == _uiPartialMembers.end())
+		return 0;
+	return 1;
+}
+
+/**
+ * Magnifies only some surfaces of this state.
+ */
+void State::setUiCanvasPartial(const std::vector<Surface*> &members, bool top)
+{
+	_uiPartial = true;
+	_uiPartialTop = top;
+	_uiPartialMembers = members;
+	delete _uiPanel;
+	_uiPanel = nullptr;
+}
+
+/**
+ * Magnifies some surfaces of this state from the top-left screen corner.
+ */
+void State::setUiCanvasCorner(const std::vector<Surface*> &members, int w, int h)
+{
+	_uiCornerMembers = members;
+	_uiCornerW = w;
+	_uiCornerH = h;
+	delete _uiCornerPanel;
+	_uiCornerPanel = nullptr;
+}
+
+/**
+ * Excludes this state from the UI canvas.
+ */
+void State::setUiCanvasExempt(bool exempt)
+{
+	_uiCanvasExempt = exempt;
+	if (exempt)
+	{
+		delete _uiPanel;
+		_uiPanel = nullptr;
+	}
+}
+
+/**
+ * The factor of the UI canvas at the current geoscape resolution: the sidebar factor
+ * (GeoSidebarLayout) in the geoscape scale "x1, UI optimized", else 1.
+ */
+int State::uiCanvasFactorForGeoscape()
+{
+	if (Options::geoscapeScale != SCALE_SCREEN_UI)
+		return 1;
+	const int w = Options::baseXGeoscape, h = Options::baseYGeoscape;
+	int k = GeoSidebarLayout::factor(w, h, Options::displayHeight);
+	k = std::min(k, w / Screen::ORIGINAL_WIDTH);
+	k = std::min(k, h / Screen::ORIGINAL_HEIGHT);
+	return std::max(k, 1);
+}
+
+/**
+ * Magnification of this state's UI canvas: only for states shown at the geoscape
+ * resolution in the geoscape scale "x1, UI optimized" (not in battle, not while the
+ * basescape is maximized to 320x200, not for exempt states).
+ */
+int State::getUiCanvasFactor() const
+{
+	if (_uiCanvasExempt || Options::geoscapeScale != SCALE_SCREEN_UI)
+		return 1;
+	if (Options::baseXResolution != Options::baseXGeoscape || Options::baseYResolution != Options::baseYGeoscape)
+		return 1;
+	SavedGame *save = _game->getSavedGame();
+	if (save && save->getSavedBattle())
+		return 1;
+	return uiCanvasFactorForGeoscape();
+}
+
+/**
+ * Creates (or reuses) the UI canvas for the current screen size and factor.
+ */
+bool State::prepareUiPanel(int k)
+{
+	SDL_Surface *screen = _game->getScreen()->getSurface();
+	const int w = screen->w, h = screen->h;
+	const int sw = Screen::ORIGINAL_WIDTH, sh = Screen::ORIGINAL_HEIGHT;
+	if (sw * k > w || sh * k > h)
+		return false;
+	const int srcX = _game->getScreen()->getDX();
+	const int srcY = (_uiPartial && _uiPartialTop) ? 0 : _game->getScreen()->getDY();
+	const int x = (w - sw * k) / 2;
+	const int y = (_uiPartial && _uiPartialTop) ? 0 : (h - sh * k) / 2;
+	if (!_uiPanel || !_uiPanel->matches(w, h, srcX, srcY, sw, sh, k, x, y))
+	{
+		delete _uiPanel;
+		_uiPanel = new ScaledPanel(w, h, srcX, srcY, sw, sh, k, x, y);
+	}
+	if (!_uiCornerMembers.empty())
+	{
+		const int cw = std::min(_uiCornerW, w / k), ch = std::min(_uiCornerH, h / k);
+		if (!_uiCornerPanel || !_uiCornerPanel->matches(w, h, 0, 0, cw, ch, k, 0, 0))
+		{
+			delete _uiCornerPanel;
+			_uiCornerPanel = new ScaledPanel(w, h, 0, 0, cw, ch, k, 0, 0);
+		}
+	}
+	return true;
 }
 
 /**
@@ -678,11 +852,15 @@ void State::recenter(int dX, int dY)
 
 int State::getCursorX() const
 {
+	if (_uiPanel && getUiCanvasFactor() > 1)
+		return _uiPanel->mapX(_game->getCursor()->getX());
 	return _game->getCursor()->getX();
 }
 
 int State::getCursorY() const
 {
+	if (_uiPanel && getUiCanvasFactor() > 1)
+		return _uiPanel->mapY(_game->getCursor()->getY());
 	return _game->getCursor()->getY();
 }
 

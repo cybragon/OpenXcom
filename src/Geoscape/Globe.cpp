@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Globe.h"
+#include "GeoSidebarLayout.h"
 #include "../fmath.h"
 #include "../Engine/Action.h"
 #include "../Engine/SurfaceSet.h"
@@ -53,6 +54,9 @@
 #include "../Mod/Texture.h"
 #include "../Interface/Cursor.h"
 #include "../Engine/Screen.h"
+#include "../Engine/ScaledPanel.h"
+#include "../Engine/HiResLayer.h"
+#include "../Engine/State.h"
 
 namespace OpenXcom
 {
@@ -771,7 +775,8 @@ bool Globe::targetNear(Target* target, int x, int y) const
 
 	int dx = x - tx;
 	int dy = y - ty;
-	return (dx * dx + dy * dy <= NEAR_RADIUS);
+	const int s = labelScale(); // the markers are magnified too
+	return (dx * dx + dy * dy <= NEAR_RADIUS * s * s);
 }
 
 /**
@@ -1392,17 +1397,19 @@ void Globe::drawDetail()
 		_countries->unlock();
 	}
 
-	// Draw the country names
-	if (_zoom >= 2)
+	// Draw the country names (from the country's zoomLevel, default 2 like the original)
 	{
 		Text *label = new Text(150, 9, 0, 0);
 		label->setPalette(getPalette());
 		label->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
 		label->setAlign(ALIGN_CENTER);
+		ScaledPanel panel(label->getWidth(), label->getHeight(), labelScale(), 0, 0);
 
 		Sint16 x, y;
 		for (auto* country : *_game->getSavedGame()->getCountries())
 		{
+			if ((int)(_zoom) < country->getRules()->getCountryLabelZoomLevel())
+				continue;
 			// Don't draw if label is facing back
 			if (pointBack(country->getRules()->getLabelLongitude(), country->getRules()->getLabelLatitude()))
 				continue;
@@ -1410,15 +1417,13 @@ void Globe::drawDetail()
 			// Convert coordinates
 			polarToCart(country->getRules()->getLabelLongitude(), country->getRules()->getLabelLatitude(), &x, &y);
 
-			label->setX(x - 75);
-			label->setY(y);
 			label->setText(_game->getLanguage()->getString(country->getRules()->getType()));
 			label->setColor(COUNTRY_LABEL_COLOR);
 			if (country->getRules()->getLabelColor() > 0)
 			{
 				label->setColor(country->getRules()->getLabelColor());
 			}
-			label->blit(_countries->getSurface());
+			blitLabel(label, &panel, x, y);
 		}
 
 		delete label;
@@ -1430,6 +1435,7 @@ void Globe::drawDetail()
 		label->setPalette(getPalette());
 		label->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
 		label->setAlign(ALIGN_CENTER);
+		ScaledPanel panel(label->getWidth(), label->getHeight(), labelScale(), 0, 0);
 
 		Sint16 x, y;
 		for (auto& extraLabelType : _game->getMod()->getExtraGlobeLabelsList())
@@ -1444,34 +1450,36 @@ void Globe::drawDetail()
 				// Convert coordinates
 				polarToCart(rule->getLabelLongitude(), rule->getLabelLatitude(), &x, &y);
 
-				label->setX(x - 60);
-				label->setY(y);
 				label->setText(_game->getLanguage()->getString(rule->getType()));
 				label->setColor(COUNTRY_LABEL_COLOR);
 				if (rule->getLabelColor() > 0)
 				{
 					label->setColor(rule->getLabelColor());
 				}
-				label->blit(_countries->getSurface());
+				blitLabel(label, &panel, x, y);
 			}
 		}
 		delete label;
 	}
 
-	// Draw the city and base markers
-	if (_zoom >= 3)
+	// Draw the city markers and names (from the city's zoomLevel, default 3 like the original) and the base names
 	{
 		Text *label = new Text(100, 9, 0, 0);
 		label->setPalette(getPalette());
 		label->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
 		label->setAlign(ALIGN_CENTER);
 		label->setColor(CITY_LABEL_COLOR);
+		ScaledPanel panel(label->getWidth(), label->getHeight(), labelScale(), 0, 0);
+		const int below = 2 * labelScale(); // under the (magnified) marker
 
 		Sint16 x, y;
 		for (auto* region : *_game->getSavedGame()->getRegions())
 		{
 			for (auto* city : *region->getRules()->getCities())
 			{
+				// the marker goes with the name: a city is shown from its zoom level on
+				if ((int)(_zoom) < city->getZoomLevel())
+					continue;
 				drawTarget(city, _countries);
 
 				// Don't draw if city is facing back
@@ -1481,23 +1489,21 @@ void Globe::drawDetail()
 				// Convert coordinates
 				polarToCart(city->getLongitude(), city->getLatitude(), &x, &y);
 
-				label->setX(x - 50);
-				label->setY(y + 2);
 				label->setText(city->getName(_game->getLanguage()));
-				label->blit(_countries->getSurface());
+				blitLabel(label, &panel, x, y + below);
 			}
 		}
 		// Draw bases names
 		for (auto* xbase : *_game->getSavedGame()->getBases())
 		{
+			if (_zoom < 3)
+				break;
 			if (xbase->getMarker() == -1 || pointBack(xbase->getLongitude(), xbase->getLatitude()))
 				continue;
 			polarToCart(xbase->getLongitude(), xbase->getLatitude(), &x, &y);
-			label->setX(x - 50);
-			label->setY(y + 2);
 			label->setColor(BASE_LABEL_COLOR);
 			label->setText(xbase->getName());
-			label->blit(_countries->getSurface());
+			blitLabel(label, &panel, x, y + below);
 		}
 
 		delete label;
@@ -1715,6 +1721,28 @@ void Globe::drawTarget(Target *target, Surface *surface)
 		polarToCart(target->getLongitude(), target->getLatitude(), &x, &y);
 		auto i = target->getMarker();
 		auto marker = _markerSet->getFrame(i);
+		const int s = labelScale();
+		if (s > 1)
+		{
+			// "x1, UI optimized": the marker magnified (each marker pixel -> s x s pixels)
+			const bool plain = (i == CITY_MARKER || _blink > 0);
+			const int mw = marker->getWidth(), mh = marker->getHeight();
+			const int ox = x - mw * s / 2, oy = y - mh * s / 2;
+			for (int my = 0; my < mh; ++my)
+			{
+				for (int mx = 0; mx < mw; ++mx)
+				{
+					const Uint8 c = marker->getPixel(mx, my);
+					if (!c)
+						continue;
+					const Uint8 v = plain ? c : (Uint8)(c + 1);
+					for (int dy = 0; dy < s; ++dy)
+						for (int dx = 0; dx < s; ++dx)
+							surface->setPixel(ox + mx * s + dx, oy + my * s + dy, v);
+				}
+			}
+			return;
+		}
 		ShaderMove<const Uint8> surf{ marker, x - marker->getWidth() / 2, y - marker->getHeight() / 2 };
 		ShaderMove<Uint8> dest{ surface };
 
@@ -2078,7 +2106,7 @@ void Globe::toggleRadarLines()
 void Globe::resize()
 {
 	Surface *surfaces[4] = {this, _markers, _countries, _radars};
-	int width = Options::baseXGeoscape - 64;
+	int width = GeoSidebarLayout::compute(Options::baseXGeoscape, Options::baseYGeoscape).globeWidth();
 	int height = Options::baseYGeoscape;
 
 	for (int i = 0; i < 4; ++i)
@@ -2151,6 +2179,39 @@ void Globe::setCraftRange(double lon, double lat, double range)
 	_craftLon = lon;
 	_craftLat = lat;
 	_craftRange = range;
+}
+
+/**
+ * Magnification of the globe labels and markers: 2 in the geoscape scale "x1, UI optimized"
+ * while its UI is magnified (factor >= 2), else 1 (original size).
+ */
+int Globe::labelScale()
+{
+	return (Options::geoscapeScale == SCALE_SCREEN_UI && State::uiCanvasFactorForGeoscape() >= 2) ? 2 : 1;
+}
+
+/**
+ * Draws a globe label with the top-center of its box at (x, y). Magnified labels go through a
+ * ScaledPanel: the bitmap text is magnified, the hi-res text commands follow the magnification
+ * and are rendered at 'scale' x output resolution (not magnified from the bitmap).
+ */
+void Globe::blitLabel(Text *label, ScaledPanel *panel, int x, int y)
+{
+	const int s = panel->getScale();
+	const int w = label->getWidth(), h = label->getHeight();
+	if (s <= 1)
+	{
+		label->setX(x - w / 2);
+		label->setY(y);
+		label->blit(_countries->getSurface());
+		return;
+	}
+	label->setX(0);
+	label->setY(0);
+	panel->beginFrame(getPalette());
+	panel->blitMember(label);
+	panel->setPosition(x - w * s / 2, y);
+	panel->present(_countries->getSurface());
 }
 
 }

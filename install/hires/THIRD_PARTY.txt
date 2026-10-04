@@ -1,0 +1,34 @@
+Third-party components of this OpenXcom Extended build (openxcom.exe, win64)
+=============================================================================
+
+OpenXcom / OpenXcom Extended (incl. the hi-res overlay changes): GNU GPL v3 or later,
+see LICENSE.txt. This is a modified version, see CHANGELOG-hires.md.
+Corresponding source: branch release-hires-1 / tag v8.7.1-hires-1 of <REPOSITORY-URL> (to be published).
+
+Statically linked libraries (full license texts in the licenses\ folder):
+- SDL 1.2 (libsdl-org/SDL-1.2, main branch) ......... GNU LGPL 2.1        licenses\SDL-1.2_COPYING.txt
+- SDL_mixer 1.2.12 .................................. zlib license        licenses\SDL_mixer_COPYING.txt
+- SDL_image 1.2.12 .................................. zlib license        licenses\SDL_image_COPYING.txt
+- SDL_gfx 2.0.26 .................................... zlib license        licenses\SDL_gfx_LICENSE.txt
+- FreeType 2.13.3 ................................... FreeType License (FTL) licenses\FreeType_FTL.txt
+    Portions of this software are copyright (c) 2024 The FreeType Project
+    (www.freetype.org). All rights reserved.
+- libogg 1.3.5 ...................................... BSD-3-Clause (Xiph.Org) licenses\libogg_COPYING.txt
+- libvorbis 1.3.7 ................................... BSD-3-Clause (Xiph.Org) licenses\libvorbis_COPYING.txt
+- FLAC 1.4.3 (libFLAC) .............................. BSD-3-Clause (Xiph.Org) licenses\FLAC_COPYING.Xiph.txt
+- libpng 1.6.44 ..................................... libpng license (PNG Reference Library License v2) licenses\libpng_LICENSE.txt
+- zlib 1.3.1 ........................................ zlib license        licenses\zlib_LICENSE.txt
+- MinGW-w64 runtime, winpthreads .................... MinGW-w64 / MIT-style / public domain licenses\mingw-w64_copyright.txt
+- GCC runtime (libgcc, libstdc++) ................... GPL v3 with the GCC Runtime Library Exception
+
+Bundled in the OpenXcom source tree (upstream):
+- rapidyaml (libs/rapidyaml) ........................ MIT                 licenses\rapidyaml_LICENSE.txt
+- miniz (libs/miniz) ................................ MIT                 licenses\miniz_LICENSE.txt
+- xBRZ (src/Engine/Scalers/xbrz.*, Zenju) ........... GNU GPL v3
+- hqx (src/Engine/Scalers/hq*x.*, Maxim Stepin, Cameron Zemek) GNU LGPL 2.1 or later
+- Scale2x / scalebit (src/Engine/Scalers/scale*.*, Andrea Mazzoleni) GNU GPL v2 or later
+- AdLib emulation (src/Engine/Adlib, fmopl / adlplayer) see the file headers
+- Modified code from SDL_gfx (LGPL) with permission from the author (see README.md)
+
+No fonts are bundled: the hi-res text uses fonts installed on the system (see INSTALL.txt).
+No original X-COM (UFO / TFTD) game data is included.

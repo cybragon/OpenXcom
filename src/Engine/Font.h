@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <unordered_map>
+#include <string>
 #include <vector>
 #include <utility>
 #include <SDL.h>
@@ -50,6 +51,9 @@ private:
 	std::vector<FontImage> _images;
 	std::unordered_map< UCode, std::pair<size_t, SDL_Rect> > _chars;
 	bool _monospace;
+	std::string _id;                ///< font id from Font.dat (FONT_BIG...)
+	int _hiresSlot = -1;            ///< hi-res overlay font slot, -1 = none
+	mutable std::unordered_map<UCode, std::pair<int,int>> _inkRows;
 	/// Determines the size and position of each character in the font.
 	void init(size_t index, const UString &str);
 public:
@@ -75,6 +79,16 @@ public:
 	int getSpacing() const;
 	/// Gets the size of a particular character;
 	SDL_Rect getCharSize(UCode c) const;
+	/// Is this a monospace (terminal) font?
+	bool isMonospace() const { return _monospace; }
+	/// Font id (from Font.dat) and hi-res overlay slot.
+	void setId(const std::string &id, int hiresSlot) { _id = id; _hiresSlot = hiresSlot; }
+	const std::string &getId() const { return _id; }
+	int getHiResSlot() const { return _hiresSlot; }
+	/// First/last row (relative to the cell top) of the glyph body pixels (font values 1-3). False if unknown.
+	bool getInkRows(UCode c, int &top, int &bottom) const;
+	/// Does the bitmap font contain this character?
+	bool hasChar(UCode c) const { return _chars.find(c) != _chars.end(); }
 };
 
 }

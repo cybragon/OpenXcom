@@ -41,6 +41,9 @@ class Craft;
  * polar coordinates and renders it as a 3D-looking globe
  * with cartesian coordinates that the player can interact with.
  */
+class ScaledPanel;
+class Text;
+
 class Globe : public InteractiveSurface
 {
 private:
@@ -101,6 +104,12 @@ private:
 	void drawPath(Surface *surface, double lon1, double lat1, double lon2, double lat2);
 	/// Draw target marker.
 	void drawTarget(Target *target, Surface *surface);
+	/// Draws a label (a Text laid out at 0,0) with its box's top-center at (x, y), magnified labelScale() times.
+	void blitLabel(Text *label, ScaledPanel *panel, int x, int y);
+public:
+	/// Magnification of the globe labels and markers: 2 in the geoscape scale "x1, UI optimized", else 1.
+	static int labelScale();
+private:
 	/// Set up the radius of earth and stuff.
 	void setupRadii(int width, int height);
 public:

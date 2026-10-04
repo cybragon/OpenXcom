@@ -62,7 +62,8 @@ enum ScaleType
 	SCALE_SCREEN_DIV_5,
 	SCALE_SCREEN_DIV_6,
 	SCALE_SCREEN_DIV_8,
-	SCALE_SCREEN_DIV_10
+	SCALE_SCREEN_DIV_10,
+	SCALE_SCREEN_UI ///< geoscape only: 1x (globe at the output resolution) with the UI magnified ("x1, UI optimized")
 };
 /**
  * Container for all the various global game options

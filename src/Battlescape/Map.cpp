@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Map.h"
+#include "../Engine/HiResLayer.h"
 #include "Camera.h"
 #include "UnitSprite.h"
 #include "ItemSprite.h"
@@ -317,6 +318,12 @@ void Map::draw()
 	// we use colour 15 because that actually corresponds to the colour we DO want in all variations of the xcom and tftd palettes.
 	// Note: un-hardcoded the color from 15 to ruleset value, default 15
 	_redraw = false;
+	if (HiResLayer::recording())
+	{
+		// the whole map is repainted below without Surface::clear(): drop the hi-res draw commands
+		// of the previous frame too (e.g. the hidden movement message blitted into the map)
+		HiResLayer::clearSurface(getSurface());
+	}
 	ShaderDrawFunc(
 		[](Uint8& dest, Uint8 color)
 		{
@@ -1529,6 +1536,11 @@ void Map::drawTerrain(Surface *surface)
 								_txtAccuracy->setText(ss.str());
 								_txtAccuracy->draw();
 								_txtAccuracy->blitNShade(surface, screenPosition.x, screenPosition.y, 0);
+								if (HiResLayer::recording())
+								{
+									// blitNShade does not carry hi-res draw commands: propagate the TTF glyphs explicitly
+									HiResLayer::onBlit(_txtAccuracy->getSurface(), surface->getSurface(), screenPosition.x, screenPosition.y);
+								}
 							}
 						}
 						else if (_camera->getViewLevel() > itZ)
@@ -1552,6 +1564,10 @@ void Map::drawTerrain(Surface *surface)
 									_txtAccuracy->setText("0%");
 									_txtAccuracy->draw();
 									_txtAccuracy->blitNShade(surface, screenPosition.x, screenPosition.y, 0);
+									if (HiResLayer::recording())
+									{
+										HiResLayer::onBlit(_txtAccuracy->getSurface(), surface->getSurface(), screenPosition.x, screenPosition.y);
+									}
 								}
 							}
 							if (!ignore)

@@ -1,3 +1,9 @@
+> **Modified version / 비공식 수정판.** This tree is the unofficial "hi-res overlay" fork of OpenXcom
+> Extended 8.7.1, version **8.7.1-hires-1**, modified 2026-09-25 – 2026-10-04.
+> Read [README-hires.en.md](README-hires.en.md) (English) / [README-hires.ko.md](README-hires.ko.md) (한국어);
+> changes and the list of modified files: [CHANGELOG-hires.md](CHANGELOG-hires.md). License: GPLv3 (LICENSE.txt), unchanged.
+> Please do not contact the OXCE/OpenXcom teams about this fork.
+
 # OpenXcom [![Workflow Status][workflow-badge]][actions-url]
 
 [workflow-badge]: https://github.com/OpenXcom/OpenXcom/workflows/ci/badge.svg

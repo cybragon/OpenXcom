@@ -42,6 +42,7 @@ private:
 	double _labelLon, _labelLat;
 	std::vector<double> _lonMin, _lonMax, _latMin, _latMax;
 	int _labelColor, _zoomLevel;
+	bool _zoomLevelSet; ///< zoomLevel was given in the ruleset
 	const RuleEvent* _signedPactEvent = nullptr;
 	const RuleEvent* _rejoinedXcomEvent = nullptr;
 	RuleBaseFacilityFunctions _provideBaseFunc = 0;
@@ -85,8 +86,12 @@ public:
 	const std::vector<double> &getLatMin() const { return _latMin; }
 	/// Gets the country's label color.
 	int getLabelColor() const;
-	/// Gets the minimum zoom level required to display the label (Note: works for extraGlobeLabels only, not for vanilla countries).
+	/// Gets the minimum zoom level required to display the label of an extraGlobeLabels entry (0 if not set).
 	int getZoomLevel() const;
+	/// Gets the minimum zoom level required to display the label of a funding country (2 = original, if not set).
+	int getCountryLabelZoomLevel() const { return _zoomLevelSet ? _zoomLevel : COUNTRY_LABEL_DEFAULT_ZOOM; }
+	/// Default zoom level of funding country labels (original behaviour).
+	static const int COUNTRY_LABEL_DEFAULT_ZOOM = 2;
 	/// Gets the functions provided by the country.
 	RuleBaseFacilityFunctions getProvidedBaseFunc() const { return _provideBaseFunc; }
 	/// Gets the functions forbidden by the coutry.

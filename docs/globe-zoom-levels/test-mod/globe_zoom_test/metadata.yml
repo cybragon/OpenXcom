@@ -1,0 +1,5 @@
+name: "Globe label zoom levels - test"
+id: globe_zoom_test
+version: 1
+description: "Test mod for per-country / per-city globe zoom levels: Nigeria label from zoom 3, Lagos from zoom 4, Kinshasa from zoom 5."
+master: xcom1

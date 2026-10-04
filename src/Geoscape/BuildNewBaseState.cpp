@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "BuildNewBaseState.h"
+#include "GeoSidebarLayout.h"
 #include "../fmath.h"
 #include "../Engine/Game.h"
 #include "../Engine/Action.h"
@@ -63,6 +64,27 @@ BuildNewBaseState::BuildNewBaseState(Base *base, Globe *globe, bool first) : _ba
 	_btnRotateDown = new InteractiveSurface(13, 12, 271 + dx * 2, 187 + dy);
 	_btnZoomIn = new InteractiveSurface(23, 23, 295 + dx * 2, 156 + dy);
 	_btnZoomOut = new InteractiveSurface(13, 17, 300 + dx * 2, 182 + dy);
+	{
+		// hotspots over the rotate/zoom art of the geoscape sidebar, which may be magnified
+		GeoSidebarLayout side = GeoSidebarLayout::compute(Options::baseXGeoscape, Options::baseYGeoscape);
+		if (side.magnified())
+		{
+			auto place = [&](InteractiveSurface *hotspot, int bx, int by, int bw, int bh)
+			{
+				SDL_Rect r = side.blockToScreen(bx, by, bw, bh);
+				hotspot->setWidth(r.w);
+				hotspot->setHeight(r.h);
+				hotspot->setX(r.x);
+				hotspot->setY(r.y);
+			};
+			place(_btnRotateLeft, 3, 176, 12, 10);
+			place(_btnRotateRight, 27, 176, 12, 10);
+			place(_btnRotateUp, 15, 162, 13, 12);
+			place(_btnRotateDown, 15, 187, 13, 12);
+			place(_btnZoomIn, 39, 156, 23, 23);
+			place(_btnZoomOut, 44, 182, 13, 17);
+		}
+	}
 
 	_window = new Window(this, 256, 28, 0, 0);
 	_window->setX(dx);
@@ -87,6 +109,9 @@ BuildNewBaseState::BuildNewBaseState(Base *base, Globe *globe, bool first) : _ba
 	add(_window, "genericWindow", "geoscape");
 	add(_btnCancel, "genericButton2", "geoscape");
 	add(_txtTitle, "genericText", "geoscape");
+
+	// "x1, UI optimized": only the top bar is magnified; the sidebar hotspots and the globe keep screen coordinates
+	setUiCanvasPartial({ _window, _btnCancel, _txtTitle }, true);
 
 	// Set up objects
 	_globe->onMouseClick((ActionHandler)&BuildNewBaseState::globeClick);
@@ -224,7 +249,7 @@ void BuildNewBaseState::globeClick(Action *action)
 	_globe->cartToPolar(mouseX, mouseY, &lon, &lat);
 
 	// Ignore window clicks
-	if (mouseY < 28)
+	if (mouseY < 28 * getUiCanvasFactor())
 	{
 		return;
 	}

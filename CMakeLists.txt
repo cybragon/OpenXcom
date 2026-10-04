@@ -84,6 +84,9 @@ endif ()
 # Include rapidyaml lib
 include_directories(${CMAKE_SOURCE_DIR}/libs/rapidyaml)
 
+# FreeType: TTF rendering for the hi-res overlay layer (prototype)
+find_package ( Freetype REQUIRED )
+
 if(NOT UNIX AND IS_DIRECTORY ${DEPS_DIR})
    include_directories ( ${DEPS_DIR}/include/SDL ${DEPS_DIR}/include )
    if ( CMAKE_CL_64 )

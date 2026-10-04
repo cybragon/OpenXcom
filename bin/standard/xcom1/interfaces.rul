@@ -1016,7 +1016,7 @@ interfaces:
       - id: text
         color: 244   # even lighter blue
       - id: slackingIndicator
-        color: 244   # even lighter blue
+        color: 138   # yellow (idle scientists/engineers stand out from the blue sidebar)
         color2: 133  # minty green
         custom: -12  # above Intercept button
       - id: trainingIndicator

@@ -25,6 +25,7 @@
 #include "../Engine/ShaderDraw.h"
 #include "../Engine/ShaderMove.h"
 #include "../Engine/Action.h"
+#include "../Engine/HiResLayer.h"
 
 namespace OpenXcom
 {
@@ -568,15 +569,71 @@ void Text::draw()
 	// Invert text by inverting the font palette on index 3 (font palettes use indices 1-5)
 	int mid = _invert ? 3 : 0;
 
+	// Hi-res overlay: glyphs the TTF font can draw are recorded as draw commands
+	// (drawn later at output resolution) instead of being blitted as bitmap glyphs.
+	const bool hires = HiResLayer::recording();
+	auto paletteShift = [&](int src) { return (Uint8)(color + src * mul + (mid ? 2 * (mid - src) : 0)); };
+	// glyphs of one line are laid out together by the overlay (pen advance + kerning) inside the
+	// span the bitmap layout reserved for them; a bitmap-drawn glyph or a new line starts a new run
+	Uint32 run = (hires && dir > 0) ? HiResLayer::newRun() : 0;
+	Uint32 lineId = run ? HiResLayer::newRun() : 0; // squeeze: all runs of one line together
+	Uint8 alignFlags = _align == ALIGN_CENTER ? HiResCmd::GLYPH_ALIGN_CENTER : (_align == ALIGN_RIGHT ? HiResCmd::GLYPH_ALIGN_RIGHT : 0);
+	auto makeCmd = [&](UCode code, int gx, int gw)
+	{
+		HiResCmd cmd;
+		cmd.kind = HiResCmdKind::Glyph;
+		cmd.code = code;
+		cmd.run = run;
+		cmd.lineId = lineId;
+		cmd.boxW = (Sint16)getWidth();
+		cmd.boxDy = (Sint16)-y;
+		cmd.boxH = (Sint16)getHeight();
+		cmd.x = gx;
+		cmd.y = y;
+		cmd.w = gw;
+		cmd.h = font->getHeight();
+		cmd.cellH = font->getHeight();
+		cmd.lineH = (Uint8)std::max(1, font->getHeight() + font->getSpacing());
+		cmd.refW = font->hasChar(0xAC00) ? font->getCharSize(0xAC00).w : 0;
+		cmd.slot = (Uint8)std::max(0, font->getHiResSlot());
+		cmd.flags = alignFlags;
+		int t, b;
+		if (font->getInkRows('H', t, b)) { cmd.inkTopL = (Sint8)t; cmd.inkBotL = (Sint8)b; }
+		if (font->getInkRows(0xAC00, t, b)) { cmd.inkTopK = (Sint8)t; cmd.inkBotK = (Sint8)b; }
+		cmd.clipX = 0;
+		cmd.clipY = 0;
+		cmd.clipW = getWidth();
+		cmd.clipH = getHeight();
+		cmd.fillIdx = paletteShift(1); // bitmap fonts: 1 = glyph body
+		cmd.lineIdx = paletteShift(4); //               4 = outline
+		return cmd;
+	};
+
 	// Draw each letter one by one
 	for (UString::const_iterator c = s.begin(); c != s.end(); ++c)
 	{
 		if (Unicode::isSpace(*c) || *c == '\t')
 		{
+			// spaces and non-breaking spaces (thousands separators) stay inside the run, so a number
+			// like "2 100" is laid out as a whole by the overlay (NBSP: see HiResCmd::GLYPH_NBSP)
+			if (run && (*c == ' ' || *c == Unicode::TOK_NBSP) && !font->isMonospace() && HiResLayer::canRenderGlyph(' ', font->getHiResSlot()))
+			{
+				HiResCmd cmd = makeCmd(' ', x, font->getCharSize(*c).w);
+				cmd.flags |= HiResCmd::GLYPH_SPACE;
+				if (*c == Unicode::TOK_NBSP)
+					cmd.flags |= HiResCmd::GLYPH_NBSP;
+				HiResLayer::record(getSurface(), cmd);
+			}
+			else if (run)
+			{
+				run = HiResLayer::newRun(); // tabs etc.: keep the bitmap positions
+			}
 			x += dir * font->getCharSize(*c).w;
 		}
 		else if (Unicode::isLinebreak(*c))
 		{
+			if (run) run = HiResLayer::newRun();
+			if (lineId) lineId = HiResLayer::newRun();
 			line++;
 			y += font->getCharSize(*c).h;
 			x = getLineX(line);
@@ -632,10 +689,28 @@ void Text::draw()
 		{
 			if (dir < 0)
 				x += dir * font->getCharSize(*c).w;
-			auto chr = font->getChar(*c);
-			chr.setX(x);
-			chr.setY(y);
-			ShaderDraw<PaletteShift>(ShaderSurface(this, 0, 0), ShaderCrop(chr), ShaderScalar(color), ShaderScalar(mul), ShaderScalar(mid));
+			if (hires && !font->isMonospace() && HiResLayer::canRenderGlyph(*c, font->getHiResSlot()))
+			{
+				HiResCmd cmd = makeCmd(*c, x, font->getCharSize(*c).w);
+				// Dot leaders (TextList::addRow pads columns with '.') and ellipses: each dot keeps
+				// the exact bitmap position (cell mode, run 0) and splits the run, otherwise a row
+				// of TTF dots, slightly wider than the 1-2 px bitmap dots, would make the pen-mode
+				// run much wider than its span and push it into the next column.
+				if (*c == '.' && ((c + 1 != s.end() && *(c + 1) == '.') || (c != s.begin() && *(c - 1) == '.')))
+				{
+					cmd.run = 0;
+					if (run) run = HiResLayer::newRun();
+				}
+				HiResLayer::record(getSurface(), cmd);
+			}
+			else
+			{
+				if (run) run = HiResLayer::newRun();
+				auto chr = font->getChar(*c);
+				chr.setX(x);
+				chr.setY(y);
+				ShaderDraw<PaletteShift>(ShaderSurface(this, 0, 0), ShaderCrop(chr), ShaderScalar(color), ShaderScalar(mul), ShaderScalar(mid));
+			}
 			if (dir > 0)
 				x += dir * font->getCharSize(*c).w;
 		}

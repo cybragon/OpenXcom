@@ -37,6 +37,7 @@ namespace OpenXcom
 CutsceneState::CutsceneState(const std::string &cutsceneId)
 	: _cutsceneId(cutsceneId)
 {
+	setUiCanvasExempt(); // cutscenes lay themselves out (excluded)
 	// empty
 }
 

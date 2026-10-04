@@ -50,6 +50,7 @@ std::string StartState::error;
  */
 StartState::StartState() : _anim(0)
 {
+	setUiCanvasExempt(); // loading screen (before the options are applied)
 	//updateScale() uses newDisplayWidth/Height and needs to be set ahead of time
 	Options::newDisplayWidth = Options::displayWidth;
 	Options::newDisplayHeight = Options::displayHeight;

@@ -21,6 +21,7 @@
 #include "Surface.h"
 #include "FileMap.h"
 #include "Unicode.h"
+#include "HiResLayer.h"
 
 namespace OpenXcom
 {
@@ -215,12 +216,72 @@ int Font::getSpacing() const
  * @param c Font character.
  * @return Width and Height dimensions (X and Y are ignored).
  */
+bool Font::getInkRows(UCode c, int &top, int &bottom) const
+{
+	auto cached = _inkRows.find(c);
+	if (cached == _inkRows.end())
+	{
+		std::pair<int,int> rows(-1, -1);
+		auto f = _chars.find(c);
+		if (f != _chars.end())
+		{
+			const FontImage &img = _images[f->second.first];
+			const SDL_Rect &r = f->second.second;
+			int cellTop = r.y - (r.y % img.height); // rect.y is the cell top for bitmap fonts
+			img.surface->lock();
+			for (int y = r.y; y < r.y + r.h; ++y)
+			{
+				for (int x = r.x; x < r.x + r.w; ++x)
+				{
+					Uint8 v = img.surface->getPixel(x, y);
+					if (v >= 1 && v <= 3)
+					{
+						if (rows.first < 0) rows.first = y - cellTop;
+						rows.second = y - cellTop;
+						break;
+					}
+				}
+			}
+			img.surface->unlock();
+		}
+		cached = _inkRows.emplace(c, rows).first;
+	}
+	top = cached->second.first;
+	bottom = cached->second.second;
+	return top >= 0;
+}
+
 SDL_Rect Font::getCharSize(UCode c) const
 {
 	SDL_Rect size = { 0, 0, 0, 0 };
 	if (Unicode::isPrintable(c))
 	{
 		auto f = _chars.find(c);
+		if (f == _chars.end() && HiResLayer::textConfigured() && !_monospace && HiResLayer::canRenderGlyph(c, _hiresSlot))
+		{
+			// Hi-res text: the character will be drawn by the TTF overlay, but layout still
+			// happens in bitmap-font units. Hangul syllables missing from the KS X 1001 bitmap
+			// set borrow the size of U+AC00 so all syllables line up; anything else uses the
+			// TTF advance measured at the base (unscaled) size, so layout never depends on the
+			// output scale.
+			auto proxy = (c >= 0xAC00 && c <= 0xD7A3) ? _chars.find(0xAC00) : _chars.end();
+			if (proxy != _chars.end())
+			{
+				f = proxy;
+			}
+			else
+			{
+				int adv = HiResLayer::baseAdvance(c, getHeight() + getSpacing(), _hiresSlot);
+				if (adv > 0)
+				{
+					size.w = adv + getSpacing();
+					size.h = getHeight() + getSpacing();
+					size.x = size.w;
+					size.y = size.h;
+					return size;
+				}
+			}
+		}
 		if (f == _chars.end())
 			f = _chars.find('?');
 

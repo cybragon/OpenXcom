@@ -1,0 +1,62 @@
+OpenXcom Extended 8.7.1-hires-1 (고해상도 글자 오버레이, 비공식 포크, win64)
+==========================================================================
+
+비공식 수정판입니다(OXCE 8.7.1 기반, GPLv3, 릴리스 태그 예정 이름 v8.7.1-hires-1).
+자세한 설명은 README-hires.ko.md(English: README-hires.en.md), 변경 내역은 CHANGELOG-hires.md 참고.
+원작 OXCE/OpenXcom 팀에 이 빌드에 대한 문의는 하지 말아 주세요.
+이 zip에는 원본 X-COM(UFO/TFTD) 게임 데이터와 글꼴 파일이 들어 있지 않습니다.
+기존 설치는 건드리지 않고, 별도 폴더에 따로 설치해서 씁니다.
+
+1. 압축 풀기
+   zip 안의 Extended-8.7.1-hires-1 폴더를 원하는 위치에 풉니다(한글/OneDrive 경로 가능,
+   전체 경로 260자 미만). OneDrive 폴더라면 "항상 이 장치에 유지"를 권장합니다.
+
+2. 원본 UFO 데이터 넣기
+   가지고 있는 X-COM: UFO Defense(Steam/GOG 등)의 데이터 폴더 내용(GEODATA, GEOGRAPH, MAPS,
+   ROUTES, SOUND, TERRAIN, UFOGRAPH, UFOINTRO, UNITS ...)을 이 폴더의 UFO\ 안에 복사합니다.
+   TFTD 데이터가 있으면 같은 방식으로 TFTD\ 에 넣습니다(선택).
+   (복사 대신 연결: UFO 폴더를 지우고 cmd에서  mklink /J "이폴더\UFO" "원본\UFO")
+
+3. 실행 (포터블 모드)
+   OpenXcom-portable.bat 를 실행하세요:  openxcom.exe -data "<이 폴더>\." -user "<이 폴더>\user"
+   설정(options.cfg), 세이브, 로그, 모드는 모두 이 폴더의 user\ 안에만 저장됩니다.
+   서명되지 않은 exe라서 처음에 SmartScreen 창이 뜰 수 있습니다("추가 정보" > "실행").
+
+4. 고해상도 글자 (TTF)
+   - 동봉된 user\options.cfg 에 oxceHiResOverlay: true 가 들어 있어 처음부터 켜져 있습니다.
+   - 옵션 > 왼쪽 아래 "글꼴" 탭: 켜기/끄기, 기본 글꼴과 글꼴 종류별(큰 글꼴, 작은 글꼴,
+     지도 큰, 지도 작은) 글꼴과 크기. 바로 적용되고 "확인"으로 저장됩니다.
+   - 글꼴 파일은 동봉하지 않습니다. 윈도우에 설치된 글꼴을 씁니다.
+       기본(자동): 주 글꼴 Segoe UI(segoeui.ttf), 한글처럼 주 글꼴에 없는 글자는 대체 글꼴
+       맑은 고딕(malgun.ttf). 둘 다 보통 Windows에 기본으로 들어 있습니다.
+       크기: 모든 글자(라틴, 숫자, 한글, 한자, 가나)를 크기 하나로 그립니다. 그 크기는 한글 '각'
+       (실제로 그리는 글꼴, 기본은 맑은 고딕)의 높이가 글꼴 종류별 본체 높이가 되도록 정합니다.
+       찾는 위치: %WINDIR%\Fonts, %LOCALAPPDATA%\Microsoft\Windows\Fonts(사용자 설치 글꼴),
+                  레지스트리에 등록된 글꼴.
+       새 글꼴을 쓰려면 .ttf/.otf/.ttc 파일을 우클릭 > "설치"(또는 "모든 사용자용으로 설치")한 뒤
+       "글꼴" 탭에서 주 글꼴을 고르거나, options.cfg 의 oxceHiResFont(주 글꼴)와
+       oxceHiResFontFallback(대체 글꼴)에 파일 이름(예: NanumGothic.ttf)이나 전체 경로를 적습니다
+       (여러 개는 ; 로 구분, 앞의 것부터 사용).
+       찾는 순서: oxceHiResFont > oxceHiResFontFallback > segoeui.ttf > malgun.ttf > gulim.ttc >
+       batang.ttc > NanumGothic.ttf > NotoSansCJK-Regular.ttc > DejaVuSans.ttf > AppleSDGothicNeo.ttc.
+       글자마다 이 순서에서 그 글자가 있는 첫 글꼴로 그립니다. 하나도 없으면 원래 비트맵 글꼴로 돌아갑니다.
+   - 화면이 원본(320x200 배율 1)보다 커야 효과가 있습니다(예: 창 1280x800).
+
+5. 지구 화면 "x1, UI 최적화"
+   - 옵션 > 비디오 > "지구 화면 스케일"에서 "x1, UI 최적화": 지구본은 x1(넓은 지도), 사이드바와
+     창은 확대합니다. 지구 화면 배경은 지구본 영역을 덮도록 채웁니다.
+   - 소프트웨어 출력(OpenGL 끔)에서 Scale/HQX/xBRZ 필터를 고르면 UI 그림(사이드바, 창)도 그 필터로
+     확대합니다(고해상도 글꼴을 꺼도 적용). OpenGL 셰이더에는 적용되지 않습니다.
+
+6. options.cfg 전용 옵션 (게임 안 메뉴 없음)
+   oxceHiResTextOutlineScale: 100   글자 테두리 두께(%). 글꼴 종류별 기본 두께(큰 글꼴·지도 큰 1px,
+                                    작은 글꼴·지도 작은 0.5px, 원본 1배 기준)에 곱함. 0~400.
+   oxceHiResTextBold: 45            글자 굵게(1/10 % em). 0이면 굵게 안 함.
+   oxceHiResFontSize: 100           전체 글자 크기(%).
+   oxceHiResTextHinting: 1          0 끔, 1 light, 2 normal, 3 mono.
+   oxceHiResTextAntialias: true
+
+7. 기타
+   - MinGW-w64(GCC 14)로 교차 컴파일, 모든 라이브러리 정적 링크(별도 DLL 없음). MP3/MOD 음악 미지원.
+   - 문제가 생기면 user\openxcom.log 를 확인하세요.
+   - 라이선스: OpenXcom은 GPLv3(LICENSE.txt), 라이브러리 고지는 THIRD_PARTY.txt 와 licenses\.

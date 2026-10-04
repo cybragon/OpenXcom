@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Inventory.h"
+#include "../Engine/HiResLayer.h"
 #include <algorithm>
 #include <cmath>
 #include "../Mod/Mod.h"
@@ -644,6 +645,11 @@ void Inventory::blit(SDL_Surface *surface)
 	_grid->blitNShade(this, 0, 0);
 	_items->blitNShade(this, 0, 0);
 	_gridLabels->blitNShade(this, 0, 0);
+	if (HiResLayer::recording())
+	{
+		// blitNShade does not carry hi-res draw commands: propagate the TTF slot labels explicitly
+		HiResLayer::onBlit(_gridLabels->getSurface(), getSurface(), 0, 0);
+	}
 	_selection->blitNShade(this, _selection->getX(), _selection->getY());
 	_warning->blit(this->getSurface());
 	Surface::blit(surface);

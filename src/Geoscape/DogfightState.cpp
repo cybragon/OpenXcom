@@ -394,6 +394,9 @@ DogfightState::DogfightState(GeoscapeState *state, Craft *craft, Ufo *ufo, bool 
 	add(_txtStatus, "text", "dogfight", _window);
 	add(_btnMinimizedIcon);
 	add(_txtInterceptionNumber, "minimizedNumber", "dogfight");
+	// "x1, UI optimized": the windows use the magnified 320x200 frame like other states, the minimized
+	// icons (top-left screen corner, up to 4 stacked) are magnified from that corner
+	setUiCanvasCorner({ _btnMinimizedIcon, _txtInterceptionNumber }, 40, 100);
 
 	_btnStandoff->invalidate(false);
 	_btnCautious->invalidate(false);

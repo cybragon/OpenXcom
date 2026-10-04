@@ -70,6 +70,9 @@ namespace OpenXcom
  */
 BasescapeState::BasescapeState(Base *base, Globe *globe) : _base(base), _globe(globe)
 {
+	// maximizeInfoScreens: the basescape and everything opened from it use the 320x200 base resolution
+	_maximized.enter(_game);
+
 	// Create objects
 	_txtFacility = new Text(192, 9, 0, 0);
 	_view = new BaseView(192, 192, 0, 8);
@@ -294,6 +297,7 @@ void BasescapeState::btnNewBaseClick(Action *)
 {
 	Base *base = new Base(_game->getMod());
 	_game->popState();
+	_maximized.leave(); // back to the geoscape resolution before the globe state is laid out
 	_game->pushState(new BuildNewBaseState(base, _globe, false));
 }
 

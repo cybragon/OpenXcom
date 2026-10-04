@@ -29,8 +29,10 @@
 #include "../Mod/Mod.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Screen.h"
+#include "../Engine/UiImageScaler.h"
 #include "../Engine/Sound.h"
 #include "../Engine/Surface.h"
+#include "../Engine/ScaledPanel.h"
 #include "../Engine/Options.h"
 #include "../Engine/Collections.h"
 #include "../Engine/Unicode.h"
@@ -61,6 +63,7 @@
 #include "UfoTrackerState.h"
 #include "InterceptState.h"
 #include "../Basescape/BasescapeState.h"
+#include "../Basescape/MaximizedBasescape.h"
 #include "../Basescape/SellState.h"
 #include "../Basescape/ManageAlienContainmentState.h"
 #include "../Basescape/TechTreeViewerState.h"
@@ -144,59 +147,63 @@ namespace OpenXcom
  */
 GeoscapeState::GeoscapeState() : _pause(false), _zoomInEffectDone(false), _zoomOutEffectDone(false), _minimizedDogfights(0), _slowdownCounter(0)
 {
+	setUiCanvasExempt(); // the geoscape itself: globe at full resolution, own magnified sidebar
 	int screenWidth = Options::baseXGeoscape;
 	int screenHeight = Options::baseYGeoscape;
+	_sidebarLayout = GeoSidebarLayout::compute(screenWidth, screenHeight);
+	// the sidebar widgets are laid out in the original way inside their space: the whole screen
+	// (scale 1, original layout) or a small logical panel shown magnified (see GeoSidebarLayout)
+	const int sideW = _sidebarLayout.spaceW();
+	const int sideH = _sidebarLayout.spaceH();
 
 	// Create objects
 	Surface *hd = _game->getMod()->getSurface("ALTGEOBORD.SCR");
 	_bg = new Surface(hd->getWidth(), hd->getHeight(), 0, 0);
-	_sideLine = new Surface(64, screenHeight, screenWidth - 64, 0);
-	_sidebar = new Surface(64, 200, screenWidth - 64, screenHeight / 2 - 100);
+	_sideLine = new Surface(_sidebarLayout.width(), screenHeight, screenWidth - _sidebarLayout.width(), 0);
+	_sidebar = new Surface(64, 200, sideW - 64, sideH / 2 - 100);
 
-	_globe = new Globe(_game, (screenWidth-64)/2, screenHeight/2, screenWidth-64, screenHeight, 0, 0);
-	_bg->setX((_globe->getWidth() - _bg->getWidth()) / 2);
-	_bg->setY((_globe->getHeight() - _bg->getHeight()) / 2);
+	_globe = new Globe(_game, _sidebarLayout.globeWidth()/2, screenHeight/2, _sidebarLayout.globeWidth(), screenHeight, 0, 0);
 
-	_btnIntercept = new TextButton(63, 11, screenWidth-63, screenHeight/2-100);
-	_btnBases = new TextButton(63, 11, screenWidth-63, screenHeight/2-88);
-	_btnGraphs = new TextButton(63, 11, screenWidth-63, screenHeight/2-76);
-	_btnUfopaedia = new TextButton(63, 11, screenWidth-63, screenHeight/2-64);
-	_btnOptions = new TextButton(63, 11, screenWidth-63, screenHeight/2-52);
-	_btnFunding = new TextButton(63, 11, screenWidth-63, screenHeight/2-40);
+	_btnIntercept = new TextButton(63, 11, sideW-63, sideH/2-100);
+	_btnBases = new TextButton(63, 11, sideW-63, sideH/2-88);
+	_btnGraphs = new TextButton(63, 11, sideW-63, sideH/2-76);
+	_btnUfopaedia = new TextButton(63, 11, sideW-63, sideH/2-64);
+	_btnOptions = new TextButton(63, 11, sideW-63, sideH/2-52);
+	_btnFunding = new TextButton(63, 11, sideW-63, sideH/2-40);
 
-	_btn5Secs = new TextButton(31, 13, screenWidth-63, screenHeight/2+12);
-	_btn1Min = new TextButton(31, 13, screenWidth-31, screenHeight/2+12);
-	_btn5Mins = new TextButton(31, 13, screenWidth-63, screenHeight/2+26);
-	_btn30Mins = new TextButton(31, 13, screenWidth-31, screenHeight/2+26);
-	_btn1Hour = new TextButton(31, 13, screenWidth-63, screenHeight/2+40);
-	_btn1Day = new TextButton(31, 13, screenWidth-31, screenHeight/2+40);
+	_btn5Secs = new TextButton(31, 13, sideW-63, sideH/2+12);
+	_btn1Min = new TextButton(31, 13, sideW-31, sideH/2+12);
+	_btn5Mins = new TextButton(31, 13, sideW-63, sideH/2+26);
+	_btn30Mins = new TextButton(31, 13, sideW-31, sideH/2+26);
+	_btn1Hour = new TextButton(31, 13, sideW-63, sideH/2+40);
+	_btn1Day = new TextButton(31, 13, sideW-31, sideH/2+40);
 
-	_btnRotateLeft = new InteractiveSurface(12, 10, screenWidth-61, screenHeight/2+76);
-	_btnRotateRight = new InteractiveSurface(12, 10, screenWidth-37, screenHeight/2+76);
-	_btnRotateUp = new InteractiveSurface(13, 12, screenWidth-49, screenHeight/2+62);
-	_btnRotateDown = new InteractiveSurface(13, 12, screenWidth-49, screenHeight/2+87);
-	_btnZoomIn = new InteractiveSurface(23, 23, screenWidth-25, screenHeight/2+56);
-	_btnZoomOut = new InteractiveSurface(13, 17, screenWidth-20, screenHeight/2+82);
+	_btnRotateLeft = new InteractiveSurface(12, 10, sideW-61, sideH/2+76);
+	_btnRotateRight = new InteractiveSurface(12, 10, sideW-37, sideH/2+76);
+	_btnRotateUp = new InteractiveSurface(13, 12, sideW-49, sideH/2+62);
+	_btnRotateDown = new InteractiveSurface(13, 12, sideW-49, sideH/2+87);
+	_btnZoomIn = new InteractiveSurface(23, 23, sideW-25, sideH/2+56);
+	_btnZoomOut = new InteractiveSurface(13, 17, sideW-20, sideH/2+82);
 
-	int height = (screenHeight - Screen::ORIGINAL_HEIGHT) / 2 + 10;
-	_sideTop = new TextButton(63, height, screenWidth-63, _sidebar->getY() - height - 1);
-	_sideBottom = new TextButton(63, height, screenWidth-63, _sidebar->getY() + _sidebar->getHeight() + 1);
+	int height = (sideH - Screen::ORIGINAL_HEIGHT) / 2 + 10;
+	_sideTop = new TextButton(63, height, sideW-63, _sidebar->getY() - height - 1);
+	_sideBottom = new TextButton(63, height, sideW-63, _sidebar->getY() + _sidebar->getHeight() + 1);
 
-	_txtHour = new Text(20, 16, screenWidth-61, screenHeight/2-26);
-	_txtHourSep = new Text(4, 16, screenWidth-41, screenHeight/2-26);
-	_txtMin = new Text(20, 16, screenWidth-37, screenHeight/2-26);
-	_txtMinSep = new Text(4, 16, screenWidth-17, screenHeight/2-26);
-	_txtSec = new Text(11, 8, screenWidth-13, screenHeight/2-20);
-	_txtWeekday = new Text(59, 8, screenWidth-61, screenHeight/2-13);
-	_txtDay = new Text(29, 8, screenWidth-61, screenHeight/2-6);
-	_txtMonth = new Text(29, 8, screenWidth-32, screenHeight/2-6);
-	_txtYear = new Text(59, 8, screenWidth-61, screenHeight/2+1);
-	_txtFunds = new Text(59, 8, screenWidth-61, screenHeight/2-27);
+	_txtHour = new Text(20, 16, sideW-61, sideH/2-26);
+	_txtHourSep = new Text(4, 16, sideW-41, sideH/2-26);
+	_txtMin = new Text(20, 16, sideW-37, sideH/2-26);
+	_txtMinSep = new Text(4, 16, sideW-17, sideH/2-26);
+	_txtSec = new Text(11, 8, sideW-13, sideH/2-20);
+	_txtWeekday = new Text(59, 8, sideW-61, sideH/2-13);
+	_txtDay = new Text(29, 8, sideW-61, sideH/2-6);
+	_txtMonth = new Text(29, 8, sideW-32, sideH/2-6);
+	_txtYear = new Text(59, 8, sideW-61, sideH/2+1);
+	_txtFunds = new Text(59, 8, sideW-61, sideH/2-27);
 
 	int slackingIndicatorOffset = _game->getMod()->getInterface("geoscape")->getElement("slackingIndicator")->custom;
-	_txtSlacking = new Text(59, 17, screenWidth - 61, screenHeight / 2 - 100 + slackingIndicatorOffset);
+	_txtSlacking = new Text(59, 17, sideW - 61, sideH / 2 - 100 + slackingIndicatorOffset);
 	int trainingIndicatorOffset = _game->getMod()->getInterface("geoscape")->getElement("trainingIndicator")->custom;
-	_txtTraining = new Text(59, 17, screenWidth - 61, screenHeight / 2 + 100 + trainingIndicatorOffset);
+	_txtTraining = new Text(59, 17, sideW - 61, sideH / 2 + 100 + trainingIndicatorOffset);
 
 	_timeSpeed = _btn5Secs;
 	_gameTimer = new Timer(Options::geoClockSpeed);
@@ -263,12 +270,21 @@ GeoscapeState::GeoscapeState() : _pause(false), _zoomInEffectDone(false), _zoomO
 	add(_cbxArea, "button", "geoscape");
 	add(_cbxCountry, "button", "geoscape");
 
+	_sidebarSurfaces = { _sidebar,
+		_btnIntercept, _btnBases, _btnGraphs, _btnUfopaedia, _btnOptions, _btnFunding,
+		_btn5Secs, _btn1Min, _btn5Mins, _btn30Mins, _btn1Hour, _btn1Day,
+		_btnRotateLeft, _btnRotateRight, _btnRotateUp, _btnRotateDown, _btnZoomIn, _btnZoomOut,
+		_sideTop, _sideBottom,
+		_txtFunds, _txtHour, _txtHourSep, _txtMin, _txtMinSep, _txtSec, _txtWeekday, _txtDay, _txtMonth, _txtYear,
+		_txtSlacking, _txtTraining };
+	createSidebarPanel();
+
 	// Set up objects
 	Surface *geobord = _game->getMod()->getSurface("GEOBORD.SCR");
 	geobord->setX(_sidebar->getX() - geobord->getWidth() + _sidebar->getWidth());
 	geobord->setY(_sidebar->getY());
 	_sidebar->copy(geobord);
-	_game->getMod()->getSurface("ALTGEOBORD.SCR")->blitNShade(_bg, 0, 0);
+	layoutBackground();
 
 	_sideLine->drawRect(0, 0, _sideLine->getWidth(), _sideLine->getHeight(), 15);
 
@@ -505,11 +521,42 @@ GeoscapeState::~GeoscapeState()
 }
 
 /**
+ * Creates the magnified sidebar panel (tall geoscape resolutions), see GeoSidebarLayout.
+ */
+void GeoscapeState::createSidebarPanel()
+{
+	_sidebarPanel.reset();
+	if (!_sidebarLayout.magnified())
+		return;
+	_sidebarPanel = std::make_unique<ScaledPanel>(_sidebarLayout.logicalW, _sidebarLayout.logicalH, _sidebarLayout.scale, _sidebarLayout.x, _sidebarLayout.y);
+	for (auto* surface : _sidebarSurfaces)
+		_sidebarPanel->add(surface);
+}
+
+/**
  * Handle blitting of Geoscape and Dogfights.
  */
 void GeoscapeState::blit()
 {
-	State::blit();
+	if (!_sidebarPanel)
+	{
+		State::blit();
+	}
+	else
+	{
+		// the magnified sidebar: its widgets are drawn on the logical panel, which is then
+		// magnified onto the right edge of the screen (it overlaps nothing else of this state)
+		SDL_Surface *screen = _game->getScreen()->getSurface();
+		_sidebarPanel->beginFrame(_sidebar->getPalette());
+		for (auto* surface : _surfaces)
+		{
+			if (_sidebarPanel->contains(surface))
+				_sidebarPanel->blitMember(surface);
+			else
+				surface->blit(screen);
+		}
+		_sidebarPanel->present(screen);
+	}
 	for (auto* dfs : _dogfights)
 	{
 		dfs->blit();
@@ -524,7 +571,21 @@ void GeoscapeState::handle(Action *action)
 {
 	if (_dogfights.size() == _minimizedDogfights)
 	{
-		State::handle(action);
+		if (!_sidebarPanel || _modal)
+		{
+			State::handle(action);
+		}
+		else
+		{
+			// sidebar widgets live in the logical space of the magnified panel
+			Action mapped = _sidebarPanel->mapAction(action);
+			for (auto i = _surfaces.rbegin(); i != _surfaces.rend(); ++i)
+			{
+				InteractiveSurface* j = dynamic_cast<InteractiveSurface*>(*i);
+				if (j != 0)
+					j->handle(_sidebarPanel->contains(j) ? &mapped : action, this);
+			}
+		}
 	}
 
 	if (action->getDetails()->type == SDL_KEYDOWN)
@@ -4722,6 +4783,13 @@ void GeoscapeState::resize(int &dX, int &dY)
 {
 	if (_game->getSavedGame()->getSavedBattle())
 		return;
+	// maximized basescape on top: the base resolution is 320x200, relayout from the geoscape resolution
+	const bool maximizedBase = MaximizedBasescape::active();
+	if (maximizedBase)
+	{
+		Options::baseXResolution = _sidebarLayout.screenW;
+		Options::baseYResolution = _sidebarLayout.screenH;
+	}
 	dX = Options::baseXResolution;
 	dY = Options::baseYResolution;
 	int divisor = 1;
@@ -4755,10 +4823,16 @@ void GeoscapeState::resize(int &dX, int &dY)
 		divisor = 2;
 		break;
 	case SCALE_SCREEN:
+	case SCALE_SCREEN_UI:
 		break;
 	default:
 		dX = 0;
 		dY = 0;
+		if (maximizedBase)
+		{
+			Options::baseXResolution = Screen::ORIGINAL_WIDTH;
+			Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
+		}
 		return;
 	}
 
@@ -4770,28 +4844,90 @@ void GeoscapeState::resize(int &dX, int &dY)
 
 	_globe->resize();
 
+	GeoSidebarLayout oldLayout = _sidebarLayout;
+	_sidebarLayout = GeoSidebarLayout::compute(Options::baseXResolution, Options::baseYResolution);
+	const bool sidebarModeChange = oldLayout.magnified() || _sidebarLayout.magnified();
+	// top-left corner of the original 64x200 block, in the space of the sidebar widgets
+	const int oldAnchorX = oldLayout.spaceW() - 64, oldAnchorY = _sidebar->getY();
+	const int newAnchorX = _sidebarLayout.spaceW() - 64, newAnchorY = _sidebarLayout.spaceH() / 2 - 100;
+
 	for (auto* surface : _surfaces)
 	{
-		if (surface != _globe)
+		if (surface == _globe)
+			continue;
+		if (sidebarModeChange && std::find(_sidebarSurfaces.begin(), _sidebarSurfaces.end(), surface) != _sidebarSurfaces.end())
+		{
+			surface->setX(surface->getX() + newAnchorX - oldAnchorX);
+			surface->setY(surface->getY() + newAnchorY - oldAnchorY);
+		}
+		else
 		{
 			surface->setX(surface->getX() + dX);
 			surface->setY(surface->getY() + dY/2);
 		}
 	}
 
-	_bg->setX((_globe->getWidth() - _bg->getWidth()) / 2);
-	_bg->setY((_globe->getHeight() - _bg->getHeight()) / 2);
+	layoutBackground();
 
-	int height = (Options::baseYResolution - Screen::ORIGINAL_HEIGHT) / 2 + 10;
+	int height = (_sidebarLayout.spaceH() - Screen::ORIGINAL_HEIGHT) / 2 + 10;
 	_sideTop->setHeight(height);
 	_sideTop->setY(_sidebar->getY() - height - 1);
 	_sideBottom->setHeight(height);
 	_sideBottom->setY(_sidebar->getY() + _sidebar->getHeight() + 1);
 
+	if (sidebarModeChange)
+	{
+		_sideLine->setWidth(_sidebarLayout.width());
+		_sideLine->setX(Options::baseXResolution - _sidebarLayout.width());
+	}
 	_sideLine->setHeight(Options::baseYResolution);
 	_sideLine->setY(0);
 	_sideLine->drawRect(0, 0, _sideLine->getWidth(), _sideLine->getHeight(), 15);
+
+	createSidebarPanel();
+
+	if (maximizedBase)
+	{
+		// the basescape screens above keep their 320x200 layout
+		Options::baseXResolution = Screen::ORIGINAL_WIDTH;
+		Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
+		dX = 0;
+		dY = 0;
+	}
 }
+/**
+ * Places the space background behind the globe. In the geoscape scale "x1, UI optimized" a picture
+ * smaller than the globe area is magnified to cover it (aspect kept, edges cropped); otherwise
+ * (and in the other scales) the picture keeps its size, centred on the globe area.
+ */
+void GeoscapeState::layoutBackground()
+{
+	Surface *img = _game->getMod()->getSurface("ALTGEOBORD.SCR");
+	const int gw = _globe->getWidth(), gh = _globe->getHeight();
+	const bool cover = Options::geoscapeScale == SCALE_SCREEN_UI && UiImageScaler::coverFactor(img->getWidth(), img->getHeight(), gw, gh) > 1.0;
+	const int w = cover ? gw : img->getWidth(), h = cover ? gh : img->getHeight();
+	const bool resized = _bg->getWidth() != w || _bg->getHeight() != h;
+	if (resized)
+	{
+		_bg->setWidth(w);
+		_bg->setHeight(h);
+	}
+	if (cover)
+	{
+		_bg->clear();
+		UiImageScaler::blitCover(img, _bg);
+	}
+	else if (resized || !_bgDrawn)
+	{
+		_bg->clear();
+		img->blitNShade(_bg, 0, 0);
+	}
+	_bgDrawn = true;
+	_bg->invalidate(false); // setWidth/setHeight ask for a redraw, which would clear the picture
+	_bg->setX(_globe->getX() + (gw - w) / 2);
+	_bg->setY(_globe->getY() + (gh - h) / 2);
+}
+
 bool GeoscapeState::buttonsDisabled()
 {
 	return _zoomInEffectTimer->isRunning() || _zoomOutEffectTimer->isRunning();

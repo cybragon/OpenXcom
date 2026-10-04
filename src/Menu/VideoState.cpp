@@ -45,6 +45,7 @@ namespace OpenXcom
 VideoState::VideoState(const std::vector<std::string> *videos, const std::vector<std::string> *tracks, bool useUfoAudioSequence)
 		: _videos(videos), _tracks(tracks), _useUfoAudioSequence(useUfoAudioSequence)
 {
+	setUiCanvasExempt(); // videos lay themselves out
 }
 
 /**

@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Surface.h"
+#include "HiResLayer.h"
 #include "ShaderDraw.h"
 #include "ShaderMove.h"
 #include <vector>
@@ -283,7 +284,10 @@ Surface::Surface(const Surface& other) : Surface{ }
  */
 Surface::~Surface()
 {
-
+	if (HiResLayer::recording())
+	{
+		HiResLayer::forgetSurface(_surface.get());
+	}
 }
 
 /**
@@ -537,6 +541,10 @@ void Surface::loadBdy(const std::string &filename)
 void Surface::clear()
 {
 	CleanSdlSurface(_surface.get());
+	if (HiResLayer::recording())
+	{
+		HiResLayer::clearSurface(_surface.get());
+	}
 }
 
 /**
@@ -709,6 +717,11 @@ void Surface::blit(SDL_Surface *surface)
 		target.x = getX();
 		target.y = getY();
 		SDL_BlitSurface(_surface.get(), nullptr, surface, &target);
+		if (HiResLayer::recording())
+		{
+			// hi-res draw commands travel with the pixels (and the screen tracks occlusion)
+			HiResLayer::onBlit(_surface.get(), surface, getX(), getY());
+		}
 	}
 }
 

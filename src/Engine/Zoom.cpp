@@ -36,6 +36,7 @@
 // xBRZ
 
 #include "Scalers/xbrz.h"
+#include "HiResLayer.h"
 
 #if (_MSC_VER >= 1400) || (defined(__MINGW32__) && defined(__SSE2__))
 
@@ -677,6 +678,8 @@ void Zoom::flipWithZoom(SDL_Surface *src, SDL_Surface *dst, int topBlackBand, in
 			SDL_BlitSurface(src, 0, glOut->surface.get(), 0); // TODO; this is less than ideal...
 
 			glOut->refresh(glOut->linear, glOut->iwidth, glOut->iheight, dst->w, dst->h, topBlackBand, bottomBlackBand, leftBlackBand, rightBlackBand);
+			// hi-res overlay pass (text now, images later), drawn at output resolution
+			HiResLayer::renderGL(glOut, dst->w, dst->h, topBlackBand, bottomBlackBand, leftBlackBand, rightBlackBand, nullptr);
 			SDL_GL_SwapBuffers();
 		}
 #endif
@@ -841,6 +844,21 @@ int Zoom::_zoomSurfaceY(SDL_Surface * src, SDL_Surface * dst, int flipx, int fli
 	{
 		Log(LOG_INFO) << "Using software scaling routine. For best results, try an OpenGL filter.";
 		proclaimed = true;
+	}
+
+	if (src->format->BytesPerPixel == 4 && dst->format->BytesPerPixel == 4)
+	{
+		// 32bpp nearest-neighbour zoom; only reached when the hi-res overlay forces a true-colour
+		// buffer without a 32bpp scaler (the vanilla code never has a 32bpp buffer here)
+		for (int y = 0; y < dst->h; ++y)
+		{
+			int sy = (int)((long long)y * src->h / dst->h);
+			const Uint32 *sp32 = (const Uint32*)((const Uint8*)src->pixels + sy * src->pitch);
+			Uint32 *dp32 = (Uint32*)((Uint8*)dst->pixels + y * dst->pitch);
+			for (int x = 0; x < dst->w; ++x)
+				dp32[x] = sp32[(long long)x * src->w / dst->w];
+		}
+		return 0;
 	}
 
 	/*

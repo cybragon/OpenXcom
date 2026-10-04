@@ -86,6 +86,18 @@
     <ClCompile Include="Engine\Font.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\HiResFont.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\HiResLayer.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\ScaledPanel.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\UiImageScaler.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Game.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
@@ -507,6 +519,9 @@
       <Filter>Basescape</Filter>
     </ClCompile>
     <ClCompile Include="Basescape\ManufactureState.cpp">
+      <Filter>Basescape</Filter>
+    </ClCompile>
+    <ClCompile Include="Basescape\MaximizedBasescape.cpp">
       <Filter>Basescape</Filter>
     </ClCompile>
     <ClCompile Include="Geoscape\ResearchCompleteState.cpp">
@@ -1088,6 +1103,9 @@
     <ClCompile Include="Menu\OptionsFoldersState.cpp">
       <Filter>Menu</Filter>
     </ClCompile>
+    <ClCompile Include="Menu\OptionsFontsState.cpp">
+      <Filter>Menu</Filter>
+    </ClCompile>
     <ClCompile Include="Savegame\HitLog.cpp">
       <Filter>Savegame</Filter>
     </ClCompile>
@@ -1235,6 +1253,9 @@
     <ClInclude Include="Basescape\ManufactureState.h">
       <Filter>Basescape</Filter>
     </ClInclude>
+    <ClInclude Include="Basescape\MaximizedBasescape.h">
+      <Filter>Basescape</Filter>
+    </ClInclude>
     <ClInclude Include="Basescape\ManageAlienContainmentState.h">
       <Filter>Basescape</Filter>
     </ClInclude>
@@ -1326,6 +1347,18 @@
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Font.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\HiResFont.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\HiResLayer.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\ScaledPanel.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\UiImageScaler.h">
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Game.h">
@@ -1446,6 +1479,9 @@
       <Filter>Geoscape</Filter>
     </ClInclude>
     <ClInclude Include="Geoscape\Globe.h">
+      <Filter>Geoscape</Filter>
+    </ClInclude>
+    <ClInclude Include="Geoscape\GeoSidebarLayout.h">
       <Filter>Geoscape</Filter>
     </ClInclude>
     <ClInclude Include="Geoscape\GraphsState.h">
@@ -2370,6 +2406,9 @@
       <Filter>Basescape</Filter>
     </ClInclude>
     <ClInclude Include="Menu\OptionsFoldersState.h">
+      <Filter>Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Menu\OptionsFontsState.h">
       <Filter>Menu</Filter>
     </ClInclude>
     <ClInclude Include="Savegame\HitLog.h">

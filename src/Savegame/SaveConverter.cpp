@@ -137,7 +137,7 @@ void SaveConverter::getList(Language *lang, SaveOriginal info[NUM_SAVES])
 		GameTime time = GameTime(0, day, month + 1, year, hour, minute, 0);
 
 		std::ostringstream ssDate, ssTime;
-		ssDate << time.getDayString(lang) << "  " << lang->getString(time.getMonthString()) << "  " << time.getYear();
+		ssDate << time.getDateString(lang, "  ");
 		ssTime << time.getHour() << ":" << std::setfill('0') << std::setw(2) << time.getMinute();
 
 		save.id = id;

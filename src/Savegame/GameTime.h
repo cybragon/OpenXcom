@@ -74,6 +74,14 @@ public:
 	int getYear() const;
 	// Gets a string version of the ingame date and time.
 	std::string getFullString() const;
+	/// Gets the order of the date parts (0 = day, 1 = month, 2 = year) and their tokens from STR_DATE_FORMAT.
+	static void getDateOrder(Language *lang, int order[3], std::string tokens[3]);
+	/// Gets the date parts (day, month, year with the literals of STR_DATE_FORMAT) in display order.
+	void getDateParts(Language *lang, std::string parts[3], int order[3]) const;
+	/// Gets the ingame date formatted with STR_DATE_FORMAT (parts joined with sep).
+	std::string getDateString(Language *lang, const std::string &sep = " ") const;
+	/// Formats a year with the year token of STR_DATE_FORMAT.
+	static std::string formatYear(Language *lang, int year);
 	/// Gets the position of the daylight according to the ingame time.
 	double getDaylight() const;
 };

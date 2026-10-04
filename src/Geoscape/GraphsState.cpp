@@ -256,14 +256,10 @@ GraphsState::GraphsState() : _butRegionsOffset(0), _butCountriesOffset(0), _zoom
 		if (month > 11)
 		{
 			month = 0;
-			std::ostringstream ss;
-			ss << _game->getSavedGame()->getTime()->getYear();
-			_txtYears->setCellText(0, iter/2, ss.str());
+			_txtYears->setCellText(0, iter/2, GameTime::formatYear(_game->getLanguage(), _game->getSavedGame()->getTime()->getYear()));
 			if (iter > 2)
 			{
-				std::ostringstream ss2;
-				ss2 << (_game->getSavedGame()->getTime()->getYear()-1);
-				_txtYears->setCellText(0, 0, ss2.str());
+				_txtYears->setCellText(0, 0, GameTime::formatYear(_game->getLanguage(), _game->getSavedGame()->getTime()->getYear()-1));
 			}
 		}
 		_txtMonths->setCellText(0, iter, tr(months[month]));

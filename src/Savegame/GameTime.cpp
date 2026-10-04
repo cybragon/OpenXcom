@@ -19,6 +19,8 @@
 #include "GameTime.h"
 #include "../Engine/Language.h"
 #include <iomanip>
+#include <sstream>
+#include <vector>
 
 namespace OpenXcom
 {
@@ -259,6 +261,111 @@ std::string GameTime::getMonthString() const
 int GameTime::getYear() const
 {
 	return _year;
+}
+
+/**
+ * Reads STR_DATE_FORMAT ("{0}" = day string, "{1}" = month name, "{2}" = year, separated by spaces,
+ * e.g. "{0} {1} {2}" or "{2}년 {1} {0}"). Each space separated token holds one placeholder plus
+ * optional literals. A missing or malformed format falls back to day month year.
+ * @param lang Language.
+ * @param order Output: component (0 day, 1 month, 2 year) at each display position.
+ * @param tokens Output: token text at each display position.
+ */
+void GameTime::getDateOrder(Language *lang, int order[3], std::string tokens[3])
+{
+	static const char *ph[3] = { "{0}", "{1}", "{2}" };
+	bool ok = false;
+	if (lang)
+	{
+		std::string fmt = lang->getString("STR_DATE_FORMAT");
+		std::vector<std::string> tok;
+		std::istringstream in(fmt);
+		std::string t;
+		while (in >> t) tok.push_back(t);
+		if (tok.size() == 3)
+		{
+			bool seen[3] = { false, false, false };
+			ok = true;
+			for (int i = 0; i < 3 && ok; ++i)
+			{
+				int found = -1;
+				for (int c = 0; c < 3; ++c)
+				{
+					if (tok[i].find(ph[c]) != std::string::npos)
+					{
+						if (found != -1) found = -2;
+						else found = c;
+					}
+				}
+				if (found < 0 || seen[found]) ok = false;
+				else { seen[found] = true; order[i] = found; tokens[i] = tok[i]; }
+			}
+		}
+	}
+	if (!ok)
+	{
+		for (int i = 0; i < 3; ++i) { order[i] = i; tokens[i] = ph[i]; }
+	}
+}
+
+namespace
+{
+std::string replacePlaceholder(std::string token, int comp, const std::string &value)
+{
+	const std::string ph = "{" + std::to_string(comp) + "}";
+	size_t pos = token.find(ph);
+	if (pos != std::string::npos) token.replace(pos, ph.size(), value);
+	return token;
+}
+}
+
+/**
+ * Returns the date parts in the display order of STR_DATE_FORMAT.
+ * @param lang Language.
+ * @param parts Output: formatted part at each position.
+ * @param order Output: component (0 day, 1 month, 2 year) at each position.
+ */
+void GameTime::getDateParts(Language *lang, std::string parts[3], int order[3]) const
+{
+	std::string tokens[3];
+	getDateOrder(lang, order, tokens);
+	const std::string values[3] = { getDayString(lang), lang->getString(getMonthString()), std::to_string(_year) };
+	for (int i = 0; i < 3; ++i)
+	{
+		parts[i] = replacePlaceholder(tokens[i], order[i], values[order[i]]);
+	}
+}
+
+/**
+ * Returns the ingame date formatted with STR_DATE_FORMAT.
+ * @param lang Language.
+ * @param sep Separator between the parts.
+ * @return Date string.
+ */
+std::string GameTime::getDateString(Language *lang, const std::string &sep) const
+{
+	std::string parts[3];
+	int order[3];
+	getDateParts(lang, parts, order);
+	return parts[0] + sep + parts[1] + sep + parts[2];
+}
+
+/**
+ * Formats a year with the year token of STR_DATE_FORMAT (e.g. "1999" or "1999년").
+ * @param lang Language.
+ * @param year Year.
+ * @return Year string.
+ */
+std::string GameTime::formatYear(Language *lang, int year)
+{
+	int order[3];
+	std::string tokens[3];
+	getDateOrder(lang, order, tokens);
+	for (int i = 0; i < 3; ++i)
+	{
+		if (order[i] == 2) return replacePlaceholder(tokens[i], 2, std::to_string(year));
+	}
+	return std::to_string(year);
 }
 
 /**

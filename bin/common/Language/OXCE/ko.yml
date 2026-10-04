@@ -420,8 +420,6 @@ ko:
   STR_SELF_DESTRUCT_CANCELLED: "자폭 취소"
   STR_MISSILE_DAMAGED: ">>> 미사일이 손상됨 <<<"
   STR_MISSILE_DESTROYED: ">>> 미사일이 파괴됨 <<<"
-  STR_OCEAN_INDICATOR: ""
-  STR_OCEAN_INDICATOR_RNG: ""
   STR_EXTENDED_LINKS: "링크"
   STR_AUTO_PATROL: "자동 순찰"
   STR_ETA: "예상도착시간:>{ALT}{0}"
@@ -600,7 +598,10 @@ ko:
   STR_RACE_BONUS: "종족 보너스"
   STR_FOR_DIFFICULTY: "다음 난이도에서: {0}"
   STR_NOT_AWARDED_YET: "아직 포상을 받지 못함"
-#OptionsFontsState.cpp (hi-res text overlay, local prototype)
+# ---- 8.7.1-hires fork strings: keep this group at the end of the file (re-append after a Transifex refresh) ----
+  STR_DATE_FORMAT: "{2}년 {1} {0}"
+  STR_OCEAN_INDICATOR: ""
+  STR_OCEAN_INDICATOR_RNG: ""
   STR_GEOSCAPE_SCALE_X1_UI: "x1, UI 최적화"
   STR_HIRES_FONTS: "글꼴"
   STR_HIRES_TEXT: "고해상도 TTF 글자"

@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "SoldierDiaryOverviewState.h"
+#include "../Savegame/GameTime.h"
 #include "SoldierDiaryPerformanceState.h"
 #include "SoldierDiaryMissionState.h"
 #include "SoldierInfoState.h"
@@ -154,7 +155,14 @@ SoldierDiaryOverviewState::SoldierDiaryOverviewState(Base *base, size_t soldierI
 
 	_txtDate->setText(tr("STR_DATE_UC"));
 
-	_lstDiary->setColumns(5, 104, 98, 30, 25, 35);
+	{
+		// date columns (day 30, month 25, year 35) in the order of STR_DATE_FORMAT
+		const int w[3] = { 30, 25, 35 };
+		int order[3];
+		std::string tokens[3];
+		GameTime::getDateOrder(_game->getLanguage(), order, tokens);
+		_lstDiary->setColumns(5, 104, 98, w[order[0]], w[order[1]], w[order[2]]);
+	}
 	_lstDiary->setSelectable(true);
 	_lstDiary->setBackground(_window);
 	_lstDiary->setMargin(8);
@@ -214,7 +222,7 @@ void SoldierDiaryOverviewState::init()
 
 		std::ostringstream deathDateText;
 		const GameTime *t = _soldier->getDeath()->getTime();
-		deathDateText << t->getDayString(_game->getLanguage()) << " " << _game->getLanguage()->getString(t->getMonthString()) << " " << t->getYear();
+		deathDateText << t->getDateString(_game->getLanguage());
 
 		_txtDeathTitle->setText(deathTitleText);
 		_txtDeathDate->setText(deathDateText.str());
@@ -243,14 +251,15 @@ void SoldierDiaryOverviewState::init()
 			continue;
 		}
 
-		std::ostringstream ss;
-		ss << missionStats->time.getYear();
+		std::string parts[3];
+		int order[3];
+		missionStats->time.getDateParts(_game->getLanguage(), parts, order);
 
 		_lstDiary->addRow(5, missionStats->getMissionName(_game->getLanguage()).c_str(),
 							 missionStats->getRatingString(_game->getLanguage()).c_str(),
-							 missionStats->time.getDayString(_game->getLanguage()).c_str(),
-							 tr(missionStats->time.getMonthString()).c_str(),
-							 ss.str().c_str());
+							 parts[0].c_str(),
+							 parts[1].c_str(),
+							 parts[2].c_str());
 		row++;
 	}
 	if (row > 0 && _lstDiary->getScroll() >= row)

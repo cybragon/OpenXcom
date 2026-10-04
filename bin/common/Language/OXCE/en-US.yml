@@ -720,7 +720,8 @@ en-US:
   STR_FOR_DIFFICULTY: "for difficulty: {0}"
 #UfopaediaSelectState.cpp
   STR_NOT_AWARDED_YET: "Not awarded yet"
-#OptionsFontsState.cpp (hi-res text overlay, local prototype)
+# ---- 8.7.1-hires fork strings: keep this group at the end of the file (re-append after a Transifex refresh) ----
+  STR_DATE_FORMAT: "{0} {1} {2}"
   STR_GEOSCAPE_SCALE_X1_UI: "x1, UI optimized"
   STR_HIRES_FONTS: "FONTS"
   STR_HIRES_TEXT: "Hi-res TTF text"

@@ -120,7 +120,7 @@ void StatisticsState::listStats()
 	{
 		ss << tr("STR_STATISTICS");
 	}
-	ss << Unicode::TOK_NL_SMALL << time->getDayString(_game->getLanguage()) << " " << tr(time->getMonthString()) << " " << time->getYear();
+	ss << Unicode::TOK_NL_SMALL << time->getDateString(_game->getLanguage());
 	_txtTitle->setText(ss.str());
 
 	int totalScore = sumVector(save->getResearchScores());

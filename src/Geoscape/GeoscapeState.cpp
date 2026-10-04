@@ -885,17 +885,32 @@ void GeoscapeState::timeDisplay()
 	ss3 << _game->getSavedGame()->getTime()->getHour();
 	_txtHour->setText(ss3.str());
 
-	std::ostringstream ss4;
-	ss4 << _game->getSavedGame()->getTime()->getDayString(_game->getLanguage());
-	_txtDay->setText(ss4.str());
-
-	_txtWeekday->setText(tr(_game->getSavedGame()->getTime()->getWeekdayString()));
-
-	_txtMonth->setText(tr(_game->getSavedGame()->getTime()->getMonthString()));
-
-	std::ostringstream ss5;
-	ss5 << _game->getSavedGame()->getTime()->getYear();
-	_txtYear->setText(ss5.str());
+	// date lines follow STR_DATE_FORMAT: day first -> weekday / day month / year (original),
+	// year first -> year / month day / weekday
+	std::string parts[3];
+	int order[3];
+	_game->getSavedGame()->getTime()->getDateParts(_game->getLanguage(), parts, order);
+	const std::string weekday = tr(_game->getSavedGame()->getTime()->getWeekdayString());
+	std::string mid[2];
+	int nMid = 0;
+	std::string yearPart;
+	for (int i = 0; i < 3; ++i)
+	{
+		if (order[i] == 2) yearPart = parts[i];
+		else mid[nMid++] = parts[i];
+	}
+	if (order[0] == 2)
+	{
+		_txtWeekday->setText(yearPart);
+		_txtYear->setText(weekday);
+	}
+	else
+	{
+		_txtWeekday->setText(weekday);
+		_txtYear->setText(yearPart);
+	}
+	_txtDay->setText(mid[0]);
+	_txtMonth->setText(mid[1]);
 }
 
 /**

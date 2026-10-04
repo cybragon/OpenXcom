@@ -105,7 +105,14 @@ SoldierMemorialState::SoldierMemorialState()
 
 	_txtLost->setText(tr("STR_SOLDIERS_LOST_UC").arg(lost));
 
-	_lstSoldiers->setColumns(5, 114, 88, 30, 25, 35);
+	{
+		// date columns (day 30, month 25, year 35) in the order of STR_DATE_FORMAT
+		const int w[3] = { 30, 25, 35 };
+		int order[3];
+		std::string tokens[3];
+		GameTime::getDateOrder(_game->getLanguage(), order, tokens);
+		_lstSoldiers->setColumns(5, 114, 88, w[order[0]], w[order[1]], w[order[2]]);
+	}
 	_lstSoldiers->setSelectable(true);
 	_lstSoldiers->setBackground(_window);
 	_lstSoldiers->setMargin(8);
@@ -222,11 +229,10 @@ void SoldierMemorialState::fillMemorialList()
 
 		const SoldierDeath *death = deadSoldier->getDeath();
 
-		std::ostringstream saveDay, saveMonth, saveYear;
-		saveDay << death->getTime()->getDayString(_game->getLanguage());
-		saveMonth << tr(death->getTime()->getMonthString());
-		saveYear << death->getTime()->getYear();
-		_lstSoldiers->addRow(5, deadSoldier->getName().c_str(), tr(deadSoldier->getRankString()).c_str(), saveDay.str().c_str(), saveMonth.str().c_str(), saveYear.str().c_str());
+		std::string parts[3];
+		int order[3];
+		death->getTime()->getDateParts(_game->getLanguage(), parts, order);
+		_lstSoldiers->addRow(5, deadSoldier->getName().c_str(), tr(deadSoldier->getRankString()).c_str(), parts[0].c_str(), parts[1].c_str(), parts[2].c_str());
 		_indices.push_back(index);
 	}
 }

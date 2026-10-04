@@ -29,6 +29,7 @@
 #include "../Engine/Unicode.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -56,7 +57,7 @@ namespace OpenXcom
 		add(_txtTitle);
 
 		// Set up objects
-		_game->getMod()->getSurface(defs->image_id)->blitNShade(_bg, 0, 0);
+		HiResAssets::fit(_game->getMod()->getSurface(defs->image_id), 320, 200)->blitNShade(_bg, 0, 0);
 		_btnOk->setColor(Palette::blockOffset(15)-1);
 		_btnPrev->setColor(Palette::blockOffset(15)-1);
 		_btnNext->setColor(Palette::blockOffset(15)-1);

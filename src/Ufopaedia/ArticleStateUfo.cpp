@@ -30,6 +30,7 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Mod/RuleInterface.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -84,7 +85,7 @@ namespace OpenXcom
 		}
 		else
 		{
-			crop = _game->getMod()->getSurface(ufo->getModSprite())->getCrop();
+			crop = HiResAssets::fit(_game->getMod()->getSurface(ufo->getModSprite()), 160, 52)->getCrop();
 		}
 		crop.setX(0);
 		crop.setY(0);

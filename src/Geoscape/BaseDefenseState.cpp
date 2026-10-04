@@ -40,6 +40,7 @@
 #include "../Engine/Timer.h"
 #include "../Engine/Options.h"
 #include "../Mod/RuleInterface.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -142,7 +143,7 @@ BaseDefenseState::BaseDefenseState(Base *base, Ufo *ufo, GeoscapeState *state, b
 		}
 		else
 		{
-			crop = _game->getMod()->getSurface(ufo->getRules()->getModSprite())->getCrop();
+			crop = HiResAssets::fit(_game->getMod()->getSurface(ufo->getRules()->getModSprite()), 160, 52)->getCrop();
 		}
 		crop.setX(dogfightInterface->getElement("previewTop")->x);
 		crop.setY(dogfightInterface->getElement("previewTop")->h);

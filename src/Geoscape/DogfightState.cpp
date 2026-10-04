@@ -54,6 +54,7 @@
 #include "DogfightErrorState.h"
 #include "../Mod/RuleInterface.h"
 #include "../Mod/Mod.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -469,7 +470,7 @@ DogfightState::DogfightState(GeoscapeState *state, Craft *craft, Ufo *ufo, bool 
 	}
 	else
 	{
-		crop = _game->getMod()->getSurface(ufo->getRules()->getModSprite())->getCrop();
+		crop = HiResAssets::fit(_game->getMod()->getSurface(ufo->getRules()->getModSprite()), 160, 52)->getCrop();
 	}
 	crop.setX(dogfightInterface->getElement("previewTop")->x);
 	crop.setY(dogfightInterface->getElement("previewTop")->h);

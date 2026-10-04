@@ -25,6 +25,7 @@
 #include "../Mod/RuleInterface.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -126,14 +127,14 @@ namespace OpenXcom
 		auto& bgImageName = ruleInterface->getBackgroundImage(_game->getMod(), _game->getSavedGame());
 		if (!defs->customPalette)
 		{
-			_game->getMod()->getSurface(bgImageName)->blitNShade(_bg, 0, 0);
+			HiResAssets::fit(_game->getMod()->getSurface(bgImageName), 320, 200)->blitNShade(_bg, 0, 0);
 		}
 
 		// Step 2: article image (optional)
 		Surface *image = _game->getMod()->getSurface(defs->image_id, false);
 		if (image)
 		{
-			image->blitNShade(_bg, 0, 0);
+			HiResAssets::fit(image, 320, 200)->blitNShade(_bg, 0, 0);
 		}
 
 		// Step 3: info button image
@@ -148,7 +149,7 @@ namespace OpenXcom
 				case UFOPAEDIA_TYPE_TFTD_CRAFT:
 				case UFOPAEDIA_TYPE_TFTD_CRAFT_WEAPON:
 				case UFOPAEDIA_TYPE_TFTD_USO:
-					button->blitNShade(_bg, 0, 0);
+					HiResAssets::fit(button, 320, 200)->blitNShade(_bg, 0, 0);
 					break;
 				default:
 					break;

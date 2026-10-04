@@ -31,6 +31,7 @@
 #include "../Mod/Unit.h"
 #include "../Mod/Armor.h"
 #include "../Mod/RuleItem.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -70,7 +71,7 @@ namespace OpenXcom
 		// Set up objects
 		if (!defs->image_id.empty())
 		{
-			_game->getMod()->getSurface(defs->image_id)->blitNShade(_bg, 0, 0);
+			HiResAssets::fit(_game->getMod()->getSurface(defs->image_id), 320, 200)->blitNShade(_bg, 0, 0);
 		}
 		else
 		{

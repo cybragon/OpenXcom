@@ -45,6 +45,7 @@
 #include "../Savegame/Soldier.h"
 #include "../Savegame/Transfer.h"
 #include "../Ufopaedia/Ufopaedia.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -82,7 +83,7 @@ GeoscapeEventState::GeoscapeEventState(const RuleEvent& eventRule) : _eventRule(
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface(_eventRule.getBackground()));
+	_window->setBackground(HiResAssets::fit(_game->getMod()->getSurface(_eventRule.getBackground()), 320, 200));
 
 	_txtTitle->setAlign(ALIGN_CENTER);
 	_txtTitle->setBig();

@@ -33,6 +33,7 @@
 #include "../Interface/TextList.h"
 #include "../Mod/RuleInterface.h"
 #include "../Savegame/Soldier.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -84,14 +85,14 @@ namespace OpenXcom
 			auto& bgImageName = itf->getBackgroundImage(_game->getMod(), _game->getSavedGame());
 			if (!bgImageName.empty())
 			{
-				_game->getMod()->getSurface(bgImageName)->blitNShade(_bg, 0, 0);
+				HiResAssets::fit(_game->getMod()->getSurface(bgImageName), 320, 200)->blitNShade(_bg, 0, 0);
 			}
 		}
 
 		if (customArmorSprite)
 		{
 			// blit on the background, so that text and button are always visible
-			customArmorSprite->blitNShade(_bg, 0, 0);
+			HiResAssets::fit(customArmorSprite, 320, 200)->blitNShade(_bg, 0, 0);
 		}
 		else if (armor->hasLayersDefinition())
 		{

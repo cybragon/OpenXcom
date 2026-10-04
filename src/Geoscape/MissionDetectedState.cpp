@@ -28,6 +28,7 @@
 #include "../Engine/Options.h"
 #include "InterceptState.h"
 #include "../Mod/AlienDeployment.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -69,7 +70,7 @@ MissionDetectedState::MissionDetectedState(MissionSite *mission, GeoscapeState *
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface(mission->getDeployment()->getAlertBackground()));
+	_window->setBackground(HiResAssets::fit(_game->getMod()->getSurface(mission->getDeployment()->getAlertBackground()), 320, 200));
 
 	_btnIntercept->setText(tr("STR_INTERCEPT"));
 	_btnIntercept->onMouseClick((ActionHandler)&MissionDetectedState::btnInterceptClick);

@@ -24,6 +24,7 @@
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
 #include "../Engine/Options.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -80,7 +81,7 @@ void ErrorMessageState::create(const std::string &str, SDL_Color *palette, Uint8
 
 	// Set up objects
 	_window->setColor(color);
-	_window->setBackground(_game->getMod()->getSurface(bg));
+	_window->setBackground(HiResAssets::fit(_game->getMod()->getSurface(bg), 320, 200));
 
 	_btnOk->setColor(color);
 	_btnOk->setText(tr("STR_OK"));

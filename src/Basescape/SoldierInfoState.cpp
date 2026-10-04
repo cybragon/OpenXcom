@@ -47,6 +47,7 @@
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Savegame/SoldierDeath.h"
+#include "../Engine/HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -439,7 +440,8 @@ void SoldierInfoState::init()
 		}
 		flagId << index + _soldier->getRules()->getFlagOffset();
 	}
-	Surface *flagTexture = _game->getMod()->getSurface(flagId.str().c_str(), false);
+	// hi-res assets: a flag larger than the 40x20 box is drawn fitted (right-aligned by its fitted width)
+	Surface *flagTexture = HiResAssets::fit(_game->getMod()->getSurface(flagId.str().c_str(), false), _flag->getWidth(), _flag->getHeight());
 	_flag->clear();
 	if (flagTexture != 0)
 	{

@@ -44,6 +44,7 @@
 #include "Options.h"
 #include "../Geoscape/GeoSidebarLayout.h"
 #include "../Mod/RuleInterface.h"
+#include "HiResAssets.h"
 
 namespace OpenXcom
 {
@@ -147,7 +148,7 @@ void State::setWindowBackground(Window *window, const std::string &s)
  */
 void State::setWindowBackgroundImage(Window* window, const std::string& bgImageName)
 {
-	const auto* bgImage = _game->getMod()->getSurface(bgImageName);
+	const auto* bgImage = HiResAssets::fit(_game->getMod()->getSurface(bgImageName), 320, 200);
 	window->setBackground(bgImage);
 }
 
@@ -682,7 +683,7 @@ void State::applyBattlescapeTheme(const std::string& category)
 		Window* window = dynamic_cast<Window*>(surface);
 		if (window)
 		{
-			window->setBackground(_game->getMod()->getSurface(altBg));
+			window->setBackground(HiResAssets::fit(_game->getMod()->getSurface(altBg), 320, 200));
 		}
 		TextList* list = dynamic_cast<TextList*>(surface);
 		if (list)

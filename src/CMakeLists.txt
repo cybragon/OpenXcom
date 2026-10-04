@@ -149,6 +149,7 @@ set ( engine_src
   Engine/Font.cpp
   Engine/HiResFont.cpp
   Engine/HiResLayer.cpp
+  Engine/ImeWin32.cpp
   Engine/ScaledPanel.cpp
   Engine/UiImageScaler.cpp
   Engine/Game.cpp
@@ -630,7 +631,7 @@ endif ()
 
 if (WIN32)
   set(CMAKE_EXE_LINKER_FLAGS -Wl,--export-all-symbols)
-  set(WIN32_LIBS imagehlp dbghelp)
+  set(WIN32_LIBS imagehlp dbghelp imm32)
 endif(WIN32)
 
 target_link_libraries ( openxcom ${system_libs} ${PKG_DEPS_LDFLAGS} Freetype::Freetype ${EXTRA_XCOM_LIBS} ${WIN32_LIBS} )

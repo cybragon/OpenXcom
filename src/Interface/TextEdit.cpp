@@ -18,10 +18,13 @@
  */
 #include "TextEdit.h"
 #include <cmath>
+#include <algorithm>
 #include "../Engine/Action.h"
 #include "../Engine/Font.h"
 #include "../Engine/Timer.h"
 #include "../Engine/Options.h"
+#include "../Engine/ImeWin32.h"
+#include <cstdlib>
 #include "../fallthrough.h"
 
 namespace OpenXcom
@@ -53,6 +56,7 @@ TextEdit::TextEdit(State *state, int width, int height, int x, int y) : Interact
  */
 TextEdit::~TextEdit()
 {
+	Ime::unfocus(this);
 	delete _text;
 	delete _caret;
 	delete _timer;
@@ -98,9 +102,21 @@ void TextEdit::setFocus(bool focus, bool modal)
 			_timer->start();
 			if (_modal)
 				_state->setModal(this);
+			// IME only in free text fields (numeric fields keep it off)
+			Ime::focus(this, _textEditConstraint == TEC_NONE && Options::keyboardMode == KEYBOARD_ON);
+#ifndef _WIN32
+			// test hook (no IME on this platform): show a fake composition, e.g. OXCE_IME_TEST_COMPOSITION=한
+			if (const char *t = std::getenv("OXCE_IME_TEST_COMPOSITION"))
+			{
+				if (_textEditConstraint == TEC_NONE && Options::keyboardMode == KEYBOARD_ON)
+					_composition = Unicode::convUtf8ToUtf32(t);
+			}
+#endif
 		}
 		else
 		{
+			commitComposition();
+			Ime::unfocus(this);
 			_blink = false;
 			_timer->stop();
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
@@ -150,6 +166,43 @@ void TextEdit::setText(const std::string &text)
 {
 	_value = Unicode::convUtf8ToUtf32(text);
 	_caretPos = _value.length();
+	_redraw = true;
+}
+
+/**
+ * Sets the IME composition (syllable in progress), drawn underlined at the caret.
+ * It is not part of the value; the width limit is checked when it is committed.
+ * @param comp Composition string (empty = none).
+ */
+void TextEdit::setComposition(const UString &comp)
+{
+	if (comp != _composition)
+	{
+		_composition = comp;
+		_redraw = true;
+	}
+}
+
+/**
+ * Inserts the current composition at the caret (as if typed) and clears it.
+ */
+void TextEdit::commitComposition()
+{
+	if (_composition.empty())
+	{
+		return;
+	}
+	UString comp;
+	comp.swap(_composition);
+	for (UCode c : comp)
+	{
+		if (isValidChar(c) && !exceedsMaxWidth(c))
+		{
+			_value.insert(_caretPos, 1, c);
+			_caretPos++;
+		}
+	}
+	Ime::cancelComposition(this);
 	_redraw = true;
 }
 
@@ -284,6 +337,10 @@ void TextEdit::setPalette(const SDL_Color *colors, int firstcolor, int ncolors)
 void TextEdit::think()
 {
 	_timer->think(0, this);
+	if (_isFocused)
+	{
+		Ime::think(this);
+	}
 }
 
 /**
@@ -304,6 +361,11 @@ void TextEdit::draw()
 {
 	Surface::draw();
 	UString newValue = _value;
+	const bool composing = _isFocused && !_composition.empty() && Options::keyboardMode == KEYBOARD_ON;
+	if (composing)
+	{
+		newValue.insert(std::min(_caretPos, newValue.length()), _composition);
+	}
 	if (Options::keyboardMode == KEYBOARD_OFF)
 	{
 		if (_isFocused && _blink)
@@ -326,9 +388,8 @@ void TextEdit::draw()
 	}
 
 	_text->blit(this->getSurface());
-	if (Options::keyboardMode == KEYBOARD_ON)
+	if (Options::keyboardMode == KEYBOARD_ON && _isFocused)
 	{
-		if (_isFocused && _blink)
 		{
 			int x = 0;
 			switch (_text->getAlign())
@@ -347,6 +408,11 @@ void TextEdit::draw()
 			{
 				x += _text->getFont()->getCharSize(_value[i]).w;
 			}
+			int compStart = x;
+			for (UCode c : (composing ? _composition : UString()))
+			{
+				x += _text->getFont()->getCharSize(c).w;
+			}
 			_caret->setX(x);
 			int y = 0;
 			switch (_text->getVerticalAlign())
@@ -362,7 +428,17 @@ void TextEdit::draw()
 				break;
 			}
 			_caret->setY(y);
-			_caret->blit(this->getSurface());
+			if (composing && x > compStart)
+			{
+				// underline the composition
+				int uy = std::min(y + _text->getFont()->getHeight(), getHeight() - 1);
+				drawLine(compStart, uy, x - 1, uy, getColor());
+			}
+			Ime::setCaret(this, getX() + compStart, getY() + y, _text->getFont()->getHeight());
+			if (_blink)
+			{
+				_caret->blit(this->getSurface());
+			}
 		}
 	}
 }
@@ -543,6 +619,8 @@ void TextEdit::keyboardPress(Action *action, State *state)
 			break;
 		case SDLK_ESCAPE:
 			{
+				_composition.clear();
+				Ime::cancelComposition(this);
 				_value = Unicode::convUtf8ToUtf32("");
 				_caretPos = 0;
 			}
@@ -550,6 +628,7 @@ void TextEdit::keyboardPress(Action *action, State *state)
 			// no break; do the ENTER action too
 		case SDLK_RETURN:
 		case SDLK_KP_ENTER:
+			commitComposition();
 			if (!_value.empty() || _enter != 0)
 			{
 				enterPressed = true;

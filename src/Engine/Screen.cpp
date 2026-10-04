@@ -35,6 +35,7 @@
 #include "Zoom.h"
 #include "Timer.h"
 #include "HiResLayer.h"
+#include "ImeWin32.h"
 #include <SDL.h>
 
 namespace OpenXcom
@@ -364,6 +365,7 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 	if (resetVideo || _screen->format->BitsPerPixel != _bpp)
 	{
 		Log(LOG_INFO) << "Attempting to set display to " << width << "x" << height << "x" << _bpp << "...";
+		Ime::detach(); // the window may be recreated
 
 #if defined __linux__ || defined _WIN32 || defined  __CYGWIN__
 		// Workaround for segfault when switching to opengl
@@ -513,6 +515,11 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 
 	// the hi-res overlay is rendered by the OpenGL output path and by the software path with a 32bpp output
 	HiResLayer::setScreen(_surface.get(), useOpenGL() || (_screen && _screen->format->BitsPerPixel == 32 && _surface->format->BitsPerPixel == 32));
+
+	// IME (Windows): (re)subclass the window, candidate window position = base px * picture scale + letterbox
+	Ime::attach();
+	Ime::setGeometry((getWidth() - _leftBlackBand - _rightBlackBand) / (double)_baseWidth,
+		(getHeight() - _topBlackBand - _bottomBlackBand) / (double)_baseHeight, _leftBlackBand, _topBlackBand);
 }
 
 /**

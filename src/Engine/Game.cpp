@@ -18,6 +18,7 @@
  */
 #include "Game.h"
 #include "HiResLayer.h"
+#include "ImeWin32.h"
 #include "../resource.h"
 #include <algorithm>
 #include <cmath>
@@ -133,6 +134,7 @@ Game::~Game()
 	delete _screen;
 	delete _fpsCounter;
 	HiResLayer::shutdown();
+	Ime::detach();
 
 	Mix_CloseAudio();
 
@@ -185,6 +187,7 @@ void Game::run()
 		}
 
 		// Process events
+		Ime::pump(); // Windows: TranslateMessage while a text field has focus (no-op elsewhere)
 		while (SDL_PollEvent(&_event))
 		{
 			if (CrossPlatform::isQuitShortcut(_event))

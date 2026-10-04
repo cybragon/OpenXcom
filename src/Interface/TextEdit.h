@@ -37,6 +37,7 @@ class TextEdit : public InteractiveSurface
 private:
 	Text *_text, *_caret;
 	UString _value;
+	UString _composition; // IME composition in progress (shown at the caret, not part of _value)
 	bool _blink, _modal;
 	bool _drawBackground;
 	Timer *_timer;
@@ -50,6 +51,8 @@ private:
 	bool exceedsMaxWidth(UCode c) const;
 	/// Checks if character is valid to be inserted at caret position.
 	bool isValidChar(UCode c) const;
+	/// Inserts the IME composition at the caret (width checked) and clears it.
+	void commitComposition();
 public:
 	/// Creates a new text edit with the specified size and position.
 	TextEdit(State *state, int width, int height, int x = 0, int y = 0);
@@ -69,6 +72,8 @@ public:
 	void setText(const std::string &text);
 	/// Gets the text edit's string.
 	std::string getText() const;
+	/// Sets the IME composition shown inline at the caret (empty = none).
+	void setComposition(const UString &comp);
 	/// Sets the text edit's wordwrap setting.
 	void setWordWrap(bool wrap);
 	/// Sets the text edit's color invert setting.

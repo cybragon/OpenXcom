@@ -4,7 +4,7 @@ This is a **modified version** of OpenXcom Extended (OXCE) 8.7.1 (upstream commi
 an unofficial fork. It is distributed under the same license, the GNU General Public License
 version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires.ko.md`.
 
-- Version name: `8.7.1-hires-1` (planned release tag `v8.7.1-hires-1`, branch `release-hires-1`)
+- Version name: `8.7.1-hires-1` (release tag `v8.7.1-hires-1`, branch `hires-1` at https://github.com/cybragon/OpenXcom)
 - Modified: 2026-09-25 – 2026-10-04
 - The original OpenXcom / OXCE copyright notices in every file are kept. Files listed below as
   "added" were written for this fork; files listed as "modified" were changed for this fork on the

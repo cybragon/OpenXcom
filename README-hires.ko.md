@@ -128,5 +128,5 @@ OpenXcom Extended를 만들고 이끌어 온 **Meridian**과 모든 OXCE 기여�
 
 ## 라이선스와 소스
 - OpenXcom과 이 포크는 GNU GPL v3 이상으로 배포됩니다(`LICENSE.txt`). 함께 링크한 라이브러리의 고지는 `THIRD_PARTY.txt`와 `licenses\`에 있습니다.
-- 소스: `<REPOSITORY-URL>`의 `release-hires-1` 브랜치 / 태그 `v8.7.1-hires-1` (공개 예정)
+- 소스: https://github.com/cybragon/OpenXcom 의 `hires-1` 브랜치 / 태그 `v8.7.1-hires-1`
 - 수정 사실과 수정한 파일 목록은 `CHANGELOG-hires.md`에 있습니다.

@@ -133,5 +133,5 @@ as well as to the original OpenXcom developers and contributors. This fork is on
 
 ## License and source
 - OpenXcom and this fork are distributed under the GNU GPL v3 or later (`LICENSE.txt`). Notices of the linked libraries are in `THIRD_PARTY.txt` and `licenses\`.
-- Source: branch `release-hires-1` / tag `v8.7.1-hires-1` at `<REPOSITORY-URL>` (to be published)
+- Source: branch `hires-1` / tag `v8.7.1-hires-1` at https://github.com/cybragon/OpenXcom
 - The modification notice and the list of modified files are in `CHANGELOG-hires.md`.

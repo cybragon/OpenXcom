@@ -20,6 +20,7 @@
 #include <SDL.h>
 #include <string>
 #include <memory>
+#include <vector>
 
 namespace OpenXcom
 {
@@ -61,6 +62,8 @@ namespace HiResAssets
 	size_t deniedCount();
 	/// Palettes used to quantize 32bpp pictures when the replaced image has no meaningful palette.
 	void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape, const SDL_Color *battlescape);
+	/// Game palettes for the own palette test of 8bpp hi-res pictures (geoscape, basescape, ufopaedia, graphs, battlescape).
+	void setGamePalettes(const std::vector<const SDL_Color*> &palettes);
 	/// Surface::loadImage, except (option on) a 32bpp picture, which is converted to the battlescape
 	/// palette with a warning instead of the fatal error (for the denied battlescape types).
 	bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std::string &type);
@@ -71,6 +74,7 @@ namespace HiResAssets
 	int pictureWidth(const Picture &p);
 	int pictureHeight(const Picture &p);
 	bool pictureTrueColor(const Picture &p);
+	bool pictureOwnPalette(const Picture &p);
 
 	/**
 	 * Size rule of all hi-res cases: an image of w x h for a box of boxW x boxH is "larger" if w > boxW

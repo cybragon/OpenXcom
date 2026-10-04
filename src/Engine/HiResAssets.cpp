@@ -29,6 +29,7 @@
 #include <SDL_image.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <set>
 #include <unordered_map>
@@ -52,6 +53,7 @@ struct Picture
 	std::vector<Uint8> idx;       ///< 8bpp pixels (index 0 = transparent)
 	std::vector<Uint32> argb;     ///< 32bpp pixels, straight alpha
 	std::vector<SDL_Color> pal;   ///< palette of an 8bpp file (as the normal loader sets it)
+	bool ownPalette = false;      ///< 8bpp file whose colours match no game palette: displayed from argb (own palette)
 	std::string file;
 };
 
@@ -113,7 +115,7 @@ void dropRendered(Uint32 id)
 
 inline Uint32 pixelOf(const Picture &p, const SDL_Color *pal, int x, int y)
 {
-	if (p.trueColor)
+	if (p.trueColor || p.ownPalette)
 		return p.argb[(size_t)y * p.w + x];
 	const Uint8 i = p.idx[(size_t)y * p.w + x];
 	if (!i)
@@ -282,9 +284,50 @@ bool decodeTrueColor(const std::string &filename, Picture &pic)
 	return true;
 }
 
-/// Display preparation of a decoded 8bpp picture (own-palette pictures: see below).
-void preparePicture(Picture &)
+std::vector<const SDL_Color*> gamePalettes;
+
+/**
+ * Own palette test of an 8bpp picture: its used colours are compared to the game palettes
+ * (geoscape, basescape, ufopaedia, graphs, battlescape) index by index with a small tolerance.
+ * No match: the picture is displayed in true colour from its own palette (index 0 transparent);
+ * a game-palette picture keeps following the palette of the screen. The proxy keeps the file indices.
+ */
+void preparePicture(Picture &p)
 {
+	if (p.trueColor || p.pal.size() != 256 || gamePalettes.empty())
+		return;
+	std::vector<size_t> hist(256, 0);
+	for (Uint8 i : p.idx) ++hist[i];
+	size_t used = 0;
+	for (int i = 1; i < 224; ++i) used += hist[i];
+	const int last = used ? 224 : 256; // UI colours 224-255 (back palettes) only if nothing else is used
+	if (!used)
+		for (int i = 224; i < 256; ++i) used += hist[i];
+	if (!used)
+		return;
+	const int TOL = 8;
+	for (const SDL_Color *g : gamePalettes)
+	{
+		if (!g) continue;
+		size_t bad = 0;
+		for (int i = 1; i < last; ++i)
+		{
+			if (!hist[i]) continue;
+			const SDL_Color &a = p.pal[i], &b = g[i];
+			if (std::abs(a.r - b.r) > TOL || std::abs(a.g - b.g) > TOL || std::abs(a.b - b.b) > TOL)
+				bad += hist[i];
+		}
+		if (bad * 100 <= used * 2)
+			return; // a game palette (98% of the pixels match)
+	}
+	p.ownPalette = true;
+	p.argb.resize(p.idx.size());
+	for (size_t k = 0; k < p.idx.size(); ++k)
+	{
+		const Uint8 i = p.idx[k];
+		const SDL_Color &c = p.pal[i];
+		p.argb[k] = i ? (0xFF000000u | ((Uint32)c.r << 16) | ((Uint32)c.g << 8) | c.b) : 0u;
+	}
 }
 
 } // namespace
@@ -320,6 +363,11 @@ size_t deniedCount()
 	return deniedTypes.size() + deniedPrefixes.size();
 }
 
+void setGamePalettes(const std::vector<const SDL_Color*> &palettes)
+{
+	gamePalettes = palettes;
+}
+
 void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape, const SDL_Color *battlescape)
 {
 	palGeo = geoscape;
@@ -353,6 +401,7 @@ bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std
 int pictureWidth(const Picture &p) { return p.w; }
 int pictureHeight(const Picture &p) { return p.h; }
 bool pictureTrueColor(const Picture &p) { return p.trueColor; }
+bool pictureOwnPalette(const Picture &p) { return p.ownPalette; }
 
 std::shared_ptr<Picture> decode(const std::string &filename)
 {
@@ -372,6 +421,7 @@ std::shared_ptr<Picture> decode(const std::string &filename)
 				for (int x = 0; x < pic->w; ++x)
 					pic->idx[(size_t)y * pic->w + x] = tmp.getPixel(x, y);
 			pic->pal.assign(tmp.getPalette(), tmp.getPalette() + 256);
+			preparePicture(*pic);
 			return pic;
 		}
 	}
@@ -535,7 +585,7 @@ bool loadReplacement(Surface *target, const std::string &filename, int boxW, int
 		return false; // fits the box (same size or smaller) 8bpp: exactly the normal path
 	if (larger)
 		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is " << pic->w << "x" << pic->h << (pic->trueColor ? " (32-bit)" : " (8-bit)")
-			<< ", box " << boxW << "x" << boxH << ": drawn hi-res at " << fw << "x" << fh << " (scale 1/" << scale << "), " << fw << "x" << fh << " proxy for the game";
+			<< ", box " << boxW << "x" << boxH << ": drawn hi-res at " << fw << "x" << fh << " (scale 1/" << scale << "), " << fw << "x" << fh << " proxy for the game" << (pic->ownPalette ? "; own palette (matches no game palette): drawn in its own colours" : "");
 	else
 		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h << " (box " << boxW << "x" << boxH
 			<< "): drawn true-colour at its size, quantized proxy for the game";
@@ -695,7 +745,7 @@ const Uint8 *expected(Uint32 assetId, int &w, int &h)
 Uint32 paletteKey(Uint32 assetId, const SDL_Palette *palette)
 {
 	Entry *e = find(assetId);
-	if (!e || e->pic->trueColor || !palette || palette->ncolors <= 0)
+	if (!e || e->pic->trueColor || e->pic->ownPalette || !palette || palette->ncolors <= 0)
 		return 0;
 	Uint32 hsh = 2166136261u;
 	for (int i = 0; i < palette->ncolors; ++i)
@@ -737,7 +787,7 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 		}
 	}
 	const SDL_Color *pal = nullptr;
-	if (!e->pic->trueColor)
+	if (!e->pic->trueColor && !e->pic->ownPalette)
 	{
 		auto p = palettes.find(palKey);
 		if (p == palettes.end())

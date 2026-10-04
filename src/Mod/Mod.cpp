@@ -6300,6 +6300,13 @@ void Mod::loadExtraSprite(ExtraSprites *spritePack)
 		auto geo = _palettes.find("PAL_GEOSCAPE"), base = _palettes.find("PAL_BASESCAPE"), battle = _palettes.find("PAL_BATTLESCAPE");
 		HiResAssets::setPalettes(geo != _palettes.end() ? geo->second->getColors() : nullptr, base != _palettes.end() ? base->second->getColors() : nullptr,
 			battle != _palettes.end() ? battle->second->getColors() : nullptr);
+		std::vector<const SDL_Color*> game;
+		for (const char *name : { "PAL_GEOSCAPE", "PAL_BASESCAPE", "PAL_UFOPAEDIA", "PAL_GRAPHS", "PAL_BATTLESCAPE" })
+		{
+			auto it = _palettes.find(name);
+			if (it != _palettes.end()) game.push_back(it->second->getColors());
+		}
+		HiResAssets::setGamePalettes(game);
 	}
 
 	if (spritePack->getSingleImage())

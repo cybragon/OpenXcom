@@ -362,7 +362,8 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 	const int xDivision = _width / _subX, yDivision = _height / _subY;
 	Log(LOG_INFO) << "HiResAssets: " << _type << ": " << fileName << " is " << pw << "x" << ph << (trueColor ? " (32-bit)" : " (8-bit)")
 		<< ", rule sheet " << _width << "x" << _height << ": " << xDivision << "x" << yDivision << " cells of " << _subX << "x" << _subY
-		<< " cut at scale " << scale << " (cell " << _subX * scale << "x" << _subY * scale << " file px)";
+		<< " cut at scale " << scale << " (cell " << _subX * scale << "x" << _subY * scale << " file px)"
+		<< (HiResAssets::pictureOwnPalette(*pic) ? "; own palette: drawn in its own colours" : "");
 	const SDL_Color *qpal = HiResAssets::quantizePalette(_type, nullptr);
 	int offset = startFrame;
 	for (int y = 0; y != yDivision; ++y)

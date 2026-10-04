@@ -49,7 +49,11 @@ enum class HiResCmdKind : Uint8
  */
 struct HiResCmd
 {
-	enum : Uint8 { GLYPH_SPACE = 1, GLYPH_ALIGN_CENTER = 2, GLYPH_ALIGN_RIGHT = 4, GLYPH_NBSP = 8 };
+	/// GLYPH_MARKER: zero-width position in a run (no glyph), laid out with the run; GLYPH_CARET: draw a
+	/// text caret there; GLYPH_IMEPOS: report its position (caretPosition, IME candidate window);
+	/// GLYPH_UNDERLINE: underline this glyph (IME composition), all in the glyph body colour.
+	enum : Uint8 { GLYPH_SPACE = 1, GLYPH_ALIGN_CENTER = 2, GLYPH_ALIGN_RIGHT = 4, GLYPH_NBSP = 8,
+		GLYPH_MARKER = 16, GLYPH_CARET = 32, GLYPH_UNDERLINE = 64, GLYPH_IMEPOS = 128 };
 	HiResCmdKind kind = HiResCmdKind::Glyph;
 	Sint16 x = 0, y = 0;            ///< layout box (base px): glyph advance box / image destination
 	Sint16 w = 0, h = 0;
@@ -181,6 +185,9 @@ public:
 	static void renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, int left, int right, const SDL_Color *screenPalette);
 	/// Renders the frame's commands on top of the already scaled 32bpp software output surface.
 	static void renderSoftware(SDL_Surface *out, int top, int bottom, int left, int right);
+	/// Position (screen base px, fractional) of the last GLYPH_IMEPOS marker laid out by the renderer and
+	/// the line height; false if none was drawn in the last rendered frame.
+	static bool caretPosition(double &x, double &y, double &h);
 	/// Commands collected for the current frame (debug/tests).
 	static const std::vector<HiResCmd> &frameCommands();
 

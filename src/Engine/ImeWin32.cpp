@@ -26,6 +26,7 @@
 #include <windows.h>
 #include <imm.h>
 #include <vector>
+#include <cmath>
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include "../Interface/TextEdit.h"
@@ -48,7 +49,7 @@ TextEdit *_edit = 0;
 bool _imeAllowed = false;
 double _scaleX = 1.0, _scaleY = 1.0;
 int _offX = 0, _offY = 0;
-int _caretX = 0, _caretY = 0, _caretH = 8;
+double _caretX = 0, _caretY = 0, _caretH = 8;
 Uint32 _lastThink = 0;   // last TextEdit::think of the focused edit (its state is the active one)
 bool _ctxOn = false;     // IME context currently associated with the window
 
@@ -93,9 +94,9 @@ void pushChar(UCode c)
 void placeWindows(HIMC himc)
 {
 	POINT pt;
-	pt.x = _offX + (LONG)(_caretX * _scaleX);
-	pt.y = _offY + (LONG)(_caretY * _scaleY);
-	LONG h = (LONG)(_caretH * _scaleY);
+	pt.x = _offX + (LONG)std::lround(_caretX * _scaleX);
+	pt.y = _offY + (LONG)std::lround(_caretY * _scaleY);
+	LONG h = (LONG)std::lround(_caretH * _scaleY);
 	COMPOSITIONFORM cf;
 	cf.dwStyle = CFS_POINT;
 	cf.ptCurrentPos = pt;
@@ -336,7 +337,7 @@ void unfocus(TextEdit *edit)
 	applyContext();
 }
 
-void setCaret(TextEdit *edit, int x, int y, int h)
+void setCaret(TextEdit *edit, double x, double y, double h)
 {
 	if (edit != _edit)
 	{

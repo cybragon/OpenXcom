@@ -609,9 +609,27 @@ void Text::draw()
 		return cmd;
 	};
 
+	// text caret / IME markers (TextEdit, hi-res text): zero-width commands laid out with the run
+	auto markersAt = [&](int ci)
+	{
+		if (!hires || (ci != _mkCaret && ci != _mkIme))
+			return;
+		HiResCmd cmd = makeCmd(0, x, 0);
+		cmd.flags |= HiResCmd::GLYPH_MARKER;
+		if (ci == _mkCaret) cmd.flags |= HiResCmd::GLYPH_CARET;
+		if (ci == _mkIme) cmd.flags |= HiResCmd::GLYPH_IMEPOS;
+		HiResLayer::record(getSurface(), cmd);
+	};
+	auto underlined = [&](UString::const_iterator c)
+	{
+		const int ci = (int)(c - s.begin());
+		return ci >= _mkUl0 && ci < _mkUl1;
+	};
+
 	// Draw each letter one by one
 	for (UString::const_iterator c = s.begin(); c != s.end(); ++c)
 	{
+		markersAt((int)(c - s.begin()));
 		if (Unicode::isSpace(*c) || *c == '\t')
 		{
 			// spaces and non-breaking spaces (thousands separators) stay inside the run, so a number
@@ -620,6 +638,7 @@ void Text::draw()
 			{
 				HiResCmd cmd = makeCmd(' ', x, font->getCharSize(*c).w);
 				cmd.flags |= HiResCmd::GLYPH_SPACE;
+				if (underlined(c)) cmd.flags |= HiResCmd::GLYPH_UNDERLINE;
 				if (*c == Unicode::TOK_NBSP)
 					cmd.flags |= HiResCmd::GLYPH_NBSP;
 				HiResLayer::record(getSurface(), cmd);
@@ -692,6 +711,7 @@ void Text::draw()
 			if (hires && !font->isMonospace() && HiResLayer::canRenderGlyph(*c, font->getHiResSlot()))
 			{
 				HiResCmd cmd = makeCmd(*c, x, font->getCharSize(*c).w);
+				if (underlined(c)) cmd.flags |= HiResCmd::GLYPH_UNDERLINE;
 				// Dot leaders (TextList::addRow pads columns with '.') and ellipses: each dot keeps
 				// the exact bitmap position (cell mode, run 0) and splits the run, otherwise a row
 				// of TTF dots, slightly wider than the 1-2 px bitmap dots, would make the pen-mode
@@ -715,6 +735,20 @@ void Text::draw()
 				x += dir * font->getCharSize(*c).w;
 		}
 	}
+	markersAt((int)s.size());
+}
+
+/**
+ * Hi-res text: zero-width markers tied to character indices of the (single-line) text, laid out by
+ * the overlay with the TTF glyphs: caret (drawn), IME position (reported for the candidate window),
+ * underlined range [ulStart, ulEnd). -1 = none.
+ */
+void Text::setHiResMarkers(int caret, int ime, int ulStart, int ulEnd)
+{
+	if (caret == _mkCaret && ime == _mkIme && ulStart == _mkUl0 && ulEnd == _mkUl1)
+		return;
+	_mkCaret = caret; _mkIme = ime; _mkUl0 = ulStart; _mkUl1 = ulEnd;
+	_redraw = true;
 }
 
 /**

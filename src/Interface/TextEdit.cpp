@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "TextEdit.h"
+#include "../Engine/HiResLayer.h"
 #include <cmath>
 #include <algorithm>
 #include "../Engine/Action.h"
@@ -373,6 +374,20 @@ void TextEdit::draw()
 			newValue += _char;
 		}
 	}
+	// hi-res text: caret, composition underline and IME position are laid out by the overlay with the
+	// TTF glyphs (markers tied to character indices), not at bitmap widths
+	const bool hiResMarkers = HiResLayer::recording() && HiResLayer::textConfigured() && !newValue.empty()
+		&& Options::keyboardMode == KEYBOARD_ON && _isFocused && !_text->getFont()->isMonospace();
+	if (hiResMarkers)
+	{
+		const int caretIdx = (int)std::min(_caretPos, _value.length());
+		const int compLen = composing ? (int)_composition.length() : 0;
+		_text->setHiResMarkers(_blink ? caretIdx + compLen : -1, caretIdx, compLen ? caretIdx : -1, compLen ? caretIdx + compLen : -1);
+	}
+	else
+	{
+		_text->setHiResMarkers(-1, -1, -1, -1);
+	}
 	_text->setText(Unicode::convUtf32ToUtf8(newValue));
 	clear();
 
@@ -428,17 +443,30 @@ void TextEdit::draw()
 				break;
 			}
 			_caret->setY(y);
-			if (composing && x > compStart)
+			double imeX = getX() + compStart, imeY = getY() + y, imeH = _text->getFont()->getHeight();
+			if (hiResMarkers)
 			{
-				// underline the composition
-				int uy = std::min(y + _text->getFont()->getHeight(), getHeight() - 1);
-				drawLine(compStart, uy, x - 1, uy, getColor());
+				// position laid out by the overlay in the last rendered frame (screen base px)
+				double hx, hy, hh;
+				if (HiResLayer::caretPosition(hx, hy, hh))
+				{
+					imeX = hx; imeY = hy; imeH = hh;
+				}
 			}
-			Ime::setCaret(this, getX() + compStart, getY() + y, _text->getFont()->getHeight());
-			if (_blink)
+			else
 			{
-				_caret->blit(this->getSurface());
+				if (composing && x > compStart)
+				{
+					// underline the composition, in the colour of the glyph bodies
+					int uy = std::min(y + _text->getFont()->getHeight(), getHeight() - 1);
+					drawLine(compStart, uy, x - 1, uy, _text->getBodyColor());
+				}
+				if (_blink)
+				{
+					_caret->blit(this->getSurface());
+				}
 			}
+			Ime::setCaret(this, imeX, imeY, imeH);
 		}
 	}
 }

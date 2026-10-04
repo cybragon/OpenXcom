@@ -49,8 +49,9 @@ namespace Ime
 	void unfocus(TextEdit *edit);
 	/// Called every frame by the focused text edit (only states on top think): IME is detached while it is covered.
 	void think(TextEdit *edit);
-	/// Caret position of the focused text edit in base pixels (for the candidate window).
-	void setCaret(TextEdit *edit, int x, int y, int h);
+	/// IME position (start of the composition) of the focused text edit in screen base pixels, fractional
+	/// with hi-res text (laid out by the overlay); for the candidate window.
+	void setCaret(TextEdit *edit, double x, double y, double h);
 	/// Discards the IME's current composition (the text edit committed it itself).
 	void cancelComposition(TextEdit *edit);
 #else
@@ -61,7 +62,7 @@ namespace Ime
 	inline void focus(TextEdit *, bool) {}
 	inline void unfocus(TextEdit *) {}
 	inline void think(TextEdit *) {}
-	inline void setCaret(TextEdit *, int, int, int) {}
+	inline void setCaret(TextEdit *, double, double, double) {}
 	inline void cancelComposition(TextEdit *) {}
 #endif
 }

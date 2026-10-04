@@ -46,6 +46,7 @@ private:
 	UString _processedText;
 	std::vector<int> _lineWidth, _lineHeight;
 	bool _wrap, _invert, _contrast, _indent, _scroll, _ignoreSeparators;
+	int _mkCaret = -1, _mkIme = -1, _mkUl0 = -1, _mkUl1 = -1; // hi-res text markers (TextEdit caret / IME)
 	TextHAlign _align;
 	TextVAlign _valign;
 	Uint8 _color, _color2;
@@ -78,6 +79,10 @@ public:
 	void setInvert(bool invert);
 	/// Sets the text's high contrast color setting.
 	void setHighContrast(bool contrast) override;
+	/// Hi-res text: caret / IME position / underline range tied to character indices (-1 = none).
+	void setHiResMarkers(int caret, int ime, int ulStart, int ulEnd);
+	/// Palette index of the glyph body (font pixel value 1) of the primary colour.
+	Uint8 getBodyColor() const { return (Uint8)(_color + (_contrast ? 3 : 1) + (_invert ? 4 : 0)); }
 	/// Sets the text's horizontal alignment.
 	void setAlign(TextHAlign align);
 	/// Gets the text's horizontal alignment.

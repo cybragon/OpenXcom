@@ -571,7 +571,22 @@ struct Placed
 {
 	const HiResGlyph *g = nullptr;
 	int pen = 0, baseline = 0;
+	int adv = 0;          ///< advance (output px) for underlines
+	bool marker = false;  ///< GLYPH_MARKER: position only
 };
+
+/// Last IME position marker (screen base px) of the frame being composed / the last composed frame.
+bool caretFound = false, caretValid = false;
+double caretX = 0, caretY = 0, caretH = 0, caretNX = 0, caretNY = 0, caretNH = 0;
+
+/// Solid rect in output px (caret, underline), clipped and hidden like glyphs.
+void drawSolid(int x, int y, int w, int h, const SDL_Color &color, int cx0, int cy0, int cx1, int cy1, double sx, double sy, Uint32 stamp, SDL_Rect &dirty)
+{
+	if (w <= 0 || h <= 0)
+		return;
+	std::vector<uint8_t> bm((size_t)w * h, 255);
+	drawCoverage(bm, w, h, x, y, color, cx0, cy0, cx1, cy1, sx, sy, stamp, dirty);
+}
 
 /// Vertical placement, font size and outline of one glyph command. The body of the font type (ink
 /// box of '각' at the font type's size, shared by all glyphs, so Latin and Hangul share the baseline) is centred on the body of the bitmap capital 'H' of the same font (its
@@ -660,6 +675,14 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 				HiResFont *font = slotFont(c.slot);
 				Placed &p = placed[i - groupStart];
 				p.g = nullptr;
+				p.marker = false;
+				if (c.flags & HiResCmd::GLYPH_MARKER)
+				{
+					// zero-width position (caret / IME): the pen at this point of the run
+					p.marker = true;
+					p.pen = (S.layout == 0 || c.run == 0) ? (int)std::lround(c.x * sx) : (int)(pen64 >> 6);
+					continue;
+				}
 				if (!font)
 					continue;
 				int px, baseline; // px: font size in 1/4 px
@@ -672,6 +695,7 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 					continue;
 				p.g = &g;
 				p.baseline = baseline;
+				p.adv = g.advance;
 				if (S.layout == 0 || c.run == 0)
 				{
 					// cell mode: centre each glyph in the advance box of the bitmap glyph
@@ -790,8 +814,40 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 					drawCoverage(g.fill, g.fillW, g.fillH, p.pen + g.fillL, p.baseline - g.fillT, c.fill, cx0, cy0, cx1, cy1, sx, sy, c.stamp, dirty);
 			}
 		}
+		// carets, composition underlines and the IME position (after the bodies, in the body colour)
+		for (size_t i = groupStart; i < groupEnd; ++i)
+		{
+			const HiResCmd &c = S.frame[i];
+			if (c.kind != HiResCmdKind::Glyph || !(c.flags & (HiResCmd::GLYPH_MARKER | HiResCmd::GLYPH_UNDERLINE)))
+				continue;
+			const Placed &p = placed[i - groupStart];
+			const int cx0 = std::max(0, (int)std::floor(c.clipX * sx)), cy0 = std::max(0, (int)std::floor(c.clipY * sy));
+			const int cx1 = std::min(dstW, (int)std::ceil((c.clipX + c.clipW) * sx));
+			const int cy1 = std::min(dstH, (int)std::ceil((c.clipY + c.clipH) * sy));
+			const double ms = sy * std::max<int>(1, c.scale);
+			const int top = (int)std::lround(c.y * sy), bottom = (int)std::lround(c.y * sy + c.cellH * ms);
+			if (p.marker && (c.flags & HiResCmd::GLYPH_CARET))
+			{
+				const int w = std::max(1, (int)std::lround(sx * 0.75));
+				drawSolid(p.pen - w / 2, top, w, bottom - top, c.fill, cx0, cy0, cx1, cy1, sx, sy, c.stamp, dirty);
+			}
+			if (p.marker && (c.flags & HiResCmd::GLYPH_IMEPOS))
+			{
+				caretFound = true;
+				caretNX = p.pen / sx; caretNY = top / sy; caretNH = (bottom - top) / sy;
+			}
+			if (!p.marker && p.g && (c.flags & HiResCmd::GLYPH_UNDERLINE))
+			{
+				const int th = std::max(1, (int)std::lround(sy * 0.5));
+				const int uy = std::min(bottom - th, p.baseline + std::max(1, (int)std::lround(sy * 0.75)));
+				drawSolid(p.pen, uy, std::max(1, p.adv), th, c.fill, cx0, cy0, cx1, cy1, sx, sy, c.stamp, dirty);
+			}
+		}
 		groupStart = groupEnd;
 	}
+	caretValid = caretFound;
+	if (caretFound) { caretX = caretNX; caretY = caretNY; caretH = caretNH; }
+	caretFound = false;
 	S.prevDirty = dirty;
 	return dirty;
 }
@@ -1066,7 +1122,7 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 			{
 				// visible part of the command (layout box inside its clip rect), dst coordinates
 				int cx = c.clipX, cy = c.clipY, cw = c.clipW, ch = c.clipH;
-				if (!intersect(cx, cy, cw, ch, c.x, c.y, c.w, c.h))
+				if (!intersect(cx, cy, cw, ch, c.x, c.y, std::max<int>(1, c.w), c.h)) // markers: zero width
 					return false;
 				// it must lie completely inside the blitted rectangle
 				int bx = cx, by = cy, bw = cw, bh = ch;
@@ -1236,6 +1292,14 @@ void HiResLayer::beginFrame()
 	S.masks.clear();
 	S.stampCounter = 0;
 	std::fill(S.stamps.begin(), S.stamps.end(), 0);
+}
+
+bool HiResLayer::caretPosition(double &x, double &y, double &h)
+{
+	if (!caretValid)
+		return false;
+	x = caretX; y = caretY; h = caretH;
+	return true;
 }
 
 const std::vector<HiResCmd> &HiResLayer::frameCommands()

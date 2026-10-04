@@ -1,11 +1,13 @@
 #!/bin/bash
 # Stage + zip the Windows x64 package of the hi-res overlay fork (NO original game data, NO fonts).
 # usage: hires-overlay-package-win64.sh EXE OUTZIP   (EXE = openxcom.exe built by hires-overlay-build-win64.sh)
+# PKGNAME=folder name inside the zip (default Extended-8.7.1-hires-1; e.g. a distinct name for test builds)
 set -e
 EXE=$1; OUT=$2
 R=$(cd "$(dirname "$0")/.." && pwd)            # source tree
 S=${DEPS_SRC:-/workspace/oxce/wdeps/src}         # dependency sources (license texts)
-T=$(mktemp -d); P=$T/Extended-8.7.1-hires-1
+N=${PKGNAME:-Extended-8.7.1-hires-1}
+T=$(mktemp -d); P=$T/$N
 mkdir -p $P/UFO $P/TFTD $P/licenses $P/user
 x86_64-w64-mingw32-strip -o $P/openxcom.exe "$EXE"
 cp -r $R/bin/common $R/bin/standard $P/
@@ -32,11 +34,11 @@ cp $R/libs/miniz/LICENSE $L/miniz_LICENSE.txt
 if find $P -type f | grep -iE '\.(ttf|otf|ttc|woff2?|fon)$|/(UFO|TFTD)/.+/|\.(cat|pck|tab|spk|scr|lbm|dat)$' | grep -v "/common/\|/standard/" | grep -q .; then
   echo "forbidden files in package"; exit 1; fi
 rm -f "$OUT"
-(cd $T && python3 - "$OUT" <<'PY'
+(cd $T && python3 - "$OUT" "$N" <<'PY'
 import zipfile, os, sys
-out = sys.argv[1]; n = 0
+out = sys.argv[1]; name = sys.argv[2]; n = 0
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-    for root, dirs, files in os.walk('Extended-8.7.1-hires-1'):
+    for root, dirs, files in os.walk(name):
         dirs.sort()
         for f in sorted(files):
             p = os.path.join(root, f); z.write(p, p); n += 1

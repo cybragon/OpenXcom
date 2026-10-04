@@ -34,6 +34,8 @@
 #include <unordered_map>
 #include <vector>
 #include <list>
+#include <map>
+#include <climits>
 
 namespace OpenXcom
 {
@@ -280,6 +282,11 @@ bool decodeTrueColor(const std::string &filename, Picture &pic)
 	return true;
 }
 
+/// Display preparation of a decoded 8bpp picture (own-palette pictures: see below).
+void preparePicture(Picture &)
+{
+}
+
 } // namespace
 
 bool enabled()
@@ -389,12 +396,15 @@ void makeProxy(Surface *target, const Picture &pic, double rx, double ry, double
 	{
 		const double a0 = ry + ty * rh / h, a1 = ry + (ty + 1) * rh / h;
 		int y0 = std::max(0, (int)std::floor(a0 + 1e-9)), y1 = std::min(pic.h, (int)std::ceil(a1 - 1e-9));
+		Uint8 *row0 = (Uint8*)s->pixels + ty * s->pitch;
+		if (a0 >= pic.h) { std::memset(row0, 0, w); continue; }
 		if (y1 <= y0) { y0 = std::min(pic.h - 1, std::max(0, (int)std::floor((a0 + a1) / 2))); y1 = y0 + 1; }
 		Uint8 *row = (Uint8*)s->pixels + ty * s->pitch;
 		for (int tx = 0; tx < w; ++tx)
 		{
 			const double b0 = rx + tx * rw / w, b1 = rx + (tx + 1) * rw / w;
 			int x0 = std::max(0, (int)std::floor(b0 + 1e-9)), x1 = std::min(pic.w, (int)std::ceil(b1 - 1e-9));
+			if (b0 >= pic.w) { row[tx] = 0; continue; }
 			if (x1 <= x0) { x0 = std::min(pic.w - 1, std::max(0, (int)std::floor((b0 + b1) / 2))); x1 = x0 + 1; }
 			const int n = (x1 - x0) * (y1 - y0);
 			Uint8 v = 0;
@@ -461,26 +471,40 @@ void attach(Surface *proxy, const std::shared_ptr<Picture> &pic, double rx, doub
 	registeredCount = bySurface.size();
 }
 
-bool loadReplacement(Surface *target, const std::string &filename, int origW, int origH, const SDL_Color *origPalette, const std::string &type)
+bool fitBox(int boxW, int boxH, int w, int h, int &fw, int &fh, double &scale)
 {
-	if (!enabled() || !target || origW <= 0 || origH <= 0)
+	fw = w; fh = h; scale = 1.0;
+	if (boxW <= 0 || boxH <= 0 || (w <= boxW && h <= boxH))
+		return false;
+	scale = std::max(w / (double)boxW, h / (double)boxH);
+	fw = std::max(1, std::min(boxW, (int)std::lround(w / scale)));
+	fh = std::max(1, std::min(boxH, (int)std::lround(h / scale)));
+	return true;
+}
+
+bool loadReplacement(Surface *target, const std::string &filename, int boxW, int boxH, const SDL_Color *origPalette, const std::string &type)
+{
+	if (!enabled() || !target || boxW <= 0 || boxH <= 0)
 		return false;
 	std::shared_ptr<Picture> pic = decode(filename);
 	if (!pic)
 		return false; // the normal loader reports the error
-	const bool same = pic->w == origW && pic->h == origH;
 	if (pic->trueColor && !trueColorAllowed(type))
 	{
 		Log(LOG_WARNING) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image; only 8-bit images are allowed for this resource (it is also used outside the geoscape/base screens)";
 		return false; // rejected by the normal loader, as without the option
 	}
-	if (same && !pic->trueColor)
-		return false; // same-size 8bpp replacement: exactly the normal path
-	if (!same)
+	int fw, fh;
+	double scale;
+	const bool larger = fitBox(boxW, boxH, pic->w, pic->h, fw, fh, scale);
+	if (!larger && !pic->trueColor)
+		return false; // fits the box (same size or smaller) 8bpp: exactly the normal path
+	if (larger)
 		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is " << pic->w << "x" << pic->h << (pic->trueColor ? " (32-bit)" : " (8-bit)")
-			<< ", replaced image is " << origW << "x" << origH << ": drawn hi-res, " << origW << "x" << origH << " proxy for the game";
+			<< ", box " << boxW << "x" << boxH << ": drawn hi-res at " << fw << "x" << fh << " (scale 1/" << scale << "), " << fw << "x" << fh << " proxy for the game";
 	else
-		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of the original size: drawn true-colour, quantized proxy for the game";
+		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h << " (box " << boxW << "x" << boxH
+			<< "): drawn true-colour at its size, quantized proxy for the game";
 	// palette: 8bpp pictures bring their own palette like with the normal loader
 	std::vector<SDL_Color> pal(256, SDL_Color{0, 0, 0, 255});
 	const SDL_Color *qpal = quantizePalette(type, origPalette);
@@ -493,17 +517,89 @@ bool loadReplacement(Surface *target, const std::string &filename, int origW, in
 		std::memcpy(pal.data(), origPalette, 256 * sizeof(SDL_Color));
 	}
 	forget(target->getSurface());
-	*target = Surface(origW, origH, 0, 0);
+	*target = Surface(fw, fh, 0, 0);
 	target->setPalette(pal.data(), 0, 256);
-	makeProxy(target, *pic, 0, 0, pic->w, pic->h, origW, origH, pic->trueColor ? qpal : pal.data());
+	makeProxy(target, *pic, 0, 0, pic->w, pic->h, fw, fh, pic->trueColor ? qpal : pal.data());
 	attach(target, pic, 0, 0, pic->w, pic->h, type);
 	return true;
+}
+
+namespace
+{
+/// Fitted proxies of images larger than a consumer box (see fit()), per source surface.
+struct FitKey
+{
+	const SDL_Surface *src;
+	int w, h;
+	bool operator<(const FitKey &o) const { return src != o.src ? src < o.src : (w != o.w ? w < o.w : h < o.h); }
+};
+std::map<FitKey, std::unique_ptr<Surface>> fitted;
+bool inFitForget = false;
+}
+
+Surface *fit(Surface *src, int boxW, int boxH)
+{
+	if (!src || !enabled() || !src->getSurface())
+		return src;
+	SDL_Surface *s = src->getSurface();
+	int fw, fh;
+	double scale;
+	if (!fitBox(boxW, boxH, s->w, s->h, fw, fh, scale))
+		return src; // fits the box: exactly as before
+	if (s->format->BitsPerPixel != 8)
+		return src;
+	const FitKey key{ s, boxW, boxH };
+	auto it = fitted.find(key);
+	if (it != fitted.end())
+		return it->second.get();
+	std::shared_ptr<Picture> pic;
+	double rx = 0, ry = 0, rw = s->w, rh = s->h;
+	auto reg = bySurface.find(s);
+	Entry *e = reg != bySurface.end() ? find(reg->second) : nullptr;
+	if (e && e->pixels == s->pixels && e->w == s->w && e->h == s->h)
+	{
+		pic = e->pic;
+		rx = e->rx; ry = e->ry; rw = e->rw; rh = e->rh;
+	}
+	else
+	{
+		// a plain 8bpp image (new mod image loaded the normal way): its own pixels are the picture
+		pic = std::make_shared<Picture>();
+		pic->w = s->w; pic->h = s->h;
+		pic->idx.resize((size_t)s->w * s->h);
+		SDL_LockSurface(s);
+		for (int y = 0; y < s->h; ++y)
+			std::memcpy(&pic->idx[(size_t)y * s->w], (const Uint8*)s->pixels + y * s->pitch, s->w);
+		SDL_UnlockSurface(s);
+		pic->pal.assign(src->getPalette(), src->getPalette() + 256);
+		pic->file = "(image)";
+		preparePicture(*pic);
+	}
+	std::unique_ptr<Surface> proxy(new Surface(fw, fh, 0, 0));
+	proxy->setPalette(src->getPalette(), 0, 256);
+	makeProxy(proxy.get(), *pic, rx, ry, rw, rh, fw, fh, src->getPalette());
+	attach(proxy.get(), pic, rx, ry, rw, rh, "fit");
+	Log(LOG_INFO) << "HiResAssets: image " << s->w << "x" << s->h << " larger than its box " << boxW << "x" << boxH << ": drawn hi-res at " << fw << "x" << fh;
+	Surface *ret = proxy.get();
+	fitted[key] = std::move(proxy);
+	return ret;
 }
 
 void forget(const SDL_Surface *surface)
 {
 	if (!surface || bySurface.empty())
 		return;
+	if (!fitted.empty() && !inFitForget)
+	{
+		auto lo = fitted.lower_bound(FitKey{ surface, INT_MIN, INT_MIN });
+		if (lo != fitted.end() && lo->first.src == surface)
+		{
+			inFitForget = true;
+			while (lo != fitted.end() && lo->first.src == surface)
+				lo = fitted.erase(lo);
+			inFitForget = false;
+		}
+	}
 	auto it = bySurface.find(surface);
 	if (it == bySurface.end())
 		return;

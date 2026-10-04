@@ -198,7 +198,11 @@ Surface *ExtraSprites::loadSurface(Surface *surface)
 	}
 	surface = new Surface(_width, _height);
 	const std::string &fileName = _sprites.begin()->second;
-	if (origW <= 0 || !HiResAssets::loadReplacement(surface, fileName, origW, origH, origPalette.data(), _type))
+	// new image: no box at load time (consumers fit it, HiResAssets::fit); a 32-bit picture is kept true-colour at its size
+	const bool hiRes = origW > 0
+		? HiResAssets::loadReplacement(surface, fileName, origW, origH, origPalette.data(), _type)
+		: HiResAssets::loadReplacement(surface, fileName, 1 << 15, 1 << 15, nullptr, _type);
+	if (!hiRes)
 	{
 		surface->loadImage(fileName);
 		if (origW > 0)
@@ -317,7 +321,8 @@ void ExtraSprites::loadFrameImage(Surface *frame, bool existed, const std::strin
 {
 	const int origW = frame->getWidth(), origH = frame->getHeight();
 	std::vector<SDL_Color> origPalette(frame->getPalette(), frame->getPalette() + 256);
-	if (existed && HiResAssets::loadReplacement(frame, fileName, origW, origH, origPalette.data(), _type))
+	// box: the replaced frame, or the set frame size for a new frame
+	if (HiResAssets::loadReplacement(frame, fileName, origW, origH, existed ? origPalette.data() : nullptr, _type))
 		return;
 	frame->loadImage(fileName);
 	if (existed)
@@ -328,14 +333,17 @@ void ExtraSprites::loadFrameImage(Surface *frame, bool existed, const std::strin
 }
 
 /**
- * subX/subY sheet with the option oxceHiResAssets: a file of another size than the rule
- * (width/height) is cut on the grid scaled by file size / rule size; existing frames become
- * proxies of their cell. 32bpp files only for geoscape/base resources. Returns false to load the
- * sheet as before (option off, same-size 8bpp file, 32bpp not allowed -> rejected as before).
+ * subX/subY sheet with the option oxceHiResAssets. The whole file is compared to the rule sheet size
+ * (width x height): a file larger than it (w > width or h > height) gets one scale
+ * max(w/width, h/height); the cells (subX x subY, as many as the rule grid has) are cut at that scale
+ * (the rest of the rule grid is discarded as before) and every frame becomes a proxy of its cell.
+ * A file that fits the rule sheet (e.g. one per-frame file of a cell) is loaded as before, so are the
+ * following cells. 32-bit files that fit: cut at scale 1, drawn true-colour. Returns false to load the
+ * sheet as before (option off, 8bpp file that fits, 32-bit not allowed -> rejected as before).
  */
 bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::string &fileName)
 {
-	if (!HiResAssets::enabled() || _width <= 0 || _height <= 0)
+	if (!HiResAssets::enabled() || _width <= 0 || _height <= 0 || _subX <= 0 || _subY <= 0)
 		return false;
 	std::shared_ptr<HiResAssets::Picture> pic = HiResAssets::decode(fileName);
 	if (!pic)
@@ -344,18 +352,19 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 	const bool trueColor = HiResAssets::pictureTrueColor(*pic);
 	if (trueColor && !HiResAssets::trueColorAllowed(_type))
 	{
-		Log(LOG_WARNING) << "HiResAssets: " << _type << ": " << fileName << " is a 32-bit image; only 8-bit images are allowed for this resource (it is also used outside the geoscape/base screens)";
+		Log(LOG_WARNING) << "HiResAssets: " << _type << ": " << fileName << " is a 32-bit image; only 8-bit images are allowed for this resource (it is also used in the battlescape)";
 		return false;
 	}
-	if (pw == _width && ph == _height && !trueColor)
+	int fw, fh;
+	double scale;
+	const bool larger = HiResAssets::fitBox(_width, _height, pw, ph, fw, fh, scale);
+	if (!larger && !trueColor)
 		return false;
-	const double fx = pw / (double)_width, fy = ph / (double)_height;
-	Log(LOG_INFO) << "HiResAssets: " << _type << ": " << fileName << " is " << pw << "x" << ph << (trueColor ? " (32-bit)" : " (8-bit)")
-		<< ", rule size " << _width << "x" << _height << ": grid " << _subX << "x" << _subY << " scaled by " << fx << " x " << fy;
-	Surface proxySheet(_width, _height);
-	HiResAssets::makeProxy(&proxySheet, *pic, 0, 0, pw, ph, _width, _height, HiResAssets::quantizePalette(_type, nullptr));
-	std::unique_ptr<Surface> original; // 8bpp file as loaded before: for new frames
 	const int xDivision = _width / _subX, yDivision = _height / _subY;
+	Log(LOG_INFO) << "HiResAssets: " << _type << ": " << fileName << " is " << pw << "x" << ph << (trueColor ? " (32-bit)" : " (8-bit)")
+		<< ", rule sheet " << _width << "x" << _height << ": " << xDivision << "x" << yDivision << " cells of " << _subX << "x" << _subY
+		<< " cut at scale " << scale << " (cell " << _subX * scale << "x" << _subY * scale << " file px)";
+	const SDL_Color *qpal = HiResAssets::quantizePalette(_type, nullptr);
 	int offset = startFrame;
 	for (int y = 0; y != yDivision; ++y)
 	{
@@ -363,24 +372,25 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 		{
 			bool existed = false;
 			Surface *frame = getFrame(set, offset, &existed);
-			if (existed)
+			const double cx = x * _subX * scale, cy = y * _subY * scale;
+			const double cw = std::min(_subX * scale, pw - cx), ch = std::min(_subY * scale, ph - cy);
+			const int w = (int)std::lround(cw / scale), h = (int)std::lround(ch / scale);
+			// the frame keeps its palette, as when the normal loader blits the cell into it
+			std::vector<SDL_Color> framePal(frame->getPalette(), frame->getPalette() + 256);
+			if (cw <= 0 || ch <= 0 || w <= 0 || h <= 0)
 			{
-				proxySheet.blitNShade(frame, 0 - (x * _subX), 0 - (y * _subY), 0);
-				HiResAssets::attach(frame, pic, x * _subX * fx, y * _subY * fy, frame->getWidth() * fx, frame->getHeight() * fy, _type);
-			}
-			else if (!trueColor)
-			{
-				// new frame: exactly as without the option
-				if (!original)
-				{
-					original.reset(new Surface(_width, _height));
-					original->loadImage(fileName);
-				}
-				original->blitNShade(frame, 0 - (x * _subX), 0 - (y * _subY), 0);
+				// cell outside the file: blank, as when the normal loader cuts beyond a smaller file
+				HiResAssets::forget(frame->getSurface());
+				*frame = Surface(_subX, _subY);
+				frame->setPalette(framePal.data(), 0, 256);
 			}
 			else
 			{
-				proxySheet.blitNShade(frame, 0 - (x * _subX), 0 - (y * _subY), 0);
+				HiResAssets::forget(frame->getSurface());
+				*frame = Surface(w, h);
+				frame->setPalette(framePal.data(), 0, 256);
+				HiResAssets::makeProxy(frame, *pic, cx, cy, cw, ch, w, h, qpal);
+				HiResAssets::attach(frame, pic, cx, cy, cw, ch, _type);
 			}
 			++offset;
 		}

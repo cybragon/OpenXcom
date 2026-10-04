@@ -68,12 +68,23 @@ namespace HiResAssets
 	bool pictureTrueColor(const Picture &p);
 
 	/**
-	 * Single image or per-frame file replacing an existing image of origW x origH. Returns true if it
+	 * Size rule of all hi-res cases: an image of w x h for a box of boxW x boxH is "larger" if w > boxW
+	 * or h > boxH; it is then drawn at w/scale x h/scale, scale = max(w/boxW, h/boxH) (aspect kept,
+	 * the rest of the box empty). Returns false (fw/fh = w/h, scale 1) if the image fits the box.
+	 */
+	bool fitBox(int boxW, int boxH, int w, int h, int &fw, int &fh, double &scale);
+	/**
+	 * Consumer box of a (mod-defined) image: an image larger than boxW x boxH is returned as a cached
+	 * fitted proxy (fitted size, drawn hi-res); otherwise (or option off) the image itself.
+	 */
+	Surface *fit(Surface *image, int boxW, int boxH);
+	/**
+	 * Single image or per-frame file for a box of boxW x boxH (the image it replaces / the set frame size). Returns true if it
 	 * was loaded as a hi-res replacement (target becomes the proxy); false = load it the normal way
 	 * (option off, same-size 8bpp file, 32bpp not allowed for this type -> rejected as before...).
 	 * Logs size mismatches.
 	 */
-	bool loadReplacement(Surface *target, const std::string &filename, int origW, int origH, const SDL_Color *origPalette, const std::string &type);
+	bool loadReplacement(Surface *target, const std::string &filename, int boxW, int boxH, const SDL_Color *origPalette, const std::string &type);
 	/// Logs a size mismatch of a replacement loaded the normal way (option off or not eligible).
 	void logMismatch(const std::string &type, const std::string &filename, int origW, int origH, int fileW, int fileH, const char *what);
 

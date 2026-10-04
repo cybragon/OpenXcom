@@ -408,7 +408,7 @@ void Text::processText()
 					size_t p = c;
 					while (p > 0 && c - p < 40 && latin(str[p - 1]) && latin(str[p]))
 						--p;
-					if (p < c && p > 0 && str[p - 1] != '\n' && !Unicode::isSpace(str[p - 1]))
+					if (p < c && p > 0 && str[p - 1] != '\n')
 					{
 						int carry = 0;
 						for (size_t k = p; k <= c; ++k)

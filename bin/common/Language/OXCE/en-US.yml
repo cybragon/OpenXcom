@@ -742,4 +742,4 @@ en-US:
   STR_ON_UC: "ON"
   STR_OFF_UC: "OFF"
   STR_HIRES_ASSETS: "Hi-res assets"
-  STR_HIRES_ASSETS_DESC: "Mod images of another size are drawn at screen resolution (geoscape, base). Allows 32-bit PNG for geoscape/base-only images. Reloads mods / needs restart."
+  STR_HIRES_ASSETS_DESC: "Mod images of another size are drawn at screen resolution, fitted into the original box. Allows 32-bit PNG and JPG except for battlescape images. Reloads mods / needs restart."

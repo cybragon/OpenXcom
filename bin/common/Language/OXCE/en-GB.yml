@@ -723,4 +723,4 @@ en-GB:
 # ---- 8.7.1-hires fork strings: keep this group at the end of the file (re-append after a Transifex refresh) ----
   STR_GEOSCAPE_SCALE_X1_UI: "x1, UI optimised"
   STR_HIRES_ASSETS: "Hi-res assets"
-  STR_HIRES_ASSETS_DESC: "Mod images of another size are drawn at screen resolution (geoscape, base). Allows 32-bit PNG for geoscape/base-only images. Reloads mods / needs restart."
+  STR_HIRES_ASSETS_DESC: "Mod images of another size are drawn at screen resolution, fitted into the original box. Allows 32-bit PNG and JPG except for battlescape images. Reloads mods / needs restart."

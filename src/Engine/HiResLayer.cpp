@@ -262,21 +262,17 @@ FontRule fontRule(int slot, int lineH)
 	return FontRule{ std::max(1.0, std::round(h * 0.7)), h >= 12 ? 1.0 : 0.5 };
 }
 
-/// Glyph classes with their own size: Latin and everything else (reference 'H'), and wide
-/// glyphs - Hangul, Chinese, Japanese (reference '각'). Latin descenders (g p q y j) and Hangul
-/// taller than '각' (뷁...) may extend beyond the body.
-enum { CLS_LATIN = 0, CLS_WIDE = 1, CLS_COUNT = 2 };
-const UCode CLASS_REF[CLS_COUNT] = { 'H', 0xAC01 };
-inline int glyphClass(UCode c) { return isWide(c) ? CLS_WIDE : CLS_LATIN; }
+/// Reference glyph of the size: Hangul '각', from whichever face of the font chain draws it (normally
+/// the fallback font: the primary default Segoe UI has no Hangul). All glyphs - Latin, digits, Hangul,
+/// Chinese, Japanese - use this one size (same px/em in every face). Latin descenders (g p q y j) and
+/// Hangul taller than '각' (뷁...) may extend beyond the body. 'H' only if no face has '각'.
+const UCode SIZE_REF = 0xAC01, SIZE_REF_NO_HANGUL = 'H';
 
 /// Size of one font type (slot) at one output scale.
 struct SlotSize
 {
-	struct Cls
-	{
-		int size4 = 4;              ///< font size in 1/4 px
-		double asc = 0.0, desc = 0.0; ///< ink of the reference glyph above / below the baseline (emboldening included)
-	} cls[CLS_COUNT];
+	int size4 = 4;                  ///< font size in 1/4 px (em), for every glyph
+	double asc = 0.0, desc = 0.0;   ///< ink of the reference glyph above / below the baseline (emboldening included)
 	double r = 0.0;                 ///< outline thickness (stroke radius, output px)
 	double target = 0.0;            ///< wanted body height (output px)
 };
@@ -296,12 +292,11 @@ bool inkExtent(HiResFont *font, UCode ref, int size4, double &asc, double &desc)
 	return true;
 }
 
-/// Font size of a font type: per glyph class, the largest size (in 1/4 px steps) whose reference
-/// glyph ('H' / '각', emboldening included) is not taller than the body height
-/// fontRule().body x output scale x size options (ink heights are whole pixels: a fractional target
-/// is rounded down). The outline is fontRule().outline x output scale x size options x
-/// oxceHiResTextOutlineScale. Depends only on the font type, the output scale and the options -
-/// never on the text or its box.
+/// Font size of a font type: the largest size (in 1/4 px steps) whose '각' (emboldening included)
+/// is not taller than the body height fontRule().body x output scale x size options (ink heights are
+/// whole pixels: a fractional target is rounded down). The outline is fontRule().outline x output
+/// scale x size options x oxceHiResTextOutlineScale. Depends only on the font type, the output scale
+/// and the options - never on the text or its box.
 const SlotSize &slotSize(HiResFont *font, int slot, int lineH, double sy)
 {
 	const FontRule rule = fontRule(slot, lineH);
@@ -314,41 +309,36 @@ const SlotSize &slotSize(HiResFont *font, int slot, int lineH, double sy)
 	ss.target = rule.body * sy * pct / 100.0;
 	ss.r = rule.outline * sy * pct / 100.0 * S.outlinePct / 100.0;
 	const double limit = std::max(1.0, std::floor(ss.target + 1e-6));
-	bool found[CLS_COUNT] = { false, false };
-	for (int k = 0; k < CLS_COUNT; ++k)
+	const UCode ref = font->hasGlyph(SIZE_REF) ? SIZE_REF : SIZE_REF_NO_HANGUL;
+	double a, d;
+	const int probe4 = 64 * 4;
+	if (font->hasGlyph(ref) && inkExtent(font, ref, probe4, a, d) && a + d > 0)
 	{
-		const UCode ref = CLASS_REF[k];
-		double a, d;
-		const int probe4 = 64 * 4;
-		if (!font->hasGlyph(ref) || !inkExtent(font, ref, probe4, a, d) || a + d <= 0)
-			continue;
 		// emboldening grows the ink by em * boldRatio: em * ((a + d) / 64 + b) = target
 		int s4 = std::max(4, (int)std::floor(4.0 * ss.target / ((a + d) / 64.0 + boldRatio())));
 		while (s4 > 4 && inkExtent(font, ref, s4, a, d) && a + d > limit)
 			--s4;
 		while (s4 < 16000 && inkExtent(font, ref, s4 + 1, a, d) && a + d <= limit)
 			++s4;
-		ss.cls[k].size4 = s4;
-		inkExtent(font, ref, s4, ss.cls[k].asc, ss.cls[k].desc);
-		found[k] = true;
+		ss.size4 = s4;
+		inkExtent(font, ref, s4, ss.asc, ss.desc);
 	}
-	for (int k = 0; k < CLS_COUNT; ++k)
+	else
 	{
-		if (found[k])
-			continue;
-		if (found[1 - k])
-			ss.cls[k] = ss.cls[1 - k];
-		else
-		{
-			ss.cls[k].size4 = std::max(4, (int)std::lround(4.0 * ss.target / 0.72));
-			ss.cls[k].asc = ss.target;
-			ss.cls[k].desc = 0.0;
-		}
+		ss.size4 = std::max(4, (int)std::lround(4.0 * ss.target / 0.72));
+		ss.asc = ss.target;
+		ss.desc = 0.0;
 	}
+	double ha = 0.0, hd = 0.0;
+	inkExtent(font, 'H', ss.size4, ha, hd);
+	const int refFace = font->faceFor(ref), hFace = font->faceFor('H');
+	const auto &names = font->getFaceNames();
+	auto faceName = [&](int f) { return f >= 0 && f < (int)names.size() ? names[f] : std::string("-"); };
 	Log(LOG_INFO) << "HiResText: " << (slot >= 0 && slot < (int)S.slotIds.size() ? S.slotIds[slot] : std::string("default"))
 		<< " x" << sy << ": body " << rule.body << " -> " << ss.target << " px, outline " << ss.r
-		<< " px; Latin size " << ss.cls[CLS_LATIN].size4 / 4.0 << " px (H " << ss.cls[CLS_LATIN].asc + ss.cls[CLS_LATIN].desc
-		<< "), Hangul/CJK size " << ss.cls[CLS_WIDE].size4 / 4.0 << " px (" << "\xEA\xB0\x81 " << ss.cls[CLS_WIDE].asc + ss.cls[CLS_WIDE].desc << ")";
+		<< " px; size " << ss.size4 / 4.0 << " px from " << (ref == SIZE_REF ? "\xEA\xB0\x81" : "H") << " (" << faceName(refFace)
+		<< ") ink " << ss.asc + ss.desc << " (" << ss.asc << "/" << ss.desc << "); H (" << faceName(hFace) << ") ink "
+		<< ha + hd << " (" << ha << "/" << hd << ")";
 	return slotSizeCache[key] = ss;
 }
 
@@ -467,8 +457,8 @@ struct Placed
 	int pen = 0, baseline = 0;
 };
 
-/// Vertical placement, font size and outline of one glyph command. The body of its glyph class
-/// (ink box of 'H' / '각') is centred on the body of the bitmap capital 'H' of the same font (its
+/// Vertical placement, font size and outline of one glyph command. The body of the font type (ink
+/// box of '각' at the font type's size, shared by all glyphs, so Latin and Hangul share the baseline) is centred on the body of the bitmap capital 'H' of the same font (its
 /// top line and baseline; bitmap '가' or the cell if the bitmap font has no 'H'). If the body plus
 /// outline sticks out of the Text box but fits in it, it is moved inside; descenders and taller
 /// glyphs may still stick out.
@@ -478,7 +468,7 @@ void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int
 	// geometry (c.x/c.y) is in base px; cell metrics are in widget px (magnified widgets: 'scale' base px each)
 	const double ms = sy * std::max<int>(1, c.scale);
 	const SlotSize &ss = slotSize(font, c.slot, c.lineH > 0 ? c.lineH : c.cellH, ms);
-	const SlotSize::Cls &k = ss.cls[glyphClass(c.code)];
+	const SlotSize &k = ss;
 	size4 = k.size4;
 	outline64 = (int)std::lround(ss.r * 64.0);
 	const double bodyH = k.asc + k.desc;
@@ -718,8 +708,9 @@ void HiResLayer::reconfigure()
 		std::vector<std::string> specs = splitList(Options::oxceHiResFont);
 		std::vector<std::string> fallback = splitList(Options::oxceHiResFontFallback);
 		specs.insert(specs.end(), fallback.begin(), fallback.end());
-		// built-in fallbacks: Windows system fonts first, then common Linux/macOS fonts
-		std::vector<std::string> builtin = { "malgun.ttf", "gulim.ttc", "batang.ttc", "segoeui.ttf",
+		// built-in defaults: primary Segoe UI, fallback Malgun Gothic (Hangul), then other Windows
+		// fonts, then common Linux/macOS fonts
+		std::vector<std::string> builtin = { "segoeui.ttf", "malgun.ttf", "gulim.ttc", "batang.ttc",
 			"NanumGothic.ttf", "NotoSansCJK-Regular.ttc", "DejaVuSans.ttf", "AppleSDGothicNeo.ttc" };
 		for (const auto &b : builtin)
 			if (std::find(specs.begin(), specs.end(), b) == specs.end())
@@ -1046,7 +1037,7 @@ int HiResLayer::baseAdvance(UCode c, int lineH, int slot)
 	if (!canRenderGlyph(c, slot))
 		return -1;
 	HiResFont *f = slotFont(slot);
-	int px = slotSize(f, slot, lineH, 1.0).cls[glyphClass(c)].size4;
+	int px = slotSize(f, slot, lineH, 1.0).size4;
 	int adv = f->getAdvance(c, px);
 	return adv < 0 ? -1 : std::max(1, adv);
 }

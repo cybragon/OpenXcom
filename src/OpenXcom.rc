@@ -38,7 +38,7 @@ BEGIN
             VALUE "LegalCopyright", "Copyright 2010-2019 OpenXcom Developers"
             VALUE "OriginalFilename", "OpenXcomEx.exe"
             VALUE "ProductName", "OpenXcom Extended"
-            VALUE "ProductVersion", OPENXCOM_VERSION_LONG
+            VALUE "ProductVersion", OPENXCOM_VERSION_HIRES
         END
     END
     BLOCK "VarFileInfo"

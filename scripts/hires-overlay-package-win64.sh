@@ -5,12 +5,12 @@ set -e
 EXE=$1; OUT=$2
 R=$(cd "$(dirname "$0")/.." && pwd)            # source tree
 S=${DEPS_SRC:-/workspace/oxce/wdeps/src}         # dependency sources (license texts)
-T=$(mktemp -d); P=$T/Extended-8.7.1-hires
+T=$(mktemp -d); P=$T/Extended-8.7.1-hires-1
 mkdir -p $P/UFO $P/TFTD $P/licenses $P/user
 x86_64-w64-mingw32-strip -o $P/openxcom.exe "$EXE"
 cp -r $R/bin/common $R/bin/standard $P/
 cp $R/bin/UFO/README.txt $P/UFO/; cp $R/bin/TFTD/README.txt $P/TFTD/
-cp $R/LICENSE.txt $R/CHANGELOG-hires.md $P/
+cp $R/LICENSE.txt $R/CHANGELOG-hires.md $R/README-hires.ko.md $R/README-hires.en.md $P/
 cp $R/install/hires/INSTALL.txt $R/install/hires/THIRD_PARTY.txt $R/install/hires/OpenXcom-portable.bat $P/
 cp $R/install/hires/user/options.cfg $P/user/
 sed -i 's/\r*$/\r/' $P/INSTALL.txt $P/THIRD_PARTY.txt $P/OpenXcom-portable.bat   # Windows line ends
@@ -36,7 +36,7 @@ rm -f "$OUT"
 import zipfile, os, sys
 out = sys.argv[1]; n = 0
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-    for root, dirs, files in os.walk('Extended-8.7.1-hires'):
+    for root, dirs, files in os.walk('Extended-8.7.1-hires-1'):
         dirs.sort()
         for f in sorted(files):
             p = os.path.join(root, f); z.write(p, p); n += 1

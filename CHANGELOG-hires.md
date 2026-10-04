@@ -1,44 +1,55 @@
-# OpenXcom Extended 8.7.1 – hi-res overlay fork (CHANGELOG / modification notice)
+# OpenXcom Extended 8.7.1-hires-1 – CHANGELOG / modification notice
 
-This is a **modified version** of OpenXcom Extended (OXCE) 8.7.1
-(upstream commit `441cae1b0`). It is distributed under the same license,
-the GNU General Public License version 3 or later (see `LICENSE.txt`).
+This is a **modified version** of OpenXcom Extended (OXCE) 8.7.1 (upstream commit `441cae1b0`),
+an unofficial fork. It is distributed under the same license, the GNU General Public License
+version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires.ko.md`.
 
-Modified: 2026-09-25 – 2026-10-03 (release `release-hires-1`, 2026-10-03).
-The original OpenXcom / OXCE copyright notices in every file are kept; files listed
-below as "added" were written for this fork, files listed as "modified" were changed
-for this fork on the dates above.
+- Version name: `8.7.1-hires-1` (planned release tag `v8.7.1-hires-1`, branch `release-hires-1`)
+- Modified: 2026-09-25 – 2026-10-04
+- The original OpenXcom / OXCE copyright notices in every file are kept. Files listed below as
+  "added" were written for this fork; files listed as "modified" were changed for this fork on the
+  dates above.
 
-## Features (release-hires-1, 2026-10-03)
+## 8.7.1-hires-1 (2026-10-04)
 
-- **Hi-res TTF text overlay** (`oxceHiResOverlay`, `oxceHiResText`): game text is drawn
-  with system TrueType fonts at the output resolution on top of the scaled 320x200 frame
-  (OpenGL and software paths). Layout and line breaks stay those of the bitmap fonts.
-  Per font type (Font.dat id) font face and size (Options > Fonts).
-- **Glyph size rule**: per font type the body and the outline have a fixed height in
-  original 1x pixels, times the output scale and the size options: FONT_BIG 11 + 1,
-  FONT_SMALL 7 + 0.5, FONT_GEO_BIG 7 + 1, FONT_GEO_SMALL 5 + 0.5. Latin (reference `H`)
-  and Hangul/Chinese/Japanese (reference `각`) are sized separately so both bodies have that
-  height (font sizes in 1/4 px steps), and both are aligned to the capital letters of the
-  bitmap font. Descenders and glyphs taller than `각` may extend beyond the body.
+- **Hi-res TTF text overlay** (`oxceHiResOverlay`, `oxceHiResText`): game text drawn with system
+  TrueType fonts (FreeType) at the output resolution over the scaled 320x200 frame, OpenGL and
+  software paths. Layout and line breaks stay those of the bitmap fonts. Per font type face and
+  size (Options > Fonts).
+- **Glyph size rule**: one font size per font type for all characters, chosen so that Hangul `각`
+  (measured with the face that draws it) has the body + outline height FONT_BIG 11 + 1,
+  FONT_SMALL 7 + 0.5, FONT_GEO_BIG 7 + 1, FONT_GEO_SMALL 5 + 0.5 (1x px, times output scale and
+  size options); 1/4 px font sizes; aligned to the capitals of the bitmap font.
+- **Default fonts**: primary Segoe UI (`segoeui.ttf`), fallback Malgun Gothic (`malgun.ttf`), then
+  gulim, batang, NanumGothic, Noto Sans CJK, DejaVu Sans, Apple SD Gothic Neo. No fonts bundled.
 - **Outline thickness** (`oxceHiResTextOutlineScale`, %, default 100, 0–400): multiplies the
   per-font default outline (replaces the former `oxceHiResTextOutline`).
-- **Horizontal squeeze**: a single line wider than its Text box is narrowed (height kept)
-  down to 80 %; alignment uses the squeezed width.
+- **Horizontal squeeze**: a single line wider than its Text box is narrowed (height kept) down to
+  80 %; alignment uses the squeezed width.
 - **Thousands separators** are part of the number run, half a digit wide.
-- **Geoscape "x1, UI optimized" mode**: globe at x1, UI (sidebar, windows) magnified;
-  sidebar magnified on tall resolutions; geoscape background cover-scaled; globe labels
-  with per-country/per-city zoom levels; slacking indicator.
-- **UI graphic filters**: in "x1, UI optimized" (software path) UI graphics are magnified
-  with the selected software filter (Scale / hqx / xBRZ), also with hi-res text off.
+- **Geoscape "x1, UI optimized"** (`oxceGeoscapeUiOptimized`): globe at x1, UI (sidebar, windows)
+  magnified; sidebar magnified on tall resolutions; cover-scaled geoscape background; 2x globe
+  labels/markers; dogfights; per-country/per-city label zoom levels (docs/globe-zoom-levels);
+  yellow slacking indicator.
+- **UI graphic filters**: in "x1, UI optimized" (software path) UI graphics are magnified with the
+  selected software filter (Scale / hqx / xBRZ), also with hi-res text off.
 - **Basescape**: base screens maximized to 320x200 with `maximizeInfoScreens`.
-- Windows x64 cross build (MinGW-w64, static) and Unicode font paths.
+- Version string `Extended 8.7.1-hires-1` (version number for mods and rulesets unchanged: 8.7.1.0).
+- Windows x64 cross build (MinGW-w64, static), Unicode font paths, packaging scripts.
 
 ## Added files
+- `CHANGELOG-hires.md`
+- `README-hires.en.md`
+- `README-hires.ko.md`
 - `docs/globe-zoom-levels/README.md`
 - `docs/globe-zoom-levels/test-mod/globe_zoom_test/globe_zoom_test.rul`
 - `docs/globe-zoom-levels/test-mod/globe_zoom_test/metadata.yml`
+- `install/hires/INSTALL.txt`
+- `install/hires/OpenXcom-portable.bat`
+- `install/hires/THIRD_PARTY.txt`
+- `install/hires/user/options.cfg`
 - `scripts/hires-overlay-build-win64.sh`
+- `scripts/hires-overlay-package-win64.sh`
 - `src/Basescape/MaximizedBasescape.cpp`
 - `src/Basescape/MaximizedBasescape.h`
 - `src/Engine/HiResFont.cpp`
@@ -52,10 +63,10 @@ for this fork on the dates above.
 - `src/Geoscape/GeoSidebarLayout.h`
 - `src/Menu/OptionsFontsState.cpp`
 - `src/Menu/OptionsFontsState.h`
-- `CHANGELOG-hires.md`, `install/hires/*`, `scripts/hires-overlay-package-win64.sh`
 
 ## Modified files
 - `CMakeLists.txt`
+- `README.md`
 - `bin/common/Language/OXCE/en-GB.yml`
 - `bin/common/Language/OXCE/en-US.yml`
 - `bin/common/Language/OXCE/ko.yml`
@@ -103,4 +114,5 @@ for this fork on the dates above.
 - `src/Mod/RuleRegion.h`
 - `src/OpenXcom.2010.vcxproj`
 - `src/OpenXcom.2010.vcxproj.filters`
-- `README.md` (notice at the top)
+- `src/OpenXcom.rc`
+- `src/version.h`

@@ -374,6 +374,7 @@ void Text::processText()
 		else if (str[c] != Unicode::TOK_COLOR_FLIP)
 		{
 			int charWidth = font->getCharSize(str[c]).w;
+			int latinCarry = 0;
 
 			width += charWidth;
 			word += charWidth;
@@ -400,9 +401,28 @@ void Text::processText()
 				}
 				else if (_lang->getTextWrapping() == WRAP_LETTERS)
 				{
-					// Go back to the last letter and put a linebreak there
-					str.insert(c, 1, '\n');
-					width -= charWidth;
+					// Go back to the last letter and put a linebreak there; a Latin word or number
+					// (e.g. "PNG" in Korean text) is not split: the break goes before it unless it
+					// starts the line
+					auto latin = [](UCode ch) { return (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'); };
+					size_t p = c;
+					while (p > 0 && c - p < 40 && latin(str[p - 1]) && latin(str[p]))
+						--p;
+					if (p < c && p > 0 && str[p - 1] != '\n' && !Unicode::isSpace(str[p - 1]))
+					{
+						int carry = 0;
+						for (size_t k = p; k <= c; ++k)
+							carry += font->getCharSize(str[k]).w;
+						str.insert(p, 1, '\n');
+						indentLocation = p;
+						width -= carry;
+						latinCarry = carry - charWidth;
+					}
+					else
+					{
+						str.insert(c, 1, '\n');
+						width -= charWidth;
+					}
 				}
 
 				// Keep initial indentation of text
@@ -426,7 +446,8 @@ void Text::processText()
 				}
 				else if (_lang->getTextWrapping() == WRAP_LETTERS)
 				{
-					width = 0;
+					width = latinCarry;
+					latinCarry = 0;
 				}
 				start = true;
 			}

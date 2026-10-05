@@ -51,8 +51,12 @@ namespace HiResAssets
 	extern size_t registeredCount;
 	inline bool any() { return registeredCount != 0; }
 
-	/// Option oxceHiResAssets (read at load time: changing it needs a mod reload).
+	/// Option oxceHiResAssets as it was when the mods were loaded (beginModLoad): changing the option
+	/// in game has no effect until the mods are reloaded (restart), for loading and drawing alike, so
+	/// proxies of a session started with the option on are never shown alone (quantized colours).
 	bool enabled();
+	/// Takes the current option value for this mod load (Mod::loadAll).
+	void beginModLoad();
 	/// 32bpp pictures (option on) are allowed for every resource except battlescape ones: a type
 	/// (Mod surface / surface set name) or name prefix marked here (vanilla battlescape resources,
 	/// rule-referenced armor sprites / paperdolls / layers, terrain sets, battlescape backgrounds).

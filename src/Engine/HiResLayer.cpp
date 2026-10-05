@@ -101,7 +101,7 @@ bool uiImagesWanted()
 /// Hi-res assets (option oxceHiResAssets) are drawn by this layer too, with or without hi-res text.
 bool assetsWanted()
 {
-	return Options::oxceHiResAssets;
+	return HiResAssets::enabled(); // option value of the last mod load
 }
 
 struct ImageRef

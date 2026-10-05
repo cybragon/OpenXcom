@@ -2184,6 +2184,7 @@ void Mod::loadAll()
 	const auto& mods = FileMap::getRulesets();
 
 	Log(LOG_INFO) << "Loading begins...";
+	HiResAssets::beginModLoad();
 	if (Options::oxceModValidationLevel < LOG_ERROR)
 	{
 		Log(LOG_ERROR) << "Validation of mod data disabled, game can crash when run";

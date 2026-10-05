@@ -332,9 +332,19 @@ void preparePicture(Picture &p)
 
 } // namespace
 
+namespace
+{
+bool loadedEnabled = false;
+}
+
 bool enabled()
 {
-	return Options::oxceHiResAssets;
+	return loadedEnabled;
+}
+
+void beginModLoad()
+{
+	loadedEnabled = Options::oxceHiResAssets;
 }
 
 void denyTrueColor(const std::string &type)

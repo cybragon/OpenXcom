@@ -57,7 +57,7 @@ Game* State::_game = 0;
  * By default states are full-screen.
  * @param game Pointer to the core game.
  */
-State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0), _ruleInterfaceParent(0), _customSound(nullptr), _uiPanel(nullptr), _uiCanvasExempt(false), _uiPartial(false), _uiPartialTop(false), _uiCornerPanel(nullptr), _uiCornerW(0), _uiCornerH(0)
+State::State() : _screen(true), _soundPlayed(false), _modal(0), _ruleInterface(0), _ruleInterfaceParent(0), _customSound(nullptr), _uiPanel(nullptr), _uiCanvasExempt(false), _uiCanvasWithBattle(false), _uiPartial(false), _uiPartialTop(false), _uiCornerPanel(nullptr), _uiCornerW(0), _uiCornerH(0)
 {
 	// initialize palette to all black
 	memset(_palette, 0, sizeof(_palette));
@@ -503,7 +503,7 @@ int State::uiCanvasFactorForGeoscape()
 
 /**
  * Magnification of this state's UI canvas: only for states shown at the geoscape
- * resolution in the geoscape scale "x1, UI optimized" (not in battle, not while the
+ * resolution in the geoscape scale "x1, UI optimized" (not in battle unless setUiCanvasWithBattle, not while the
  * basescape is maximized to 320x200, not for exempt states).
  */
 int State::getUiCanvasFactor() const
@@ -513,7 +513,7 @@ int State::getUiCanvasFactor() const
 	if (Options::baseXResolution != Options::baseXGeoscape || Options::baseYResolution != Options::baseYGeoscape)
 		return 1;
 	SavedGame *save = _game->getSavedGame();
-	if (save && save->getSavedBattle())
+	if (save && save->getSavedBattle() && !_uiCanvasWithBattle)
 		return 1;
 	return uiCanvasFactorForGeoscape();
 }

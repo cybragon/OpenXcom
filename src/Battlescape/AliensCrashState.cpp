@@ -34,6 +34,7 @@ namespace OpenXcom
  */
 AliensCrashState::AliensCrashState()
 {
+	setUiCanvasWithBattle(); // geoscape resolution, the battle still exists
 	// Create objects
 	_window = new Window(this, 256, 160, 32, 20);
 	_btnOk = new TextButton(120, 18, 100, 154);

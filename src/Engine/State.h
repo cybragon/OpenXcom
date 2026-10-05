@@ -66,6 +66,7 @@ protected:
 	/// magnified by the sidebar factor (text still rendered by HiResLayer at the output resolution).
 	ScaledPanel *_uiPanel;
 	bool _uiCanvasExempt;
+	bool _uiCanvasWithBattle;
 	/// Partial canvas: only these surfaces are magnified (the others are drawn/handled as usual).
 	bool _uiPartial, _uiPartialTop;
 	std::vector<Surface*> _uiPartialMembers;
@@ -163,6 +164,9 @@ public:
 
 	/// Excludes this state from the UI canvas (states that lay themselves out on the whole screen).
 	void setUiCanvasExempt(bool exempt = true);
+	/// Magnifies this state like the other geoscape-resolution screens even while a battle exists
+	/// (briefing and the popups right before / instead of the battle).
+	void setUiCanvasWithBattle(bool on = true) { _uiCanvasWithBattle = on; }
 	/// Magnifies only 'members' (e.g. the top bar of a globe overlay); with 'top' their 320x200 frame
 	/// starts at the top of the screen instead of the vertical center.
 	void setUiCanvasPartial(const std::vector<Surface*> &members, bool top);

@@ -378,11 +378,18 @@ void TextEdit::draw()
 	// TTF glyphs (markers tied to character indices), not at bitmap widths
 	const bool hiResMarkers = HiResLayer::recording() && HiResLayer::textConfigured() && !newValue.empty()
 		&& Options::keyboardMode == KEYBOARD_ON && _isFocused && !_text->getFont()->isMonospace();
+#ifdef _WIN32
+	// Windows: no composition underline (the caret at the TTF position is enough); the underline is kept
+	// for the other platforms (IME test hook OXCE_IME_TEST_COMPOSITION)
+	const bool imeUnderline = false;
+#else
+	const bool imeUnderline = true;
+#endif
 	if (hiResMarkers)
 	{
 		const int caretIdx = (int)std::min(_caretPos, _value.length());
 		const int compLen = composing ? (int)_composition.length() : 0;
-		_text->setHiResMarkers(_blink ? caretIdx + compLen : -1, caretIdx, compLen ? caretIdx : -1, compLen ? caretIdx + compLen : -1);
+		_text->setHiResMarkers(_blink ? caretIdx + compLen : -1, caretIdx, (compLen && imeUnderline) ? caretIdx : -1, (compLen && imeUnderline) ? caretIdx + compLen : -1);
 	}
 	else
 	{
@@ -455,7 +462,7 @@ void TextEdit::draw()
 			}
 			else
 			{
-				if (composing && x > compStart)
+				if (imeUnderline && composing && x > compStart)
 				{
 					// underline the composition, in the colour of the glyph bodies
 					int uy = std::min(y + _text->getFont()->getHeight(), getHeight() - 1);

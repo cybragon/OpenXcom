@@ -66,6 +66,9 @@ namespace HiResAssets
 	size_t deniedCount();
 	/// Palettes used to quantize 32bpp pictures when the replaced image has no meaningful palette.
 	void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape, const SDL_Color *battlescape);
+	/// Palette a type is shown with (e.g. a Ufopaedia image_id: the palette of its article), used to
+	/// convert 32-bit pictures that fit their box to 8bpp (drawn like stock images).
+	void setTypePalette(const std::string &type, const SDL_Color *palette);
 	/// Game palettes for the own palette test of 8bpp hi-res pictures (geoscape, basescape, ufopaedia, graphs, battlescape).
 	void setGamePalettes(const std::vector<const SDL_Color*> &palettes);
 	/// Surface::loadImage, except (option on) a 32bpp picture, which is converted to the battlescape

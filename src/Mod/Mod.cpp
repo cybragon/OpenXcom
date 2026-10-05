@@ -6074,6 +6074,36 @@ void Mod::loadBattlescapeResources()
  */
 void Mod::classifyHiResBattleTypes()
 {
+	// Ufopaedia images: the palette of their article (32-bit pictures that fit their box become 8bpp
+	// images in that palette, drawn like stock images); custom-palette articles use the image's own
+	{
+		auto pal = [&](const char *name) -> const SDL_Color*
+		{
+			auto it = _palettes.find(name);
+			return it != _palettes.end() ? it->second->getColors() : nullptr;
+		};
+		for (const auto &a : _ufopaediaArticles)
+		{
+			const ArticleDefinition *d = a.second;
+			if (!d || d->customPalette)
+				continue;
+			std::string img;
+			const char *palName = "PAL_UFOPAEDIA";
+			switch (d->getType())
+			{
+			case UFOPAEDIA_TYPE_CRAFT: img = static_cast<const ArticleDefinitionCraft*>(d)->image_id; break;
+			case UFOPAEDIA_TYPE_SOLDIER: img = static_cast<const ArticleDefinitionSoldier*>(d)->image_id; break;
+			case UFOPAEDIA_TYPE_UNIT: img = static_cast<const ArticleDefinitionUnit*>(d)->image_id; break;
+			case UFOPAEDIA_TYPE_VEHICLE: img = static_cast<const ArticleDefinitionVehicle*>(d)->image_id; break;
+			case UFOPAEDIA_TYPE_TEXTIMAGE: img = static_cast<const ArticleDefinitionTextImage*>(d)->image_id; break;
+			case UFOPAEDIA_TYPE_CRAFT_WEAPON: img = static_cast<const ArticleDefinitionCraftWeapon*>(d)->image_id; palName = "PAL_BATTLEPEDIA"; break;
+			case UFOPAEDIA_TYPE_ARMOR: img = static_cast<const ArticleDefinitionArmor*>(d)->image_id; palName = "PAL_BATTLEPEDIA"; break;
+			default: break;
+			}
+			if (!img.empty())
+				HiResAssets::setTypePalette(img, pal(palName));
+		}
+	}
 	for (const auto &a : _armors)
 	{
 		const Armor *armor = a.second;

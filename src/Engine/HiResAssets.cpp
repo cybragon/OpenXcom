@@ -335,6 +335,7 @@ void preparePicture(Picture &p)
 namespace
 {
 bool loadedEnabled = false;
+std::map<std::string, const SDL_Color*> typePalettes;
 }
 
 bool enabled()
@@ -345,6 +346,7 @@ bool enabled()
 void beginModLoad()
 {
 	loadedEnabled = Options::oxceHiResAssets;
+	typePalettes.clear();
 }
 
 void denyTrueColor(const std::string &type)
@@ -452,8 +454,19 @@ std::shared_ptr<Picture> decode(const std::string &filename)
 	return nullptr;
 }
 
+void setTypePalette(const std::string &type, const SDL_Color *palette)
+{
+	if (palette)
+		typePalettes[type] = palette;
+	else
+		typePalettes.erase(type);
+}
+
 const SDL_Color *quantizePalette(const std::string &type, const SDL_Color *origPalette)
 {
+	auto tp = typePalettes.find(type);
+	if (tp != typePalettes.end())
+		return tp->second;
 	if ((type == "BASEBITS.PCK" || type == "INTICON.PCK") && palBase)
 		return palBase;
 	if (!uniform(origPalette))
@@ -598,12 +611,28 @@ bool loadReplacement(Surface *target, const std::string &filename, int boxW, int
 	const bool larger = fitBox(boxW, boxH, pic->w, pic->h, fw, fh, scale);
 	if (!larger && !pic->trueColor)
 		return false; // fits the box (same size or smaller) 8bpp: exactly the normal path
+	const bool boxKnown = boxW < (1 << 15) && boxH < (1 << 15);
+	if (!larger && boxKnown)
+	{
+		// 32-bit picture that fits the box of the image it replaces: no hi-res, like a stock image
+		// (original size, top-left, drawn by the normal 8bpp path) - converted to 8bpp at its size
+		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h << " (box " << boxW << "x" << boxH
+			<< "): fits the box, converted to 8-bit at its size (no hi-res, drawn like a stock image)";
+		std::vector<SDL_Color> pal(256, SDL_Color{0, 0, 0, 255});
+		if (origPalette)
+			std::memcpy(pal.data(), origPalette, 256 * sizeof(SDL_Color));
+		forget(target->getSurface());
+		*target = Surface(pic->w, pic->h, 0, 0);
+		target->setPalette(pal.data(), 0, 256);
+		makeProxy(target, *pic, 0, 0, pic->w, pic->h, pic->w, pic->h, quantizePalette(type, origPalette));
+		return true;
+	}
 	if (larger)
 		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is " << pic->w << "x" << pic->h << (pic->trueColor ? " (32-bit)" : " (8-bit)")
 			<< ", box " << boxW << "x" << boxH << ": drawn hi-res at " << fw << "x" << fh << " (scale 1/" << scale << "), " << fw << "x" << fh << " proxy for the game" << (pic->ownPalette ? "; own palette (matches no game palette): drawn in its own colours" : "");
 	else
-		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h << " (box " << boxW << "x" << boxH
-			<< "): drawn true-colour at its size, quantized proxy for the game";
+		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a new 32-bit image of " << pic->w << "x" << pic->h
+			<< ": kept at its size with a quantized proxy (each consumer fits it into its box)";
 	// palette: 8bpp pictures bring their own palette like with the normal loader
 	std::vector<SDL_Color> pal(256, SDL_Color{0, 0, 0, 255});
 	const SDL_Color *qpal = quantizePalette(type, origPalette);
@@ -643,14 +672,32 @@ Surface *fit(Surface *src, int boxW, int boxH)
 	SDL_Surface *s = src->getSurface();
 	int fw, fh;
 	double scale;
-	if (!fitBox(boxW, boxH, s->w, s->h, fw, fh, scale))
-		return src; // fits the box: exactly as before
 	if (s->format->BitsPerPixel != 8)
 		return src;
 	const FitKey key{ s, boxW, boxH };
 	auto it = fitted.find(key);
 	if (it != fitted.end())
 		return it->second.get();
+	if (!fitBox(boxW, boxH, s->w, s->h, fw, fh, scale))
+	{
+		// fits the box: exactly as before. A hi-res picture (new mod image kept at its size) is drawn
+		// like a stock image too: its 8bpp pixels at original size, top-left, without the overlay
+		if (bySurface.find(s) == bySurface.end())
+			return src;
+		std::unique_ptr<Surface> plain(new Surface(s->w, s->h, 0, 0));
+		plain->setPalette(src->getPalette(), 0, 256);
+		SDL_Surface *d = plain->getSurface();
+		SDL_LockSurface(s);
+		SDL_LockSurface(d);
+		for (int y = 0; y < s->h; ++y)
+			std::memcpy((Uint8*)d->pixels + y * d->pitch, (const Uint8*)s->pixels + y * s->pitch, s->w);
+		SDL_UnlockSurface(d);
+		SDL_UnlockSurface(s);
+		Log(LOG_INFO) << "HiResAssets: image " << s->w << "x" << s->h << " fits its box " << boxW << "x" << boxH << ": drawn like a stock image (8-bit, original size)";
+		Surface *ret = plain.get();
+		fitted[key] = std::move(plain);
+		return ret;
+	}
 	std::shared_ptr<Picture> pic;
 	double rx = 0, ry = 0, rw = s->w, rh = s->h;
 	auto reg = bySurface.find(s);

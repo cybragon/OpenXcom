@@ -6148,7 +6148,9 @@ void Mod::classifyHiResBattleTypes()
 		HiResAssets::allowTrueColor(name);
 	}
 	if (HiResAssets::enabled())
+	{
 		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (stage-1 UI chrome allow-listed)";
+	}
 }
 
 /**

@@ -17,6 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "NumberText.h"
+#include "../Engine/HiResLayer.h"
+#include "../Engine/Options.h"
 #include <sstream>
 #include <string>
 
@@ -295,6 +297,35 @@ void NumberText::draw()
 	}
 
 	this->offset(_color);
+
+	// hi-res text: prefer TTF digits over the 3x5 bitmap (palette-recolor still uses the 8bpp fallback).
+	// 32-bit digit sheets are not used — NumberText relies on index offset(_color).
+	if (Options::oxceHiResText && HiResLayer::recording() && HiResLayer::canRenderGlyph('0', 0))
+	{
+		const Uint32 run = HiResLayer::newRun();
+		int px = 0;
+		for (char ch : s)
+		{
+			const int gw = _chars[ch - '0']->getWidth();
+			HiResCmd cmd;
+			cmd.kind = HiResCmdKind::Glyph;
+			cmd.code = (UCode)ch;
+			cmd.run = run;
+			cmd.x = (Sint16)px;
+			cmd.y = 0;
+			cmd.w = (Sint16)gw;
+			cmd.h = (Sint16)getHeight();
+			cmd.cellH = (Sint16)getHeight();
+			cmd.lineH = (Uint8)std::max(1, getHeight());
+			cmd.slot = 0;
+			cmd.fillIdx = (Uint8)(_color + 1);
+			cmd.lineIdx = (Uint8)(_color + 4);
+			cmd.clipX = 0; cmd.clipY = 0;
+			cmd.clipW = (Sint16)getWidth(); cmd.clipH = (Sint16)getHeight();
+			HiResLayer::record(getSurface(), cmd);
+			px += gw + 1;
+		}
+	}
 }
 
 void NumberText::setBordered(bool bordered)

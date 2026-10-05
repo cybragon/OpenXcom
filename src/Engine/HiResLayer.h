@@ -83,6 +83,7 @@ struct HiResCmd
 	Sint16 srcX = 0, srcY = 0, srcW = 0, srcH = 0;
 	Uint32 palKey = 0;               ///< resolved at screen delivery: palette of 8bpp pictures
 	Uint32 maskIdx = 0;              ///< resolved at screen delivery: 1 + index of the per-base-pixel snapshot mask (clip rect)
+	Uint32 underId = 0;              ///< pixels under the transparent proxy pixels at record time (silhouette edge), 0 = none
 	// --- resolved when the command reaches the screen buffer
 	SDL_Color fill = {0, 0, 0, 0};
 	SDL_Color line = {0, 0, 0, 0};

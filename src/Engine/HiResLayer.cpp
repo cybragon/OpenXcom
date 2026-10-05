@@ -57,6 +57,8 @@ struct SizeKeyHash
 	size_t operator()(const SizeKey &k) const { return ((size_t)k.slot * 1000003u) ^ ((size_t)k.target64 * 9176u) ^ ((size_t)k.cls << 28) ^ ((size_t)k.refW64 * 31u); }
 };
 
+enum : Uint8 { MASK_NONE = 0, MASK_PROXY = 1, MASK_EDGE = 2, MASK_BACK = 3 };
+
 struct LayerState
 {
 	std::map<std::string, std::unique_ptr<HiResFont>> fonts;          ///< loaded font chains by key
@@ -74,7 +76,18 @@ struct LayerState
 	Uint32 stampCounter = 0;
 	Uint32 runCounter = 0;
 	std::vector<HiResCmd> frame;       ///< commands that reached the screen this frame
-	std::vector<std::vector<Uint8>> masks; ///< snapshot masks of the hi-res asset commands of this frame
+	/// snapshot masks of the hi-res asset commands of this frame, per base pixel of the clip rect:
+	/// 0 = not drawn, MASK_PROXY = the proxy pixel reached the screen unchanged, MASK_EDGE = transparent
+	/// proxy pixel next to the silhouette, unchanged since the record (the picture's alpha draws the
+	/// edge over what is there), MASK_BACK = proxy pixel on the silhouette whose background is known
+	/// (backs: the picture is composited over that colour, so its alpha defines the outline)
+	std::vector<std::vector<Uint8>> masks;
+	std::vector<std::vector<Uint32>> backs; ///< per mask: background colour of MASK_BACK pixels (or empty)
+	/// pixels under the proxy at record time, per proxy pixel of the drawn source rect (underId)
+	std::unordered_map<Uint32, std::vector<Uint8>> unders;
+	std::unordered_map<size_t, Uint32> underByHash;
+	Uint32 underCounter = 0;
+	std::unordered_map<Uint32, bool> assetHasEdge; ///< proxy has transparent pixels next to opaque ones
 	// composition buffer (premultiplied BGRA, output resolution without black bands)
 	std::vector<Uint32> rgba;
 	int bufW = 0, bufH = 0;
@@ -419,6 +432,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 	const std::vector<Uint8> &mask = S.masks[c.maskIdx - 1];
 	if (mask.size() != (size_t)c.clipW * c.clipH)
 		return;
+	const std::vector<Uint32> &back = S.backs[c.maskIdx - 1];
 	const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
 	const int X1 = (int)std::lround((c.x + c.w) * sx), Y1 = (int)std::lround((c.y + c.h) * sy);
 	const int outW = X1 - X0, outH = Y1 - Y0;
@@ -452,6 +466,34 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 				continue;
 			const Uint32 p = src[x];
 			const unsigned a = p >> 24;
+			if (maskRow[mx] == MASK_BACK && a < 255)
+			{
+				// silhouette pixel with a known background: the picture over that colour, opaque
+				// (covers the low-res proxy pixel, the outline follows the picture's alpha)
+				const Uint32 b = back[(size_t)my * c.clipW + mx];
+				Uint32 out = 0xFF000000u | (b & 0xFFFFFF);
+				{
+					// a hi-res background already drawn next to it (e.g. a hi-res tile): the same
+					// point of the neighbouring base pixel instead of the flat 8bpp colour
+					static const int nd[4][2] = { {-1, 0}, {1, 0}, {0, -1}, {0, 1} };
+					const int dir = (int)((b >> 24) & 3);
+					const int nx = x + (int)std::lround(nd[dir][0] * sx), ny = y + (int)std::lround(nd[dir][1] * sy);
+					if (nx >= 0 && ny >= 0 && nx < dstW && ny < dstH)
+					{
+						const Uint32 q = S.rgba[ny * S.bufW + nx];
+						if ((q >> 24) == 255)
+							out = q;
+					}
+				}
+				if (a)
+				{
+					const SDL_Color col = { (Uint8)((p >> 16) & 0xFF), (Uint8)((p >> 8) & 0xFF), (Uint8)(p & 0xFF), (Uint8)255 };
+					blendPixel(out, col, a);
+				}
+				dst[x] = out;
+				drawn = true;
+				continue;
+			}
 			if (!a)
 				continue;
 			drawn = true;
@@ -482,7 +524,29 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 	c.clipX = (Sint16)vx; c.clipY = (Sint16)vy; c.clipW = (Sint16)vw; c.clipH = (Sint16)vh;
 	c.palKey = HiResAssets::paletteKey(c.assetId, src->format->palette);
 	std::vector<Uint8> m((size_t)vw * vh, 0);
+	std::vector<Uint32> bk;
 	bool any = false;
+	// silhouette: pixels under the transparent proxy pixels when the asset was drawn
+	const std::vector<Uint8> *under = nullptr;
+	if (c.underId)
+	{
+		auto ui = S.unders.find(c.underId);
+		if (ui != S.unders.end() && ui->second.size() == (size_t)c.srcW * c.srcH)
+			under = &ui->second;
+	}
+	auto proxyAt = [&](int u, int v) -> int
+	{
+		if (u < 0 || v < 0 || u >= ew || v >= eh || u < c.srcX || v < c.srcY || u >= c.srcX + c.srcW || v >= c.srcY + c.srcH)
+			return -1;
+		return e[(size_t)v * ew + u];
+	};
+	auto underAt = [&](int u, int v) -> int
+	{
+		if (!under || u < c.srcX || v < c.srcY || u >= c.srcX + c.srcW || v >= c.srcY + c.srcH)
+			return -1;
+		return (*under)[(size_t)(v - c.srcY) * c.srcW + (u - c.srcX)];
+	};
+	const SDL_Color *spal = src->format->palette ? src->format->palette->colors : nullptr;
 	SDL_LockSurface(src);
 	for (int yy = vy; yy < vy + vh; ++yy)
 	{
@@ -500,8 +564,43 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 			const Uint8 ev = ep[u];
 			if (ev && sp[xx] == ev)
 			{
-				mp[xx] = 1;
+				mp[xx] = MASK_PROXY;
 				any = true;
+				if (under && spal)
+				{
+					// on the silhouette: background from a transparent neighbour (4-neighbourhood)
+					static const int nb[4][2] = { {-1, 0}, {1, 0}, {0, -1}, {0, 1} };
+					for (const auto &d : nb)
+					{
+						if (proxyAt(u + d[0], v + d[1]) != 0)
+							continue;
+						const int uv = underAt(u + d[0], v + d[1]);
+						if (uv <= 0)
+							continue;
+						if (bk.empty())
+							bk.assign((size_t)vw * vh, 0);
+						const SDL_Color &col = spal[uv];
+						// colour of the background pixel + which neighbour it is (bits 24-25: -x, +x, -y, +y)
+						bk[(size_t)(yy - vy) * vw + (xx - vx)] = ((Uint32)(&d - nb) << 24) | ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
+						mp[xx] = MASK_BACK;
+						break;
+					}
+				}
+			}
+			else if (!ev && under)
+			{
+				// transparent proxy pixel next to the silhouette, still showing what was under it
+				bool edge = false;
+				for (int dv = -1; dv <= 1 && !edge; ++dv)
+					for (int du = -1; du <= 1 && !edge; ++du)
+						if ((du || dv) && proxyAt(u + du, v + dv) > 0)
+							edge = true;
+				const int uv = edge ? underAt(u, v) : -1;
+				if (uv >= 0 && sp[xx] == uv)
+				{
+					mp[xx] = MASK_EDGE;
+					any = true;
+				}
 			}
 		}
 	}
@@ -509,8 +608,79 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 	if (!any)
 		return false;
 	S.masks.push_back(std::move(m));
+	S.backs.push_back(std::move(bk));
 	c.maskIdx = (Uint32)S.masks.size();
 	return true;
+}
+
+/// Snapshot of the pixels under a hi-res asset's transparent proxy pixels next to its silhouette,
+/// taken when the asset is drawn into 'dst' (after the 8bpp blit: transparent proxy pixels left the
+/// destination untouched). Indexed per proxy pixel of the drawn source rect; shared by content.
+Uint32 snapshotUnder(const HiResCmd &c, const SDL_Surface *dst)
+{
+	int ew = 0, eh = 0;
+	const Uint8 *e = HiResAssets::expected(c.assetId, ew, eh);
+	if (!e || !dst || dst->format->BitsPerPixel != 8 || c.srcW <= 0 || c.srcH <= 0 || c.w <= 0 || c.h <= 0)
+		return 0;
+	auto he = S.assetHasEdge.find(c.assetId);
+	if (he == S.assetHasEdge.end())
+	{
+		bool edge = false;
+		for (int v = 0; v < eh && !edge; ++v)
+			for (int u = 0; u < ew && !edge; ++u)
+			{
+				if (e[(size_t)v * ew + u])
+					continue;
+				for (int dv = -1; dv <= 1 && !edge; ++dv)
+					for (int du = -1; du <= 1 && !edge; ++du)
+					{
+						const int uu = u + du, vv = v + dv;
+						if (uu >= 0 && vv >= 0 && uu < ew && vv < eh && e[(size_t)vv * ew + uu])
+							edge = true;
+					}
+			}
+		he = S.assetHasEdge.emplace(c.assetId, edge).first;
+	}
+	if (!he->second)
+		return 0;
+	std::vector<Uint8> u((size_t)c.srcW * c.srcH, 0);
+	int vx = c.clipX, vy = c.clipY, vw = c.clipW, vh = c.clipH;
+	if (!intersect(vx, vy, vw, vh, 0, 0, dst->w, dst->h))
+		return 0;
+	for (int yy = vy; yy < vy + vh; ++yy)
+	{
+		const int v = c.srcY + (yy - c.y) * c.srcH / c.h;
+		if (v < c.srcY || v >= c.srcY + c.srcH)
+			continue;
+		const Uint8 *dp = (const Uint8*)dst->pixels + yy * dst->pitch;
+		for (int xx = vx; xx < vx + vw; ++xx)
+		{
+			const int uu = c.srcX + (xx - c.x) * c.srcW / c.w;
+			if (uu < c.srcX || uu >= c.srcX + c.srcW)
+				continue;
+			u[(size_t)(v - c.srcY) * c.srcW + (uu - c.srcX)] = dp[xx];
+		}
+	}
+	size_t h = std::hash<std::string>()(std::string((const char*)u.data(), u.size()));
+	h ^= (size_t)c.assetId * 0x9E3779B97F4A7C15ull ^ ((size_t)c.srcX << 1) ^ ((size_t)c.srcY << 17) ^ ((size_t)c.srcW << 33) ^ ((size_t)c.srcH << 49);
+	auto hit = S.underByHash.find(h);
+	if (hit != S.underByHash.end())
+	{
+		auto ui = S.unders.find(hit->second);
+		if (ui != S.unders.end() && ui->second == u)
+			return hit->second;
+	}
+	if (S.unders.size() >= 4096)
+	{
+		// bounded: older snapshots are dropped (their commands fall back to the proxy silhouette)
+		S.unders.clear();
+		S.underByHash.clear();
+	}
+	if (++S.underCounter == 0)
+		++S.underCounter;
+	S.unders.emplace(S.underCounter, std::move(u));
+	S.underByHash[h] = S.underCounter;
+	return S.underCounter;
 }
 
 void drawImage(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
@@ -949,6 +1119,7 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 	}
 	S.frame.clear();
 	S.masks.clear();
+	S.backs.clear();
 	S.sizeCache.clear();
 	slotSizeCache.clear();
 }
@@ -1026,6 +1197,7 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 	if (!intersect(cx, cy, cw, ch, 0, 0, dst->w, dst->h))
 		return;
 	c.clipX = (Sint16)cx; c.clipY = (Sint16)cy; c.clipW = (Sint16)cw; c.clipH = (Sint16)ch;
+	c.underId = snapshotUnder(c, dst);
 	if (dst == S.screen)
 	{
 		// drawn straight onto the screen buffer: check it now, against the screen pixels
@@ -1035,7 +1207,7 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 		const std::vector<Uint8> &m = S.masks[c.maskIdx - 1];
 		for (int yy = 0; yy < c.clipH; ++yy)
 			for (int xx = 0; xx < c.clipW; ++xx)
-				if (m[(size_t)yy * c.clipW + xx])
+				if (m[(size_t)yy * c.clipW + xx] == MASK_PROXY || m[(size_t)yy * c.clipW + xx] == MASK_BACK)
 					S.stamps[(c.clipY + yy) * S.baseW + c.clipX + xx] = c.stamp;
 		S.frame.push_back(c);
 		return;
@@ -1290,6 +1462,7 @@ void HiResLayer::beginFrame()
 		return;
 	S.frame.clear();
 	S.masks.clear();
+	S.backs.clear();
 	S.stampCounter = 0;
 	std::fill(S.stamps.begin(), S.stamps.end(), 0);
 }

@@ -614,16 +614,19 @@ bool loadReplacement(Surface *target, const std::string &filename, int boxW, int
 	const bool boxKnown = boxW < (1 << 15) && boxH < (1 << 15);
 	if (!larger && boxKnown)
 	{
-		// 32-bit picture that fits the box of the image it replaces: no hi-res, like a stock image
-		// (original size, top-left, drawn by the normal 8bpp path) - converted to 8bpp at its size
+		// 32-bit picture that fits the box: stock-like 8bpp of the BOX size, image at original
+		// size in the top-left, the rest transparent (no hi-res attach — a file-sized surface was
+		// misplaced on some Windows/OpenGL paths; a box-sized SPK matches vanilla).
 		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h << " (box " << boxW << "x" << boxH
-			<< "): fits the box, converted to 8-bit at its size (no hi-res, drawn like a stock image)";
+			<< "): fits the box, 8-bit at box size with the image at top-left (no hi-res, like stock)";
 		std::vector<SDL_Color> pal(256, SDL_Color{0, 0, 0, 255});
 		if (origPalette)
 			std::memcpy(pal.data(), origPalette, 256 * sizeof(SDL_Color));
 		forget(target->getSurface());
-		*target = Surface(pic->w, pic->h, 0, 0);
+		*target = Surface(boxW, boxH, 0, 0);
 		target->setPalette(pal.data(), 0, 256);
+		if (SDL_Surface *ts = target->getSurface())
+			SDL_FillRect(ts, 0, 0);
 		makeProxy(target, *pic, 0, 0, pic->w, pic->h, pic->w, pic->h, quantizePalette(type, origPalette));
 		return true;
 	}
@@ -680,9 +683,15 @@ Surface *fit(Surface *src, int boxW, int boxH)
 		return it->second.get();
 	if (!fitBox(boxW, boxH, s->w, s->h, fw, fh, scale))
 	{
-		// fits the box: exactly as before. A hi-res picture (new mod image kept at its size) is drawn
-		// like a stock image too: its 8bpp pixels at original size, top-left, without the overlay
-		if (bySurface.find(s) == bySurface.end())
+		// fits the box (surface <= box). Keep hi-res when the picture is larger than the proxy
+		// (replacement already fitted at load, e.g. Flag10 160x80 -> 40x20): stripping it was a
+		// regression. Only strip when the picture is not larger than the surface (smaller-than-box
+		// truecolor kept at file size) so consumers blit 8bpp at original size, top-left.
+		auto reg = bySurface.find(s);
+		if (reg == bySurface.end())
+			return src;
+		Entry *e = find(reg->second);
+		if (e && e->pic && (e->pic->w > e->w || e->pic->h > e->h))
 			return src;
 		std::unique_ptr<Surface> plain(new Surface(s->w, s->h, 0, 0));
 		plain->setPalette(src->getPalette(), 0, 256);

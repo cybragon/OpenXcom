@@ -2152,7 +2152,7 @@ static void throwModOnErrorHelper(const std::string& modId, const std::string& e
 
 	if (!Options::debug)
 	{
-		Log(LOG_WARNING) << "disabling mod with invalid ruleset: " << modId;
+		Log(LOG_WARNING) << "disabling mod with invalid ruleset/sprite: " << modId;
 		auto it = std::find(Options::mods.begin(), Options::mods.end(), std::pair<std::string, bool>(modId, true));
 		if (it == Options::mods.end())
 		{
@@ -6326,55 +6326,69 @@ void Mod::loadExtraSprite(ExtraSprites *spritePack)
 	if (spritePack->isLoaded())
 		return;
 
+	try
 	{
-		// hi-res assets: palettes to quantize 32-bit replacements of images without a palette of their own
-		auto geo = _palettes.find("PAL_GEOSCAPE"), base = _palettes.find("PAL_BASESCAPE"), battle = _palettes.find("PAL_BATTLESCAPE");
-		HiResAssets::setPalettes(geo != _palettes.end() ? geo->second->getColors() : nullptr, base != _palettes.end() ? base->second->getColors() : nullptr,
-			battle != _palettes.end() ? battle->second->getColors() : nullptr);
-		std::vector<const SDL_Color*> game;
-		for (const char *name : { "PAL_GEOSCAPE", "PAL_BASESCAPE", "PAL_UFOPAEDIA", "PAL_GRAPHS", "PAL_BATTLESCAPE" })
 		{
-			auto it = _palettes.find(name);
-			if (it != _palettes.end()) game.push_back(it->second->getColors());
-		}
-		HiResAssets::setGamePalettes(game);
-	}
-
-	if (spritePack->getSingleImage())
-	{
-		Surface *surface = 0;
-		auto i = _surfaces.find(spritePack->getType());
-		if (i != _surfaces.end())
-		{
-			surface = i->second;
-		}
-
-		_surfaces[spritePack->getType()] = spritePack->loadSurface(surface);
-		if (_statePalette)
-		{
-			if (spritePack->getType().find("_CPAL") == std::string::npos)
+			// hi-res assets: palettes to quantize 32-bit replacements of images without a palette of their own
+			auto geo = _palettes.find("PAL_GEOSCAPE"), base = _palettes.find("PAL_BASESCAPE"), battle = _palettes.find("PAL_BATTLESCAPE");
+			HiResAssets::setPalettes(geo != _palettes.end() ? geo->second->getColors() : nullptr, base != _palettes.end() ? base->second->getColors() : nullptr,
+				battle != _palettes.end() ? battle->second->getColors() : nullptr);
+			std::vector<const SDL_Color*> game;
+			for (const char *name : { "PAL_GEOSCAPE", "PAL_BASESCAPE", "PAL_UFOPAEDIA", "PAL_GRAPHS", "PAL_BATTLESCAPE" })
 			{
-				_surfaces[spritePack->getType()]->setPalette(_statePalette);
+				auto it = _palettes.find(name);
+				if (it != _palettes.end()) game.push_back(it->second->getColors());
+			}
+			HiResAssets::setGamePalettes(game);
+		}
+
+		if (spritePack->getSingleImage())
+		{
+			Surface *surface = 0;
+			auto i = _surfaces.find(spritePack->getType());
+			if (i != _surfaces.end())
+			{
+				surface = i->second;
+			}
+
+			_surfaces[spritePack->getType()] = spritePack->loadSurface(surface);
+			if (_statePalette)
+			{
+				if (spritePack->getType().find("_CPAL") == std::string::npos)
+				{
+					_surfaces[spritePack->getType()]->setPalette(_statePalette);
+				}
+			}
+		}
+		else
+		{
+			SurfaceSet *set = 0;
+			auto i = _sets.find(spritePack->getType());
+			if (i != _sets.end())
+			{
+				set = i->second;
+			}
+
+			_sets[spritePack->getType()] = spritePack->loadSurfaceSet(set);
+			if (_statePalette)
+			{
+				if (spritePack->getType().find("_CPAL") == std::string::npos)
+				{
+					_sets[spritePack->getType()]->setPalette(_statePalette);
+				}
 			}
 		}
 	}
-	else
+	catch (Exception &e)
 	{
-		SurfaceSet *set = 0;
-		auto i = _sets.find(spritePack->getType());
-		if (i != _sets.end())
+		const ModData *owner = spritePack->getModOwner();
+		if (owner && !owner->name.empty())
 		{
-			set = i->second;
+			std::string msg = spritePack->getType() + ": " + e.what();
+			Log(LOG_ERROR) << "Failed to load extra sprite from mod '" << owner->name << "': " << msg;
+			throwModOnErrorHelper(owner->name, msg);
 		}
-
-		_sets[spritePack->getType()] = spritePack->loadSurfaceSet(set);
-		if (_statePalette)
-		{
-			if (spritePack->getType().find("_CPAL") == std::string::npos)
-			{
-				_sets[spritePack->getType()]->setPalette(_statePalette);
-			}
-		}
+		throw;
 	}
 }
 

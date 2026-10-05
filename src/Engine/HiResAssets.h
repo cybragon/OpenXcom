@@ -62,6 +62,8 @@ namespace HiResAssets
 	/// rule-referenced armor sprites / paperdolls / layers, terrain sets, battlescape backgrounds).
 	void denyTrueColor(const std::string &type);
 	void denyTrueColorPrefix(const std::string &prefix);
+	/// Undo a deny (battlescape stage-1 UI chrome allow-list after DenyLoaded).
+	void allowTrueColor(const std::string &type);
 	bool trueColorAllowed(const std::string &type);
 	size_t deniedCount();
 	/// Palettes used to quantize 32bpp pictures when the replaced image has no meaningful palette.

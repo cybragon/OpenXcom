@@ -347,6 +347,8 @@ void beginModLoad()
 {
 	loadedEnabled = Options::oxceHiResAssets;
 	typePalettes.clear();
+	deniedTypes.clear();
+	deniedPrefixes.clear();
 }
 
 void denyTrueColor(const std::string &type)
@@ -358,6 +360,11 @@ void denyTrueColorPrefix(const std::string &prefix)
 {
 	if (!prefix.empty())
 		deniedPrefixes.insert(prefix);
+}
+
+void allowTrueColor(const std::string &type)
+{
+	deniedTypes.erase(type);
 }
 
 bool trueColorAllowed(const std::string &type)

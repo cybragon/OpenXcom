@@ -6135,8 +6135,20 @@ void Mod::classifyHiResBattleTypes()
 		const std::string &alt = it->second->getAltBackgroundImage();
 		if (!alt.empty()) HiResAssets::denyTrueColor(alt);
 	}
+	// Battlescape stage 1: static unshaded UI chrome may be 32-bit PNG/JPG (geoscape-style dual store).
+	// Must stay 8-bit: paperdolls, BIGOBS/HANDOB/FLOOROB, MEDIBITS, DETBLOB, CURSOR, map smoke, units/terrain.
+	// ICONS: pressed state uses 8bpp invert of a copy (_altSurface); unpressed can be hi-res.
+	// TinyRanks: dedicated 7x7 set (do not allowTrueColor SMOKE.PCK — shared with map smoke).
+	for (const char *name : {
+		"TAC00.SCR", "TAC01.SCR", "UNIBORD.PCK",
+		"SCANBORD.PCK", "DETBORD.PCK", "DETBORD2.PCK", "MEDIBORD.PCK",
+		"ICONS.PCK", "TinyRanks"
+	})
+	{
+		HiResAssets::allowTrueColor(name);
+	}
 	if (HiResAssets::enabled())
-		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (32-bit pictures are converted to the battlescape palette)";
+		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (stage-1 UI chrome allow-listed)";
 }
 
 /**

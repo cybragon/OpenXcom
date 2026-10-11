@@ -300,7 +300,9 @@ void NumberText::draw()
 
 	// hi-res text: prefer TTF digits over the 3x5 bitmap (palette-recolor still uses the 8bpp fallback).
 	// 32-bit digit sheets are not used — NumberText relies on index offset(_color).
-	if (Options::oxceHiResText && HiResLayer::recording() && HiResLayer::canRenderGlyph('0', 0))
+	// Own font type (HiResLayer fontRule NUMBER_TEXT): sized to the 5 px digit cell, not FONT_BIG's body.
+	const int numSlot = Options::oxceHiResText && HiResLayer::recording() ? HiResLayer::registerFontId(_bordered ? "NUMBER_TEXT_BORDERED" : "NUMBER_TEXT") : -1;
+	if (numSlot >= 0 && HiResLayer::canRenderGlyph('0', numSlot))
 	{
 		const Uint32 run = HiResLayer::newRun();
 		int px = 0;
@@ -317,7 +319,7 @@ void NumberText::draw()
 			cmd.h = (Sint16)getHeight();
 			cmd.cellH = (Sint16)getHeight();
 			cmd.lineH = (Uint8)std::max(1, getHeight());
-			cmd.slot = 0;
+			cmd.slot = (Uint8)numSlot;
 			cmd.fillIdx = (Uint8)(_color + 1);
 			cmd.lineIdx = (Uint8)(_color + 4);
 			cmd.clipX = 0; cmd.clipY = 0;

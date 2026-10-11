@@ -273,6 +273,8 @@ FontRule fontRule(int slot, int lineH)
 		{ "FONT_SMALL", { 7.0, 0.5 } },     // line 9
 		{ "FONT_GEO_BIG", { 7.0, 1.0 } },   // line 9
 		{ "FONT_GEO_SMALL", { 5.0, 0.5 } }, // line 7
+		{ "NUMBER_TEXT", { 5.0, 0.0 } },    // NumberText 3x5 digits (TU, health, ammo...): digit cell height
+		{ "NUMBER_TEXT_BORDERED", { 5.0, 1.0 } },
 	};
 	if (slot >= 0 && slot < (int)S.slotIds.size())
 		for (const auto &r : rules)

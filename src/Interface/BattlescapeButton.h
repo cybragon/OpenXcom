@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/InteractiveSurface.h"
+#include <vector>
 
 namespace OpenXcom
 {
@@ -39,6 +40,11 @@ protected:
 	bool _inverted;
 	InversionType _toggleMode;
 	Surface *_altSurface;
+	/// hi-res: the parent pixels copied by State::add; while unpressed only the pixels that differ
+	/// from them are drawn, so the (hi-res) parent shows through the button.
+	std::vector<Uint8> _parentCopy, _lastPixels;
+	Surface *_diffSurface = nullptr;
+	bool _diffAny = false;
 public:
 	/// Creates a new image button with the specified size and position.
 	BattlescapeButton(int width, int height, int x = 0, int y = 0);
@@ -62,6 +68,8 @@ public:
 	void allowClickInversion();
 	/// Sets up the "pressed" surface.
 	void initSurfaces(Surface* custom = nullptr);
+	/// Remembers the current pixels as the parent copy (hi-res: unchanged pixels are not drawn).
+	void rememberParentCopy();
 	/// Blits this surface onto another one.
 	void blit(SDL_Surface *surface) override;
 	/// Alters both versions of the button's X pos.

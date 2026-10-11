@@ -17,6 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "BattlescapeButton.h"
+#include <cstring>
+#include "../Engine/HiResLayer.h"
 #include "../Engine/Action.h"
 
 namespace OpenXcom
@@ -39,6 +41,7 @@ BattlescapeButton::BattlescapeButton(int width, int height, int x, int y) : Inte
 BattlescapeButton::~BattlescapeButton()
 {
 	delete _altSurface;
+	delete _diffSurface;
 }
 
 /**
@@ -204,15 +207,81 @@ void BattlescapeButton::initSurfaces(Surface* custom)
  * depending on whether the button is "pressed" or not.
  * @param surface Pointer to surface to blit onto.
  */
+void BattlescapeButton::rememberParentCopy()
+{
+	SDL_Surface *s = _surface.get();
+	if (!s || s->format->BitsPerPixel != 8)
+		return;
+	_parentCopy.resize((size_t)s->w * s->h);
+	SDL_LockSurface(s);
+	for (int y = 0; y < s->h; ++y)
+		std::memcpy(&_parentCopy[(size_t)y * s->w], (const Uint8*)s->pixels + y * s->pitch, s->w);
+	SDL_UnlockSurface(s);
+	_lastPixels.clear();
+}
+
 void BattlescapeButton::blit(SDL_Surface *surface)
 {
 	if (_inverted)
 	{
 		_altSurface->blit(surface);
 	}
-	else
+	else if (_parentCopy.empty() || !HiResLayer::recording())
 	{
 		Surface::blit(surface);
+	}
+	else
+	{
+		// unpressed (hi-res): the parent underneath already shows these pixels (in hi-res); drawing the
+		// 8bpp copy would hide it. Only what was drawn into the button itself (rank, icons) is blitted.
+		if (!_visible || _hidden)
+			return;
+		if (_redraw)
+			draw();
+		SDL_Surface *s = _surface.get();
+		const size_t n = (size_t)s->w * s->h;
+		if (_parentCopy.size() != n)
+		{
+			Surface::blit(surface);
+			return;
+		}
+		std::vector<Uint8> cur(n);
+		SDL_LockSurface(s);
+		for (int y = 0; y < s->h; ++y)
+			std::memcpy(&cur[(size_t)y * s->w], (const Uint8*)s->pixels + y * s->pitch, s->w);
+		SDL_UnlockSurface(s);
+		if (!_diffSurface || cur != _lastPixels)
+		{
+			_lastPixels.swap(cur);
+			if (!_diffSurface)
+				_diffSurface = new Surface(s->w, s->h, _x, _y);
+			_diffSurface->setPalette(getPalette());
+			SDL_Surface *d = _diffSurface->getSurface();
+			_diffAny = false;
+			SDL_LockSurface(d);
+			for (int y = 0; y < s->h; ++y)
+			{
+				Uint8 *dp = (Uint8*)d->pixels + y * d->pitch;
+				for (int x = 0; x < s->w; ++x)
+				{
+					const size_t i = (size_t)y * s->w + x;
+					const Uint8 v = _lastPixels[i] != _parentCopy[i] ? _lastPixels[i] : 0;
+					dp[x] = v;
+					_diffAny |= v != 0;
+				}
+			}
+			SDL_UnlockSurface(d);
+		}
+		else if (std::memcmp(_diffSurface->getPalette(), getPalette(), 256 * sizeof(SDL_Color)))
+		{
+			_diffSurface->setPalette(getPalette());
+		}
+		if (_diffAny)
+		{
+			_diffSurface->setX(getX());
+			_diffSurface->setY(getY());
+			_diffSurface->blit(surface);
+		}
 	}
 }
 

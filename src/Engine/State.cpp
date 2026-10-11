@@ -249,6 +249,8 @@ void State::add(Surface *surface, const std::string &id, const std::string &cate
 		// this will initialize the graphics and settings of the battlescape button.
 		bsbtn->copy(parent);
 		bsbtn->initSurfaces();
+		if (HiResAssets::enabled())
+			bsbtn->rememberParentCopy();
 	}
 
 	// Set default text resources

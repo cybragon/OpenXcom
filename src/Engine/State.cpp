@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "State.h"
+#include "../Interface/NumberText.h"
 #include <algorithm>
 #include <climits>
 #include "InteractiveSurface.h"
@@ -184,6 +185,11 @@ void State::add(Surface *surface)
 	if (_game->getLanguage() && _game->getMod())
 		surface->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
 
+	if (NumberText *num = dynamic_cast<NumberText*>(surface))
+	{
+		num->setTtfDigits(true);
+	}
+
 	_surfaces.push_back(surface);
 	preAdd(surface);
 }
@@ -242,6 +248,11 @@ void State::add(Surface *surface, const std::string &id, const std::string &cate
 				surface->setBorderColor(element->border);
 			}
 		}
+	}
+
+	if (NumberText *num = dynamic_cast<NumberText*>(surface))
+	{
+		num->setTtfDigits(true);
 	}
 
 	if (bsbtn)

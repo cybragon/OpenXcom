@@ -278,21 +278,30 @@ void NumberText::draw()
 	std::ostringstream ss;
 	ss << _value;
 	std::string s = ss.str();
-	int x = 0;
-	if (!_bordered)
+	// State members (_ttfDigits): own font type NUMBER_TEXT (HiResLayer fontRule), sized to the 5 px digit
+	// cell, and the TTF digits replace the bitmap ones (both would show: they are not the same width).
+	// Others (e.g. inventory stack numbers, composed with blitNShade): bitmap + slot-0 TTF as before.
+	const int numSlot = !(Options::oxceHiResText && HiResLayer::recording()) ? -1
+		: _ttfDigits ? HiResLayer::registerFontId(_bordered ? "NUMBER_TEXT_BORDERED" : "NUMBER_TEXT") : 0;
+	const bool ttf = numSlot >= 0 && HiResLayer::canRenderGlyph('0', numSlot);
+	if (!ttf || !_ttfDigits)
 	{
-		for (std::string::iterator i = s.begin(); i != s.end(); ++i)
+		int x = 0;
+		if (!_bordered)
 		{
-			_chars[*i - '0']->blitNShade(this, x, 0);
-			x += _chars[*i - '0']->getWidth() + 1;
+			for (std::string::iterator i = s.begin(); i != s.end(); ++i)
+			{
+				_chars[*i - '0']->blitNShade(this, x, 0);
+				x += _chars[*i - '0']->getWidth() + 1;
+			}
 		}
-	}
-	else
-	{
-		for (std::string::iterator i = s.begin(); i != s.end(); ++i)
+		else
 		{
-			_borderedChars[*i - '0']->blitNShade(this, x, 0);
-			x += _chars[*i - '0']->getWidth() + 1; // no this isn't a typo, i want to use the same spacing regardless.
+			for (std::string::iterator i = s.begin(); i != s.end(); ++i)
+			{
+				_borderedChars[*i - '0']->blitNShade(this, x, 0);
+				x += _chars[*i - '0']->getWidth() + 1; // no this isn't a typo, i want to use the same spacing regardless.
+			}
 		}
 	}
 
@@ -300,9 +309,7 @@ void NumberText::draw()
 
 	// hi-res text: prefer TTF digits over the 3x5 bitmap (palette-recolor still uses the 8bpp fallback).
 	// 32-bit digit sheets are not used — NumberText relies on index offset(_color).
-	// Own font type (HiResLayer fontRule NUMBER_TEXT): sized to the 5 px digit cell, not FONT_BIG's body.
-	const int numSlot = Options::oxceHiResText && HiResLayer::recording() ? HiResLayer::registerFontId(_bordered ? "NUMBER_TEXT_BORDERED" : "NUMBER_TEXT") : -1;
-	if (numSlot >= 0 && HiResLayer::canRenderGlyph('0', numSlot))
+	if (ttf)
 	{
 		const Uint32 run = HiResLayer::newRun();
 		int px = 0;

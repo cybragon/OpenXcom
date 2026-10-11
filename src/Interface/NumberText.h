@@ -33,6 +33,7 @@ private:
 	Surface *_chars[10];
 	Surface *_borderedChars[10];
 	bool _bordered;
+	bool _ttfDigits = false; ///< hi-res text: TTF digits replace the bitmap (only when blitted with its commands, State::add)
 	Uint8 _color;
 public:
 	/// Creates a new number text with the specified size and position.
@@ -53,6 +54,8 @@ public:
 	void draw() override;
 	/// sets this numbertext to have a border or not
 	void setBordered(bool bordered);
+	/// TTF digits instead of the bitmap ones (hi-res text): set by State::add for state members.
+	void setTtfDigits(bool ttf) { _ttfDigits = ttf; _redraw = true; }
 
 };
 

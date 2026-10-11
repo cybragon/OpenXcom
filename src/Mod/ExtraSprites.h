@@ -38,6 +38,7 @@ private:
 	std::map<int, std::string> _sprites;
 	const ModData* _current;
 	int _width, _height;
+	bool _sizeFromRule = false; ///< width or height given in the rule (box of a new image)
 	bool _singleImage;
 	int _subX, _subY;
 	bool _loaded;

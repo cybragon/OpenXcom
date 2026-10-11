@@ -148,6 +148,7 @@ set ( engine_src
   Engine/FlcPlayer.cpp
   Engine/Font.cpp
   Engine/HiResAssets.cpp
+  Engine/HiResCanvas.cpp
   Engine/HiResFont.cpp
   Engine/HiResLayer.cpp
   Engine/ImeWin32.cpp

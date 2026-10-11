@@ -73,8 +73,10 @@ void ExtraSprites::load(const YAML::YamlNodeReader& reader, const ModData* curre
 	}
 
 	reader.tryRead("files", _sprites);
-	reader.tryRead("width", _width);
-	reader.tryRead("height", _height);
+	if (reader.tryRead("width", _width))
+		_sizeFromRule = true;
+	if (reader.tryRead("height", _height))
+		_sizeFromRule = true;
 	reader.tryRead("singleImage", _singleImage);
 	reader.tryRead("subX", _subX);
 	reader.tryRead("subY", _subY);
@@ -202,9 +204,12 @@ Surface *ExtraSprites::loadSurface(Surface *surface)
 	surface = new Surface(_width, _height);
 	const std::string &fileName = _sprites.begin()->second;
 	// new image: no box at load time (consumers fit it, HiResAssets::fit); a 32-bit picture is kept true-colour at its size
+	// new image with width/height in its rule: that is its box (logical size, e.g. a puppet layer of 320x200)
 	const bool hiRes = origW > 0
 		? HiResAssets::loadReplacement(surface, fileName, origW, origH, origPalette.data(), _type)
-		: HiResAssets::loadReplacement(surface, fileName, 1 << 15, 1 << 15, nullptr, _type);
+		: _sizeFromRule && HiResAssets::enabled()
+			? HiResAssets::loadReplacement(surface, fileName, _width, _height, nullptr, _type)
+			: HiResAssets::loadReplacement(surface, fileName, 1 << 15, 1 << 15, nullptr, _type);
 	if (!hiRes)
 	{
 		HiResAssets::loadDeniedTrueColor(surface, fileName, _type);

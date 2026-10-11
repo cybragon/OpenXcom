@@ -37,6 +37,7 @@ class BattlescapeState;
 class BattleUnit;
 class BattlescapeButton;
 class Base;
+class HiResCanvas;
 
 /**
  * Screen which displays soldier's inventory.
@@ -69,6 +70,19 @@ private:
 	bool _reloadUnit;
 	int _globalLayoutIndex;
 	int _prev_key = 0, _key_repeats = 0;
+	/// native canvas mode (option oxceNativeInventory, frozen at creation): the screen is drawn on
+	/// full-colour canvases at output resolution; logic and hit testing stay at 320x200
+	bool _native = false;
+	Surface *_nativeHolder = nullptr;          ///< carries the canvas commands to the screen
+	HiResCanvas *_canvasBack = nullptr, *_canvasFront = nullptr;
+	Surface *_bgSource = nullptr;              ///< TAC01.SCR as drawn into _bg
+	std::vector<const Surface*> _dollLayers;   ///< paperdoll surfaces drawn into _soldier, in order
+	Uint64 _backHash = 0, _frontHash = 0;
+	/// Paperdoll: blits into _soldier and remembers the surface for the canvas.
+	void drawDoll(Surface *surface);
+	/// Native mode: draws the back canvas (background, paperdoll) and the front one (inventory).
+	void blitNativeBack(SDL_Surface *screen);
+	void blitNativeFront(SDL_Surface *screen);
 	/// Helper method for Create Template button
 	void _createInventoryTemplate(std::vector<EquipmentLayoutItem*> &inventoryTemplate);
 	/// Helper method for Apply Template button
@@ -81,6 +95,8 @@ public:
 	/// Updates all soldier info.
 	void setGlobalLayoutIndex(int index, bool armorChanged);
 	void init() override;
+	/// Native mode: draws the screen through the canvases.
+	void blit() override;
 	/// Handler for pressing on the Name edit.
 	void edtSoldierPress(Action *action);
 	/// Handler for changing text on the Name edit.

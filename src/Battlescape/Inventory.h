@@ -20,6 +20,7 @@
 #include "../Engine/InteractiveSurface.h"
 #include <locale>
 #include <map>
+#include <vector>
 #include <string>
 
 namespace OpenXcom
@@ -32,6 +33,7 @@ class BattleItem;
 class BattleUnit;
 class NumberText;
 class Timer;
+class HiResCanvas;
 
 /**
  * Interactive view of an inventory.
@@ -62,6 +64,12 @@ private:
 	RuleInventory *_inventorySlotBackPack = nullptr;
 	RuleInventory *_inventorySlotBelt = nullptr;
 	RuleInventory *_inventorySlotGround = nullptr;
+	/// native canvas mode (InventoryState, oxceNativeInventory): items with a picture are not drawn
+	/// into the 8bpp layers but listed here and drawn as pictures by drawNative
+	struct NativeItem { const Surface *frame; int x, y; };
+	bool _native = false;
+	std::vector<NativeItem> _nativeItems;
+	NativeItem _nativeSel = { nullptr, 0, 0 };
 
 	/// Clear all occupied slots markers.
 	std::vector<std::vector<char>>* clearOccupiedSlotsCache();
@@ -130,6 +138,12 @@ public:
 	void showWarning(const std::string &msg);
 	/// Animate surface.
 	void animate();
+	/// Native canvas mode (pictures of items kept out of the 8bpp layers).
+	void setNative(bool native) { _native = native; }
+	/// Draws the inventory on a native canvas (logical coordinates, this widget at (lx, ly)).
+	void drawNative(HiResCanvas &canvas, int lx, int ly) const;
+	/// Hash of what drawNative draws (to skip rebuilding an unchanged canvas).
+	Uint64 nativeHash() const;
 	/// Get current animation frame for inventory.
 	int getAnimFrame() const { return _animFrame; }
 };

@@ -6109,11 +6109,16 @@ void Mod::classifyHiResBattleTypes()
 		const Armor *armor = a.second;
 		HiResAssets::denyTrueColor(armor->getSpriteSheet());
 		HiResAssets::denyTrueColorPrefix(armor->getSpriteInventory());
+		HiResAssets::allowNativePrefix(armor->getSpriteInventory());
 		if (armor->hasLayersDefinition())
 		{
 			HiResAssets::denyTrueColorPrefix(armor->getLayersDefaultPrefix() + "__");
+			HiResAssets::allowNativePrefix(armor->getLayersDefaultPrefix() + "__");
 			for (const auto &pre : armor->getLayersSpecificPrefix())
+			{
 				HiResAssets::denyTrueColorPrefix(pre.second + "__");
+				HiResAssets::allowNativePrefix(pre.second + "__");
+			}
 		}
 	}
 	for (const auto &m : _mapDataSets)
@@ -6158,6 +6163,8 @@ void Mod::classifyHiResBattleTypes()
 		HiResAssets::attachWhenFits(name);
 	}
 	HiResAssets::setTypePalette("AvatarBackground", battlePal);
+	// native inventory canvas (oxceNativeInventory): 32-bit paperdolls/layers (above) and BIGOBS items
+	HiResAssets::allowNative("BIGOBS.PCK");
 	if (HiResAssets::enabled())
 	{
 		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (stage-1 UI chrome allow-listed)";

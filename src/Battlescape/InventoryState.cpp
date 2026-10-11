@@ -17,6 +17,10 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "InventoryState.h"
+#include "../Engine/Logger.h"
+#include "../Engine/HiResAssets.h"
+#include "../Engine/HiResLayer.h"
+#include "../Engine/HiResCanvas.h"
 #include "../Basescape/MaximizedBasescape.h"
 #include "InventoryLoadState.h"
 #include "InventorySaveState.h"
@@ -151,7 +155,8 @@ InventoryState::InventoryState(bool tu, BattlescapeState *parent, Base *base, bo
 	add(_bg);
 
 	// Set up objects
-	_game->getMod()->getSurface("TAC01.SCR")->blitNShade(_bg, 0, 0);
+	_bgSource = _game->getMod()->getSurface("TAC01.SCR");
+	_bgSource->blitNShade(_bg, 0, 0);
 	add(_btnArmor, "buttonArmor", "inventory", _bg);
 
 	add(_soldier);
@@ -186,6 +191,16 @@ InventoryState::InventoryState(bool tu, BattlescapeState *parent, Base *base, bo
 	}
 
 	centerAllSurfaces();
+
+	// native inventory pilot: frozen here (needs the hi-res assets loaded and the UI not magnified)
+	_native = Options::oxceNativeInventory && HiResAssets::enabled() && getUiCanvasFactor() == 1;
+	if (_native)
+	{
+		_inv->setNative(true);
+		_canvasBack = new HiResCanvas();
+		_canvasFront = new HiResCanvas();
+		Log(LOG_INFO) << "InventoryState: native canvas mode (oxceNativeInventory)";
+	}
 
 
 	_txtPosition->setHighContrast(true);
@@ -356,10 +371,135 @@ static void _clearInventoryTemplate(std::vector<EquipmentLayoutItem*> &inventory
 }
 
 /**
+ * Paperdoll layer: drawn into the 8bpp _soldier as before and remembered for the native canvas.
+ */
+void InventoryState::drawDoll(Surface *surface)
+{
+	surface->blitNShade(_soldier, 0, 0);
+	_dollLayers.push_back(surface);
+}
+
+/**
+ * Native mode: the background and the paperdoll on the back canvas, the inventory widget (grid,
+ * items, dragged item) and the ammo box on the front canvas, each shown at the place of its 8bpp
+ * surfaces in the blit order; every other surface (texts, buttons) is blitted as before on top.
+ */
+void InventoryState::blit()
+{
+	if (!_native || !HiResLayer::recording())
+	{
+		State::blit();
+		return;
+	}
+	SDL_Surface *screen = _game->getScreen()->getSurface();
+	for (auto* surface : _surfaces)
+	{
+		if (surface == _bg)
+			blitNativeBack(screen);
+		else if (surface == _inv)
+			blitNativeFront(screen);
+		else if (surface != _soldier && surface != _selAmmo)
+			surface->blit(screen);
+	}
+}
+
+namespace
+{
+/// Holder surface of the screen size (8bpp copy of what the canvas shows, for the 8bpp path).
+Surface *nativeHolder(Surface *&holder, SDL_Surface *screen, const SDL_Color *palette)
+{
+	if (!holder || holder->getWidth() != screen->w || holder->getHeight() != screen->h)
+	{
+		delete holder;
+		holder = new Surface(screen->w, screen->h, 0, 0);
+	}
+	holder->setPalette(palette);
+	holder->clear();
+	return holder;
+}
+Uint64 hashSurface(Uint64 h, const Surface *s)
+{
+	auto mix = [&](Uint64 v) { h = (h ^ v) * 1099511628211ull; };
+	SDL_Surface *ss = const_cast<Surface*>(s)->getSurface();
+	mix((Uint64)(size_t)ss); mix((Uint64)s->getX()); mix((Uint64)s->getY());
+	for (int y = 0; y < ss->h; ++y)
+	{
+		const Uint8 *row = (const Uint8*)ss->pixels + y * ss->pitch;
+		for (int x = 0; x < ss->w; ++x)
+			mix(row[x]);
+	}
+	return h;
+}
+}
+
+void InventoryState::blitNativeBack(SDL_Surface *screen)
+{
+	double sx = 1.0, sy = 1.0;
+	HiResLayer::outputScale(sx, sy);
+	Uint64 h = 1469598103934665603ull;
+	h = (h ^ (Uint64)std::lround(sx * 1000)) * 1099511628211ull;
+	h = (h ^ (Uint64)std::lround(sy * 1000)) * 1099511628211ull;
+	h = hashSurface(h, _bg);
+	for (const auto *l : _dollLayers)
+		h = (h ^ (Uint64)(size_t)l) * 1099511628211ull;
+	h = (h ^ (Uint64)_soldier->getVisible()) * 1099511628211ull;
+	if (h != _backHash)
+	{
+		_backHash = h;
+		_canvasBack->begin(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), sx, sy);
+		// background: TAC01's picture when it has one (hi-res asset), else the 8bpp _bg
+		if (!(_bgSource && _canvasBack->drawSurface(_bgSource, _bg->getX(), _bg->getY())))
+		{
+			_canvasBack->fillRect(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), 0);
+			_canvasBack->drawSurface8(_bg, _bg->getX(), _bg->getY());
+		}
+		if (_soldier->getVisible())
+			for (const auto *l : _dollLayers)
+				_canvasBack->drawSurface(l, _soldier->getX(), _soldier->getY());
+	}
+	Surface *holder = nativeHolder(_nativeHolder, screen, _bg->getPalette());
+	_bg->blitNShade(holder, _bg->getX(), _bg->getY());
+	if (_soldier->getVisible())
+		_soldier->blitNShade(holder, _soldier->getX(), _soldier->getY());
+	_canvasBack->present(holder->getSurface());
+	holder->blit(screen);
+}
+
+void InventoryState::blitNativeFront(SDL_Surface *screen)
+{
+	double sx = 1.0, sy = 1.0;
+	HiResLayer::outputScale(sx, sy);
+	Surface *holder = nativeHolder(_nativeHolder, screen, _bg->getPalette());
+	if (_selAmmo->getVisible())
+		_selAmmo->blitNShade(holder, _selAmmo->getX(), _selAmmo->getY());
+	// the widget composes itself (8bpp) and brings its slot label text commands along
+	_inv->blit(holder->getSurface());
+	Uint64 h = _inv->nativeHash();
+	h = (h ^ (Uint64)std::lround(sx * 1000)) * 1099511628211ull;
+	h = (h ^ (Uint64)std::lround(sy * 1000)) * 1099511628211ull;
+	h = (h ^ (Uint64)_selAmmo->getVisible()) * 1099511628211ull;
+	if (_selAmmo->getVisible())
+		h = hashSurface(h, _selAmmo);
+	if (h != _frontHash)
+	{
+		_frontHash = h;
+		_canvasFront->begin(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), sx, sy);
+		if (_selAmmo->getVisible())
+			_canvasFront->drawSurface8(_selAmmo, _selAmmo->getX(), _selAmmo->getY());
+		_inv->drawNative(*_canvasFront, _inv->getX(), _inv->getY());
+	}
+	_canvasFront->present(holder->getSurface());
+	holder->blit(screen);
+}
+
+/**
  *
  */
 InventoryState::~InventoryState()
 {
+	delete _canvasBack;
+	delete _canvasFront;
+	delete _nativeHolder;
 	_clearInventoryTemplate(_curInventoryTemplate);
 	_clearInventoryTemplate(_tempInventoryTemplate);
 
@@ -441,6 +581,7 @@ void InventoryState::init()
 	}
 
 	_soldier->clear();
+	_dollLayers.clear();
 	_btnRank->clear();
 
 	if (Options::oxceInventoryShowUnitSlot)
@@ -530,7 +671,7 @@ void InventoryState::init()
 		{
 			for (const auto& layer : s->getArmorLayers())
 			{
-				_game->getMod()->getSurface(layer, true)->blitNShade(_soldier, 0, 0);
+				drawDoll(_game->getMod()->getSurface(layer, true));
 			}
 		}
 		else
@@ -564,7 +705,7 @@ void InventoryState::init()
 			{
 				surf = _game->getMod()->getSurface(look, true);
 			}
-			surf->blitNShade(_soldier, 0, 0);
+			drawDoll(surf);
 		}
 	}
 	else
@@ -580,7 +721,7 @@ void InventoryState::init()
 		}
 		if (armorSurface)
 		{
-			armorSurface->blitNShade(_soldier, 0, 0);
+			drawDoll(armorSurface);
 		}
 	}
 

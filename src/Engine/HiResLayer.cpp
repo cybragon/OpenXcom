@@ -1446,6 +1446,15 @@ void HiResLayer::dropImage(Uint32 id)
 	images.erase(id);
 }
 
+bool HiResLayer::outputScale(double &sx, double &sy)
+{
+	if (S.bufW <= 0 || S.bufH <= 0 || S.baseW <= 0 || S.baseH <= 0)
+		return false;
+	sx = S.bufW / (double)S.baseW;
+	sy = S.bufH / (double)S.baseH;
+	return true;
+}
+
 bool HiResLayer::isScreen(const SDL_Surface *surface)
 {
 	return surface && surface == S.screen;

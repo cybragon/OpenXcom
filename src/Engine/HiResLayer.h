@@ -164,6 +164,8 @@ public:
 	static Uint32 newImageId();
 	static void setImage(Uint32 id, const Uint32 *argb, int w, int h);
 	static void dropImage(Uint32 id);
+	/// Output px per screen base px of the last composed frame (false before the first frame).
+	static bool outputScale(double &sx, double &sy);
 	/// Is this the (8bpp) screen buffer the overlay follows?
 	static bool isScreen(const SDL_Surface *surface);
 

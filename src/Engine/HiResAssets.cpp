@@ -336,7 +336,9 @@ namespace
 {
 bool loadedEnabled = false;
 std::map<std::string, const SDL_Color*> typePalettes;
-std::set<std::string> attachFitTypes;
+std::set<std::string> attachFitTypes, nativeTypes, nativePrefixes;
+/// native-only pictures (not drawn by the overlay), per proxy surface
+std::unordered_map<const SDL_Surface*, Uint32> nativeBySurface;
 }
 
 bool enabled()
@@ -349,6 +351,8 @@ void beginModLoad()
 	loadedEnabled = Options::oxceHiResAssets;
 	typePalettes.clear();
 	attachFitTypes.clear();
+	nativeTypes.clear();
+	nativePrefixes.clear();
 	deniedTypes.clear();
 	deniedPrefixes.clear();
 }
@@ -372,6 +376,27 @@ void allowTrueColor(const std::string &type)
 void attachWhenFits(const std::string &type)
 {
 	attachFitTypes.insert(type);
+}
+
+void allowNative(const std::string &type)
+{
+	nativeTypes.insert(type);
+}
+
+void allowNativePrefix(const std::string &prefix)
+{
+	if (!prefix.empty())
+		nativePrefixes.insert(prefix);
+}
+
+bool nativeAllowed(const std::string &type)
+{
+	if (nativeTypes.count(type))
+		return true;
+	for (const auto &pre : nativePrefixes)
+		if (type.compare(0, pre.size(), pre) == 0)
+			return true;
+	return false;
 }
 
 bool trueColorAllowed(const std::string &type)
@@ -609,6 +634,91 @@ bool fitBox(int boxW, int boxH, int w, int h, int &fw, int &fh, double &scale)
 	return true;
 }
 
+namespace
+{
+/// 32-bit picture of a native-canvas type: battlescape-palette proxy for the game (fitted into the
+/// box, or at the box size with the picture top-left when it fits, or at file size without a box),
+/// the picture kept for the native inventory canvas only.
+bool loadNative(Surface *target, const std::shared_ptr<Picture> &pic, const std::string &filename, int boxW, int boxH, const std::string &type)
+{
+	int fw, fh;
+	double scale;
+	const bool larger = fitBox(boxW, boxH, pic->w, pic->h, fw, fh, scale);
+	const bool boxKnown = boxW < (1 << 15) && boxH < (1 << 15);
+	int pw, ph, lw, lh;
+	if (!boxKnown) { pw = lw = pic->w; ph = lh = pic->h; }
+	else if (larger) { pw = lw = fw; ph = lh = fh; }
+	else { pw = boxW; ph = boxH; lw = pic->w; lh = pic->h; }
+	forget(target->getSurface());
+	*target = Surface(pw, ph, 0, 0);
+	target->setPalette(palBattle, 0, 256);
+	SDL_Surface *s = target->getSurface();
+	if (!s)
+		return false;
+	SDL_FillRect(s, 0, 0);
+	makeProxy(target, *pic, 0, 0, pic->w, pic->h, lw, lh, palBattle);
+	auto e = std::make_unique<Entry>();
+	if (++idCounter == 0) ++idCounter;
+	e->id = idCounter;
+	e->pic = pic;
+	e->rx = 0; e->ry = 0; e->rw = pic->w; e->rh = pic->h;
+	e->w = lw; e->h = lh;
+	e->surface = s;
+	e->pixels = s->pixels;
+	e->name = type;
+	nativeBySurface[s] = e->id;
+	byId[e->id] = std::move(e);
+	Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h
+		<< (boxKnown ? "" : " (no box)") << ": native canvas picture at " << lw << "x" << lh << " (logical), " << pw << "x" << ph
+		<< " battlescape-palette proxy for the game";
+	return true;
+}
+}
+
+namespace
+{
+Entry *nativeEntry(const SDL_Surface *surface)
+{
+	if (!surface || !enabled())
+		return nullptr;
+	Uint32 id = 0;
+	auto it = nativeBySurface.find(surface);
+	if (it != nativeBySurface.end())
+		id = it->second;
+	else
+	{
+		auto jt = bySurface.find(surface);
+		if (jt == bySurface.end())
+			return nullptr;
+		id = jt->second;
+	}
+	Entry *e = find(id);
+	if (!e || e->pixels != surface->pixels)
+		return nullptr;
+	return e;
+}
+}
+
+bool nativeInfo(const SDL_Surface *surface, int &lw, int &lh)
+{
+	Entry *e = nativeEntry(surface);
+	if (!e)
+		return false;
+	lw = e->w; lh = e->h;
+	return true;
+}
+
+const Uint32 *nativeRendered(const SDL_Surface *surface, const SDL_Palette *palette, int outW, int outH)
+{
+	Entry *e = nativeEntry(surface);
+	if (!e)
+		return nullptr;
+	const Uint32 pk = paletteKey(e->id, palette);
+	if (!pk && !e->pic->trueColor && !e->pic->ownPalette)
+		return nullptr;
+	return rendered(e->id, pk, 0, 0, e->w, e->h, outW, outH);
+}
+
 bool loadReplacement(Surface *target, const std::string &filename, int boxW, int boxH, const SDL_Color *origPalette, const std::string &type)
 {
 	if (!enabled() || !target || boxW <= 0 || boxH <= 0)
@@ -618,6 +728,8 @@ bool loadReplacement(Surface *target, const std::string &filename, int boxW, int
 		return false; // the normal loader reports the error
 	if (pic->trueColor && !trueColorAllowed(type))
 	{
+		if (palBattle && nativeAllowed(type))
+			return loadNative(target, pic, filename, boxW, boxH, type);
 		return false; // battlescape resource: converted to the battlescape palette by loadDeniedTrueColor
 	}
 	int fw, fh;
@@ -772,7 +884,7 @@ Surface *fit(Surface *src, int boxW, int boxH)
 
 void forget(const SDL_Surface *surface)
 {
-	if (!surface || bySurface.empty())
+	if (!surface || (bySurface.empty() && nativeBySurface.empty()))
 		return;
 	if (!fitted.empty() && !inFitForget)
 	{
@@ -784,6 +896,13 @@ void forget(const SDL_Surface *surface)
 				lo = fitted.erase(lo);
 			inFitForget = false;
 		}
+	}
+	auto nt = nativeBySurface.find(surface);
+	if (nt != nativeBySurface.end())
+	{
+		dropRendered(nt->second);
+		byId.erase(nt->second);
+		nativeBySurface.erase(nt);
 	}
 	auto it = bySurface.find(surface);
 	if (it == bySurface.end())

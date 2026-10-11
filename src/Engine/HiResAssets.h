@@ -67,6 +67,15 @@ namespace HiResAssets
 	/// Battlescape UI chrome: a 32-bit picture that fits its box is still attached (drawn hi-res
 	/// over its 8bpp proxy) instead of becoming a stock-like 8-bit image.
 	void attachWhenFits(const std::string &type);
+	/// Native inventory canvas: 32-bit pictures of these (otherwise 8-bit only) battlescape resources
+	/// are kept for the canvas (InventoryState native mode); the game gets a battlescape-palette proxy.
+	void allowNative(const std::string &type);
+	void allowNativePrefix(const std::string &prefix);
+	/// Picture of a surface for the native canvas (attached hi-res asset or native-only 32-bit picture):
+	/// its logical size (base px, from the top-left of the surface). False = 8-bit only.
+	bool nativeInfo(const SDL_Surface *surface, int &lw, int &lh);
+	/// The picture resampled to outW x outH (straight ARGB), palette for 8bpp pictures; nullptr = none.
+	const Uint32 *nativeRendered(const SDL_Surface *surface, const SDL_Palette *palette, int outW, int outH);
 	bool trueColorAllowed(const std::string &type);
 	size_t deniedCount();
 	/// Palettes used to quantize 32bpp pictures when the replaced image has no meaningful palette.

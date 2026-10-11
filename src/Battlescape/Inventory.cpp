@@ -17,6 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Inventory.h"
+#include <cstring>
+#include "../Engine/HiResCanvas.h"
 #include "../Engine/HiResLayer.h"
 #include <algorithm>
 #include <cmath>
@@ -315,6 +317,7 @@ void Inventory::drawItems()
 
 	ScriptWorkerBlit work;
 	_items->clear();
+	_nativeItems.clear();
 	Uint8 color = _game->getMod()->getInterface("inventory")->getElement("numStack")->color;
 	Uint8 color2 = _game->getMod()->getInterface("inventory")->getElement("numStack")->color2;
 	if (_selUnit != 0)
@@ -343,8 +346,15 @@ void Inventory::drawItems()
 			{
 				continue;
 			}
-			BattleItem::ScriptFill(&work, invItem, save, BODYPART_ITEM_INVENTORY, _animFrame, 0);
-			work.executeBlit(frame, _items, x, y, 0);
+			if (_native && HiResCanvas::hasPicture(frame))
+			{
+				_nativeItems.push_back({ frame, x, y }); // 32-bit / hi-res: drawn as is, no recolour script
+			}
+			else
+			{
+				BattleItem::ScriptFill(&work, invItem, save, BODYPART_ITEM_INVENTORY, _animFrame, 0);
+				work.executeBlit(frame, _items, x, y, 0);
+			}
 
 			// two-handed indicator
 			if (invItem->getSlot()->getType() == INV_HAND)
@@ -400,8 +410,15 @@ void Inventory::drawItems()
 			int x, y;
 			x = (groundItem->getSlot()->getX() + (groundItem->getSlotX() - _groundOffset) * RuleInventory::SLOT_W);
 			y = (groundItem->getSlot()->getY() + groundItem->getSlotY() * RuleInventory::SLOT_H);
-			BattleItem::ScriptFill(&work, groundItem, save, BODYPART_ITEM_INVENTORY, _animFrame, 0);
-			work.executeBlit(frame, _items, x, y, 0);
+			if (_native && HiResCanvas::hasPicture(frame))
+			{
+				_nativeItems.push_back({ frame, x, y });
+			}
+			else
+			{
+				BattleItem::ScriptFill(&work, groundItem, save, BODYPART_ITEM_INVENTORY, _animFrame, 0);
+				work.executeBlit(frame, _items, x, y, 0);
+			}
 
 			// grenade primer indicators
 			if (groundItem->getFuseTimer() >= 0 && groundItem->getRules()->getInventoryWidth() > 0)
@@ -477,6 +494,16 @@ void Inventory::drawSelectedItem()
 	if (_selItem)
 	{
 		_selection->clear();
+		_nativeSel.frame = nullptr;
+		if (_native)
+		{
+			const Surface *frame = _selItem->getBigSprite(_game->getMod()->getSurfaceSet("BIGOBS.PCK"), _game->getSavedGame()->getSavedBattle(), _animFrame);
+			if (frame && HiResCanvas::hasPicture(frame))
+			{
+				_nativeSel = { frame, _selItem->getRules()->getHandSpriteOffX(), _selItem->getRules()->getHandSpriteOffY() };
+				return;
+			}
+		}
 		_selItem->getRules()->drawHandSprite(_game->getMod()->getSurfaceSet("BIGOBS.PCK"), _selection, _selItem, _game->getSavedGame()->getSavedBattle(), _animFrame);
 	}
 }
@@ -653,6 +680,62 @@ void Inventory::blit(SDL_Surface *surface)
 	_selection->blitNShade(this, _selection->getX(), _selection->getY());
 	_warning->blit(this->getSurface());
 	Surface::blit(surface);
+}
+
+/**
+ * Draws the inventory on a native canvas, in the order of blit(): grid, item pictures, 8bpp items
+ * (scripts/indicators/stack numbers on top of the pictures), slot labels, the dragged item, the warning.
+ */
+void Inventory::drawNative(HiResCanvas &canvas, int lx, int ly) const
+{
+	canvas.drawSurface8(_grid, lx, ly);
+	for (const auto &ni : _nativeItems)
+		canvas.drawSurface(ni.frame, lx + ni.x, ly + ni.y);
+	canvas.drawSurface8(_items, lx, ly);
+	canvas.drawSurface8(_gridLabels, lx, ly);
+	if (_selItem)
+	{
+		canvas.drawSurface8(_selection, lx + _selection->getX(), ly + _selection->getY());
+		if (_nativeSel.frame)
+			canvas.drawSurface(_nativeSel.frame, lx + _selection->getX() + _nativeSel.x, ly + _selection->getY() + _nativeSel.y);
+	}
+	if (_warning->getVisible())
+		canvas.drawSurface8(_warning, lx + _warning->getX(), ly + _warning->getY());
+}
+
+Uint64 Inventory::nativeHash() const
+{
+	Uint64 h = 1469598103934665603ull;
+	auto mix = [&](Uint64 v) { h = (h ^ v) * 1099511628211ull; };
+	auto mixSurface = [&](const Surface *s)
+	{
+		SDL_Surface *ss = const_cast<Surface*>(s)->getSurface();
+		mix((Uint64)(size_t)ss); mix((Uint64)ss->w); mix((Uint64)s->getX()); mix((Uint64)s->getY());
+		for (int y = 0; y < ss->h; ++y)
+		{
+			const Uint8 *row = (const Uint8*)ss->pixels + y * ss->pitch;
+			for (int x = 0; x + 8 <= ss->w; x += 8)
+			{
+				Uint64 v;
+				std::memcpy(&v, row + x, 8);
+				mix(v);
+			}
+			for (int x = ss->w & ~7; x < ss->w; ++x)
+				mix(row[x]);
+		}
+	};
+	mixSurface(_grid);
+	mixSurface(_items);
+	mixSurface(_gridLabels);
+	mix(_selItem ? 1 : 0);
+	if (_selItem)
+		mixSurface(_selection);
+	for (const auto &ni : _nativeItems) { mix((Uint64)(size_t)ni.frame); mix((Uint64)ni.x); mix((Uint64)ni.y); }
+	mix((Uint64)(size_t)_nativeSel.frame);
+	mix(_warning->getVisible() ? 1 : 0);
+	if (_warning->getVisible())
+		mixSurface(_warning);
+	return h;
 }
 
 /**

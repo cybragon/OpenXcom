@@ -6135,6 +6135,12 @@ void Mod::classifyHiResBattleTypes()
 		const std::string &alt = it->second->getAltBackgroundImage();
 		if (!alt.empty()) HiResAssets::denyTrueColor(alt);
 	}
+	const SDL_Color *battlePal = nullptr;
+	{
+		auto it = _palettes.find("PAL_BATTLESCAPE");
+		if (it != _palettes.end())
+			battlePal = it->second->getColors();
+	}
 	// Battlescape stage 1: static unshaded UI chrome may be 32-bit PNG/JPG (geoscape-style dual store).
 	// Must stay 8-bit: paperdolls, BIGOBS/HANDOB/FLOOROB, MEDIBITS, DETBLOB, CURSOR, map smoke, units/terrain.
 	// ICONS: pressed state uses 8bpp invert of a copy (_altSurface); unpressed can be hi-res.
@@ -6146,7 +6152,12 @@ void Mod::classifyHiResBattleTypes()
 	})
 	{
 		HiResAssets::allowTrueColor(name);
+		// quantized proxies in the battlescape palette (not the geoscape fallback); box-sized 32-bit
+		// pictures are attached too (a 320x200 custom ICONS must show as is)
+		HiResAssets::setTypePalette(name, battlePal);
+		HiResAssets::attachWhenFits(name);
 	}
+	HiResAssets::setTypePalette("AvatarBackground", battlePal);
 	if (HiResAssets::enabled())
 	{
 		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (stage-1 UI chrome allow-listed)";

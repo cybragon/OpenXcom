@@ -64,6 +64,9 @@ namespace HiResAssets
 	void denyTrueColorPrefix(const std::string &prefix);
 	/// Undo a deny (battlescape stage-1 UI chrome allow-list after DenyLoaded).
 	void allowTrueColor(const std::string &type);
+	/// Battlescape UI chrome: a 32-bit picture that fits its box is still attached (drawn hi-res
+	/// over its 8bpp proxy) instead of becoming a stock-like 8-bit image.
+	void attachWhenFits(const std::string &type);
 	bool trueColorAllowed(const std::string &type);
 	size_t deniedCount();
 	/// Palettes used to quantize 32bpp pictures when the replaced image has no meaningful palette.

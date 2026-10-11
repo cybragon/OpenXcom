@@ -336,6 +336,7 @@ namespace
 {
 bool loadedEnabled = false;
 std::map<std::string, const SDL_Color*> typePalettes;
+std::set<std::string> attachFitTypes;
 }
 
 bool enabled()
@@ -347,6 +348,7 @@ void beginModLoad()
 {
 	loadedEnabled = Options::oxceHiResAssets;
 	typePalettes.clear();
+	attachFitTypes.clear();
 	deniedTypes.clear();
 	deniedPrefixes.clear();
 }
@@ -365,6 +367,11 @@ void denyTrueColorPrefix(const std::string &prefix)
 void allowTrueColor(const std::string &type)
 {
 	deniedTypes.erase(type);
+}
+
+void attachWhenFits(const std::string &type)
+{
+	attachFitTypes.insert(type);
 }
 
 bool trueColorAllowed(const std::string &type)
@@ -619,6 +626,22 @@ bool loadReplacement(Surface *target, const std::string &filename, int boxW, int
 	if (!larger && !pic->trueColor)
 		return false; // fits the box (same size or smaller) 8bpp: exactly the normal path
 	const bool boxKnown = boxW < (1 << 15) && boxH < (1 << 15);
+	if (!larger && boxKnown && pic->trueColor && attachFitTypes.count(type) && pic->w == boxW && pic->h == boxH)
+	{
+		// allow-listed battlescape chrome (ICONS, TAC01...) of exactly the box size: attached like a larger
+		// picture (proxy quantized to the type palette, the picture drawn as is over it)
+		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h
+			<< " (box size): drawn as a 32-bit picture over a quantized 8-bit proxy";
+		std::vector<SDL_Color> pal(256, SDL_Color{0, 0, 0, 255});
+		if (origPalette)
+			std::memcpy(pal.data(), origPalette, 256 * sizeof(SDL_Color));
+		forget(target->getSurface());
+		*target = Surface(boxW, boxH, 0, 0);
+		target->setPalette(pal.data(), 0, 256);
+		makeProxy(target, *pic, 0, 0, pic->w, pic->h, boxW, boxH, quantizePalette(type, origPalette));
+		attach(target, pic, 0, 0, pic->w, pic->h, type);
+		return true;
+	}
 	if (!larger && boxKnown)
 	{
 		// 32-bit picture that fits the box: stock-like 8bpp of the BOX size, image at original

@@ -820,6 +820,11 @@ void onDraw(const SDL_Surface *src, int sx, int sy, int sw, int sh, SDL_Surface 
 		if (sy < 0) { dy -= sy; sh += sy; sy = 0; }
 		sw = std::min(sw, e->w - sx);
 		sh = std::min(sh, e->h - sy);
+		// and to the destination (like the 8bpp blit: nothing outside the target surface)
+		if (dx < 0) { sx -= dx; sw += dx; dx = 0; }
+		if (dy < 0) { sy -= dy; sh += dy; dy = 0; }
+		sw = std::min(sw, dst->w - dx);
+		sh = std::min(sh, dst->h - dy);
 		if (sw <= 0 || sh <= 0)
 			return;
 		dw = sw;

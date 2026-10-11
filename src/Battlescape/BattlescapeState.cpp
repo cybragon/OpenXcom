@@ -24,6 +24,7 @@
 #include "Map.h"
 #include "Camera.h"
 #include "BattlescapeState.h"
+#include "../Engine/HiResAssets.h"
 #include "AbortMissionState.h"
 #include "TileEngine.h"
 #include "ActionMenuState.h"
@@ -2190,7 +2191,8 @@ void BattlescapeState::updateSoldierInfo(bool checkFOV)
 			}
 
 			// use custom background (modded)
-			customBg->blitNShade(_rank, 0, 0);
+			// a larger (hi-res) background is fitted into the 26x23 slot
+			HiResAssets::fit(customBg, _rank->getWidth(), _rank->getHeight())->blitNShade(_rank, 0, 0);
 
 			// show avatar
 			Armor *customArmor = soldier->getArmor();

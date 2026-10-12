@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "TextList.h"
+#include "../Engine/HiResLayer.h"
 #include <cstdarg>
 #include <cmath>
 #include <algorithm>
@@ -1285,14 +1286,17 @@ void TextList::mouseOver(Action *action, State *state)
 			if (_contrast)
 			{
 				_selector->offsetBlock(-5);
+				HiResLayer::tintSurface(_selector->getSurface(), 0x30FFFFFFu);
 			}
 			else if (_comboBox)
 			{
 				_selector->offset(+1, Palette::backPos);
+				HiResLayer::tintSurface(_selector->getSurface(), 0x30000000u);
 			}
 			else
 			{
 				_selector->offsetBlock(-10);
+				HiResLayer::tintSurface(_selector->getSurface(), 0x50FFFFFFu);
 			}
 			_selector->setVisible(true);
 		}

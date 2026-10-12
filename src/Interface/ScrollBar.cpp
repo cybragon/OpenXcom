@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "ScrollBar.h"
+#include "../Engine/HiResLayer.h"
 #include "../fmath.h"
 #include "../Engine/Action.h"
 #include "TextList.h"
@@ -246,10 +247,12 @@ void ScrollBar::drawTrack()
 		if (_list->getComboBox())
 		{
 			_track->offset(+1, Palette::backPos);
+			HiResLayer::tintSurface(_track->getSurface(), 0x30000000u);
 		}
 		else
 		{
 			_track->offsetBlock(-5);
+			HiResLayer::tintSurface(_track->getSurface(), 0x30FFFFFFu);
 		}
 	}
 }

@@ -327,6 +327,10 @@ void NumberText::draw()
 			cmd.h = (Sint16)getHeight();
 			cmd.cellH = (Sint16)getHeight();
 			cmd.lineH = (Uint8)std::max(1, getHeight());
+			// centre on the digit's own rows (the 3x5 digit sits at the top of a possibly taller surface,
+			// e.g. the 15x12 visible-enemy boxes)
+			cmd.inkTopL = 0;
+			cmd.inkBotL = (Sint8)std::max(0, _chars[ch - '0']->getHeight() - 1);
 			cmd.slot = (Uint8)numSlot;
 			cmd.fillIdx = (Uint8)(_color + 1);
 			cmd.lineIdx = (Uint8)(_color + 4);

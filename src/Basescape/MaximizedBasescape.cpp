@@ -46,6 +46,20 @@ void MaximizedBasescape::enter(Game *game)
 	}
 }
 
+void MaximizedBasescape::restoreResolution(Game *game)
+{
+	if (_switched)
+	{
+		Options::baseXResolution = Screen::ORIGINAL_WIDTH;
+		Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
+	}
+	else
+	{
+		Screen::updateScale(Options::geoscapeScale, Options::baseXGeoscape, Options::baseYGeoscape, true);
+	}
+	game->getScreen()->resetDisplay(false);
+}
+
 void MaximizedBasescape::leave()
 {
 	if (!_entered)

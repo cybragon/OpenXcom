@@ -24,6 +24,7 @@
 #include "Map.h"
 #include "Camera.h"
 #include "BattlescapeState.h"
+#include "../Basescape/MaximizedBasescape.h"
 #include "../Engine/HiResAssets.h"
 #include "AbortMissionState.h"
 #include "TileEngine.h"
@@ -3598,10 +3599,8 @@ void BattlescapeState::finishBattle(bool abort, int inExitArea)
 		_game->popState();
 		if (isPreview)
 		{
-			// skip Debriefing
-			Options::baseXResolution = Options::baseXGeoscape;
-			Options::baseYResolution = Options::baseYGeoscape;
-			_game->getScreen()->resetDisplay(false);
+			// skip Debriefing; back to the craft screens (maximized basescape: 320x200)
+			MaximizedBasescape::restoreResolution(_game);
 
 			// Restore the cursor in case something weird happened
 			_game->getCursor()->setVisible(true);

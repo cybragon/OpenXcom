@@ -52,6 +52,9 @@ public:
 	void leave();
 	/// True while the basescape resolution is forced to 320x200.
 	static bool active() { return _switched; }
+	/// Back from a battlescape-resolution screen to whatever is below it: 320x200 while the
+	/// maximized basescape is active (e.g. crew preview, base inventory), else the geoscape resolution.
+	static void restoreResolution(Game *game);
 };
 
 }

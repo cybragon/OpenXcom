@@ -506,7 +506,7 @@ const SDL_Color *quantizePalette(const std::string &type, const SDL_Color *origP
 	auto tp = typePalettes.find(type);
 	if (tp != typePalettes.end())
 		return tp->second;
-	if ((type == "BASEBITS.PCK" || type == "INTICON.PCK") && palBase)
+	if (type == "BASEBITS.PCK" && palBase)
 		return palBase;
 	if (!uniform(origPalette))
 		return origPalette;

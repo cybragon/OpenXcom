@@ -193,13 +193,13 @@ InventoryState::InventoryState(bool tu, BattlescapeState *parent, Base *base, bo
 	centerAllSurfaces();
 
 	// native inventory pilot: frozen here (needs the hi-res assets loaded and the UI not magnified)
-	_native = Options::oxceNativeInventory && HiResAssets::enabled() && getUiCanvasFactor() == 1;
+	_native = HiResAssets::enabled() && getUiCanvasFactor() == 1;
 	if (_native)
 	{
 		_inv->setNative(true);
 		_canvasBack = new HiResCanvas();
 		_canvasFront = new HiResCanvas();
-		Log(LOG_INFO) << "InventoryState: native canvas mode (oxceNativeInventory)";
+		Log(LOG_INFO) << "InventoryState: native canvas mode (hi-res images on)";
 	}
 
 

@@ -6171,7 +6171,7 @@ void Mod::classifyHiResBattleTypes()
 			for (const char *name : { "CustomArmorPreviews", "CustomItemPreviews", "Commendations", "CommendationDecorations" })
 				HiResAssets::setTypePalette(name, it->second->getColors());
 	}
-	// native inventory canvas (oxceNativeInventory): 32-bit paperdolls/layers (above) and BIGOBS items
+	// native inventory canvas (hi-res images on): 32-bit paperdolls/layers (above) and BIGOBS items
 	HiResAssets::allowNative("BIGOBS.PCK");
 	if (HiResAssets::enabled())
 	{

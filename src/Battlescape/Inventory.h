@@ -64,7 +64,7 @@ private:
 	RuleInventory *_inventorySlotBackPack = nullptr;
 	RuleInventory *_inventorySlotBelt = nullptr;
 	RuleInventory *_inventorySlotGround = nullptr;
-	/// native canvas mode (InventoryState, oxceNativeInventory): items with a picture are not drawn
+	/// native canvas mode (InventoryState, hi-res images on): items with a picture are not drawn
 	/// into the 8bpp layers but listed here and drawn as pictures by drawNative
 	struct NativeItem { const Surface *frame; int x, y; };
 	bool _native = false;

@@ -70,7 +70,7 @@ private:
 	bool _reloadUnit;
 	int _globalLayoutIndex;
 	int _prev_key = 0, _key_repeats = 0;
-	/// native canvas mode (option oxceNativeInventory, frozen at creation): the screen is drawn on
+	/// native canvas mode (hi-res image option, frozen at creation): the screen is drawn on
 	/// full-colour canvases at output resolution; logic and hit testing stay at 320x200
 	bool _native = false;
 	Surface *_nativeHolder = nullptr;          ///< carries the canvas commands to the screen

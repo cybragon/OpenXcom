@@ -27,7 +27,7 @@ class Surface;
 
 /**
  * Full-colour canvas at output resolution for one logical (base px) rect - the "native" drawing
- * path (pilot: InventoryState, option oxceNativeInventory).
+ * path (pilot: InventoryState, follows the hi-res image option).
  *
  * Callers draw in LOGICAL coordinates (the 320x200 game space); the canvas maps them to output
  * pixels. 8-bit surfaces are resolved through their own palette (index 0 transparent) and

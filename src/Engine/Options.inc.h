@@ -132,7 +132,6 @@ OPT bool oxceGeoscapeUiOptimized;
 // hi-res asset replacements (geoscape/base): size-mismatched extraSprites replacements drawn at output resolution, 32-bit pictures for geoscape/base images
 OPT bool oxceHiResAssets;
 // native inventory pilot: InventoryState drawn on full-colour canvases at output resolution (needs oxceHiResAssets)
-OPT bool oxceNativeInventory;
 OPT int oxceHiResFontSize, oxceHiResTextOutlineScale, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
 OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap, oxceHiResDigitFont;
 OPT bool oxceRecommendedOptionsWereSet;

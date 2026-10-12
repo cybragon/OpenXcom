@@ -371,7 +371,10 @@ const SlotSize &slotSize(HiResFont *font, int slot, int lineH, double sy)
 	const std::string &sid = (slot >= 0 && slot < (int)S.slotIds.size()) ? S.slotIds[slot] : std::string();
 	const bool ceilSlot = sid == "FONT_SMALL" || sid.compare(0, 13, "BATTLE_DIGITS") == 0;
 	const double limit = std::max(1.0, ceilSlot ? std::ceil(ss.target - 1e-6) : std::floor(ss.target + 1e-6));
-	const UCode ref = font->hasGlyph(SIZE_REF) ? SIZE_REF : SIZE_REF_NO_HANGUL;
+	// digit-only fonts (BATTLE_DIGITS): the digit itself fills the 3x5 digit rows like the original
+	// (the Hangul reference left Latin digits about one base px short)
+	const bool digitSlot = sid.compare(0, 13, "BATTLE_DIGITS") == 0;
+	const UCode ref = digitSlot && font->hasGlyph('0') ? (UCode)'0' : font->hasGlyph(SIZE_REF) ? SIZE_REF : SIZE_REF_NO_HANGUL;
 	double a, d;
 	const int probe4 = 64 * 4;
 	if (font->hasGlyph(ref) && inkExtent(font, ref, probe4, a, d) && a + d > 0)

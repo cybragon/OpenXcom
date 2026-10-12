@@ -71,12 +71,16 @@ namespace HiResAssets
 	/// are kept for the canvas (InventoryState native mode); the game gets a battlescape-palette proxy.
 	void allowNative(const std::string &type);
 	void allowNativePrefix(const std::string &prefix);
+	/// True for the native-canvas / shared battlescape sets (proxy + picture).
+	bool nativeAllowed(const std::string &type);
 	/// Picture of a surface for the native canvas (attached hi-res asset or native-only 32-bit picture):
 	/// its logical size (base px, from the top-left of the surface). False = 8-bit only.
 	bool nativeInfo(const SDL_Surface *surface, int &lw, int &lh);
 	/// The picture resampled to outW x outH (PREMULTIPLIED ARGB, HiResResample rule), palette for 8bpp pictures; nullptr = none.
 	const Uint32 *nativeRendered(const SDL_Surface *surface, const SDL_Palette *palette, int outW, int outH);
 	bool trueColorAllowed(const std::string &type);
+	/// PAL_BATTLESCAPE (set at mod load), or null.
+	const SDL_Color *battlePalette();
 	size_t deniedCount();
 	/// Palettes used to quantize 32bpp pictures when the replaced image has no meaningful palette.
 	void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape, const SDL_Color *battlescape);
@@ -85,9 +89,12 @@ namespace HiResAssets
 	void setTypePalette(const std::string &type, const SDL_Color *palette);
 	/// Game palettes for the own palette test of 8bpp hi-res pictures (geoscape, basescape, ufopaedia, graphs, battlescape).
 	void setGamePalettes(const std::vector<const SDL_Color*> &palettes);
-	/// Surface::loadImage, except (option on) a 32bpp picture, which is converted to the battlescape
-	/// palette with a warning instead of the fatal error (for the denied battlescape types).
-	bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std::string &type);
+	/// Surface::loadImage, except a 32-bit or JPG picture (hi-res option off, or a denied battlescape type):
+	/// area-downscaled into the box boxW x boxH when larger (0 = keep the file size), quantized to the type
+	/// palette (battlescape palette, indices 1-239, for the denied battlescape types) with a log warning,
+	/// instead of the fatal error. A file that cannot be decoded at all still throws (mod disabled).
+	bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std::string &type,
+		int boxW = 0, int boxH = 0, const SDL_Color *origPalette = nullptr);
 
 	/// Decodes an image file: 8bpp exactly like Surface::loadImage, or 32bpp (PNG via lodepng, others via
 	/// SDL_image). Returns null if the file cannot be decoded (the normal loader then reports the error).

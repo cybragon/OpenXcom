@@ -6171,8 +6171,12 @@ void Mod::classifyHiResBattleTypes()
 			for (const char *name : { "CustomArmorPreviews", "CustomItemPreviews", "Commendations", "CommendationDecorations" })
 				HiResAssets::setTypePalette(name, it->second->getColors());
 	}
-	// native inventory canvas (hi-res images on): 32-bit paperdolls/layers (above) and BIGOBS items
-	HiResAssets::allowNative("BIGOBS.PCK");
+	// shared battlescape sets (hi-res images on): 32-bit files/sheets get a battlescape-palette proxy for
+	// the map and shaded draws plus the picture for the UI overlay and the native inventory canvas
+	// (BIGOBS items, SMOKE.PCK ranks, DETBLOB.DAT); map smoke and hand slots stay 8-bit (battle map stage)
+	for (const char *name : { "BIGOBS.PCK", "SMOKE.PCK", "DETBLOB.DAT" })
+		HiResAssets::allowNative(name);
+	HiResAssets::setTypePalette("SCANG.DAT", battlePal); // minimap: battlescape palette
 	if (HiResAssets::enabled())
 	{
 		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (stage-1 UI chrome allow-listed)";

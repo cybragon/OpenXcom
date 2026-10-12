@@ -212,7 +212,8 @@ Surface *ExtraSprites::loadSurface(Surface *surface)
 			: HiResAssets::loadReplacement(surface, fileName, 1 << 15, 1 << 15, nullptr, _type);
 	if (!hiRes)
 	{
-		HiResAssets::loadDeniedTrueColor(surface, fileName, _type);
+		HiResAssets::loadDeniedTrueColor(surface, fileName, _type, origW > 0 ? origW : (_sizeFromRule ? _width : 0),
+			origW > 0 ? origH : (_sizeFromRule ? _height : 0), origW > 0 ? origPalette.data() : nullptr);
 		if (origW > 0)
 		{
 			HiResAssets::logMismatch(_type, fileName, origW, origH, surface->getWidth(), surface->getHeight(),
@@ -296,7 +297,8 @@ SurfaceSet *ExtraSprites::loadSurfaceSet(SurfaceSet *set)
 			else
 			{
 				Surface temp = Surface(_width, _height);
-				HiResAssets::loadDeniedTrueColor(&temp, fileName, _type);
+				// a 32-bit/JPG sheet larger than the rule sheet is downscaled to width x height before cutting
+				HiResAssets::loadDeniedTrueColor(&temp, fileName, _type, _width, _height, temp.getPalette());
 				HiResAssets::logMismatch(_type, fileName, _width, _height, temp.getWidth(), temp.getHeight(),
 					HiResAssets::enabled() ? "not eligible: cut on the rule grid as before" : "hi-res assets off: cut on the rule grid as before");
 				int xDivision = _width / _subX;
@@ -332,7 +334,7 @@ void ExtraSprites::loadFrameImage(Surface *frame, bool existed, const std::strin
 	// box: the replaced frame, or the set frame size for a new frame
 	if (HiResAssets::loadReplacement(frame, fileName, origW, origH, existed ? origPalette.data() : nullptr, _type))
 		return;
-	HiResAssets::loadDeniedTrueColor(frame, fileName, _type);
+	HiResAssets::loadDeniedTrueColor(frame, fileName, _type, existed ? origW : 0, existed ? origH : 0, existed ? origPalette.data() : nullptr);
 	if (existed)
 	{
 		HiResAssets::logMismatch(_type, fileName, origW, origH, frame->getWidth(), frame->getHeight(),
@@ -358,9 +360,12 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 		return false;
 	const int pw = HiResAssets::pictureWidth(*pic), ph = HiResAssets::pictureHeight(*pic);
 	const bool trueColor = HiResAssets::pictureTrueColor(*pic);
-	if (trueColor && !HiResAssets::trueColorAllowed(_type))
+	// shared battlescape sets (SMOKE.PCK ranks, BIGOBS.PCK items, DETBLOB.DAT): battlescape-palette proxy
+	// for the map and shaded draws, the picture for the UI (overlay) and the native inventory canvas
+	const bool shared = trueColor && !HiResAssets::trueColorAllowed(_type) && HiResAssets::nativeAllowed(_type);
+	if (trueColor && !HiResAssets::trueColorAllowed(_type) && !shared)
 	{
-		return false; // battlescape resource: converted to the battlescape palette by the normal path
+		return false; // battlescape resource: downscaled + converted to the battlescape palette by the normal path
 	}
 	int fw, fh;
 	double scale;
@@ -372,7 +377,9 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 		<< ", rule sheet " << _width << "x" << _height << ": " << xDivision << "x" << yDivision << " cells of " << _subX << "x" << _subY
 		<< " cut at scale " << scale << " (cell " << _subX * scale << "x" << _subY * scale << " file px)"
 		<< (HiResAssets::pictureOwnPalette(*pic) ? "; own palette: drawn in its own colours" : "");
-	const SDL_Color *qpal = HiResAssets::quantizePalette(_type, nullptr);
+	const SDL_Color *qpal = shared ? HiResAssets::battlePalette() : HiResAssets::quantizePalette(_type, nullptr);
+	if (!qpal)
+		return false;
 	int offset = startFrame;
 	for (int y = 0; y != yDivision; ++y)
 	{

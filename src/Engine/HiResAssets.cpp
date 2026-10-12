@@ -339,6 +339,11 @@ bool trueColorAllowed(const std::string &type)
 	return true;
 }
 
+const SDL_Color *battlePalette()
+{
+	return palBattle;
+}
+
 size_t deniedCount()
 {
 	return deniedTypes.size() + deniedPrefixes.size();
@@ -356,7 +361,7 @@ void setPalettes(const SDL_Color *geoscape, const SDL_Color *basescape, const SD
 	palBattle = battlescape;
 }
 
-bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std::string &type)
+bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std::string &type, int boxW, int boxH, const SDL_Color *origPalette)
 {
 	try
 	{
@@ -365,21 +370,30 @@ bool loadDeniedTrueColor(Surface *target, const std::string &filename, const std
 	}
 	catch (Exception &)
 	{
-		if (!enabled() || !palBattle)
-			throw;
-		if (CrossPlatform::compareExt(filename, "jpg") || CrossPlatform::compareExt(filename, "jpeg"))
-		{
-			Log(LOG_WARNING) << "HiResAssets: " << type << ": " << filename << ": JPEG pictures are not allowed for a battlescape resource: ignored";
-			return false;
-		}
 		std::shared_ptr<Picture> pic = decode(filename);
 		if (!pic || !pic->trueColor)
+			throw; // truly broken file: error as before (the mod is disabled)
+		const bool battle = !trueColorAllowed(type);
+		const SDL_Color *pal = battle && palBattle ? palBattle : quantizePalette(type, origPalette);
+		if (!pal)
+			pal = palBattle ? palBattle : palGeo;
+		if (!pal)
 			throw;
-		Log(LOG_WARNING) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image, not allowed for a battlescape resource: converted to the battlescape palette (" << pic->w << "x" << pic->h << ", 8-bit)";
+		int fw, fh;
+		double scale;
+		fitBox(boxW, boxH, pic->w, pic->h, fw, fh, scale);
+		Log(LOG_WARNING) << "HiResAssets: " << type << ": " << filename << " is a " << pic->w << "x" << pic->h << " 32-bit/JPG image"
+			<< (enabled() ? " (battlescape resource: 8-bit only)" : " (hi-res images option off)")
+			<< ": converted to 8-bit " << fw << "x" << fh << " in the " << (pal == palBattle ? "battlescape" : "type") << " palette";
+		std::vector<SDL_Color> spal(pal, pal + 256);
+		if (origPalette && !battle)
+			spal.assign(origPalette, origPalette + 256);
 		forget(target->getSurface());
-		*target = Surface(pic->w, pic->h, 0, 0);
-		target->setPalette(palBattle, 0, 256);
-		makeProxy(target, *pic, 0, 0, pic->w, pic->h, pic->w, pic->h, palBattle);
+		*target = Surface(fw, fh, 0, 0);
+		target->setPalette(spal.data(), 0, 256);
+		if (SDL_Surface *ts = target->getSurface())
+			SDL_FillRect(ts, 0, 0);
+		makeProxy(target, *pic, 0, 0, pic->w, pic->h, fw, fh, pal);
 		return true;
 	}
 }

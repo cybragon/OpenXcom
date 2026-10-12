@@ -1,8 +1,10 @@
 # Hi-res images for modders (8.7.1-hires, geoscape/UI stage)
 
-Option `oxceHiResAssets` (Options > Advanced "hi-res images") draws replacement images at the output
-resolution. `oxceHiResUpscale` (Smooth / Nearest / Pixel art) picks how images smaller than the
-screen are enlarged; images larger than their box are always area-averaged down.
+Options > Video, hi-res dropdown: **Hi-res off (original)**, **Hi-res: Sharp** (nearest),
+**Hi-res: Smooth** (bilinear), **Hi-res: Pixel-art** (xBRZ), **Hi-res: Auto** (follows the screen
+filter: none/Raw -> Sharp, Scale/HQx/xBRZ and pixel-art shaders -> Pixel-art, other GL shaders ->
+Smooth). options.cfg keys: `oxceHiResAssets` (on/off) and `oxceHiResUpscale` (0 smooth, 1 sharp,
+2 pixel-art, 3 auto; default 3). Images larger than their box are always area-averaged down.
 
 ## width / height = logical size
 `extraSprites` keeps its normal rules. `width`/`height` (or the size of the replaced image) is the

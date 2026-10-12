@@ -77,7 +77,7 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	_btnLetterbox = new ToggleTextButton(104, 13, 206, 92);
 	_btnLockMouse = new ToggleTextButton(104, 13, 206, 106);
 	_btnRootWindowedMode = new ToggleTextButton(104, 13, 206, 120);
-	_btnHiResAssets = new ToggleTextButton(104, 13, 206, 134);
+	_cbxHiRes = new ComboBox(this, 104, 13, 206, 134, true); // hi-res images: off / Sharp / Smooth / Pixel-art / Auto
 
 	// Get available fullscreen modes
 	_res = SDL_ListModes(NULL, SDL_FULLSCREEN);
@@ -121,7 +121,6 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	add(_btnLetterbox, "button", "videoMenu");
 	add(_btnLockMouse, "button", "videoMenu");
 	add(_btnRootWindowedMode, "button", "videoMenu");
-	add(_btnHiResAssets, "button", "videoMenu");
 
 	add(_cbxFilter, "button", "videoMenu");
 	add(_cbxDisplayMode, "button", "videoMenu");
@@ -133,6 +132,7 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	add(_cbxGeoScale, "button", "videoMenu");
 
 	add(_cbxLanguage, "button", "videoMenu");
+	add(_cbxHiRes, "button", "videoMenu"); // last: its list opens upwards over the other controls
 	centerAllSurfaces();
 
 	// Set up objects
@@ -190,12 +190,27 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	_btnRootWindowedMode->onMouseIn((ActionHandler)&OptionsVideoState::txtTooltipIn);
 	_btnRootWindowedMode->onMouseOut((ActionHandler)&OptionsVideoState::txtTooltipOut);
 
-	_btnHiResAssets->setText(tr("STR_HIRES_ASSETS"));
-	_btnHiResAssets->setPressed(Options::oxceHiResAssets);
-	_btnHiResAssets->onMouseClick((ActionHandler)&OptionsVideoState::btnHiResAssetsClick);
-	_btnHiResAssets->setTooltip("STR_HIRES_ASSETS_DESC");
-	_btnHiResAssets->onMouseIn((ActionHandler)&OptionsVideoState::txtTooltipIn);
-	_btnHiResAssets->onMouseOut((ActionHandler)&OptionsVideoState::txtTooltipOut);
+	{
+		// one dropdown: hi-res images off, or on with the upscale mode (oxceHiResAssets + oxceHiResUpscale)
+		std::vector<std::string> hr;
+		for (const char *id : { "STR_HIRES_MODE_OFF", "STR_HIRES_MODE_SHARP", "STR_HIRES_MODE_SMOOTH", "STR_HIRES_MODE_PIXELART", "STR_HIRES_MODE_AUTO" })
+			hr.push_back(tr(id));
+		static const int upscaleOf[] = { -1, 1, 0, 2, 3 };
+		size_t sel = 0;
+		if (Options::oxceHiResAssets)
+		{
+			sel = 4;
+			for (size_t k = 1; k < 5; ++k)
+				if (upscaleOf[k] == Options::oxceHiResUpscale)
+					sel = k;
+		}
+		_cbxHiRes->setOptions(hr);
+		_cbxHiRes->setSelected(sel);
+		_cbxHiRes->onChange((ActionHandler)&OptionsVideoState::cbxHiResChange);
+		_cbxHiRes->setTooltip("STR_HIRES_ASSETS_DESC");
+		_cbxHiRes->onMouseIn((ActionHandler)&OptionsVideoState::txtTooltipIn);
+		_cbxHiRes->onMouseOut((ActionHandler)&OptionsVideoState::txtTooltipOut);
+	}
 
 	_txtLanguage->setText(tr("STR_DISPLAY_LANGUAGE"));
 
@@ -602,12 +617,20 @@ void OptionsVideoState::btnLetterboxClick(Action *)
  * the mods are reloaded on OK, in a game it applies after a restart.
  * @param action Pointer to an action.
  */
-void OptionsVideoState::btnHiResAssetsClick(Action *)
+void OptionsVideoState::cbxHiResChange(Action *)
 {
-	Options::oxceHiResAssets = _btnHiResAssets->getPressed();
-	if (_origin == OPT_MENU)
+	static const int upscaleOf[] = { -1, 1, 0, 2, 3 };
+	const size_t sel = std::min<size_t>(4, _cbxHiRes->getSelected());
+	const bool on = sel != 0;
+	if (on)
+		Options::oxceHiResUpscale = upscaleOf[sel]; // upscale mode: applies at once (render caches are keyed by mode)
+	if (on != Options::oxceHiResAssets)
 	{
-		Options::reload = true;
+		Options::oxceHiResAssets = on;
+		if (_origin == OPT_MENU)
+		{
+			Options::reload = true; // images are (re)loaded with the mods
+		}
 	}
 }
 

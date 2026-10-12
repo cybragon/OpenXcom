@@ -31,8 +31,8 @@ namespace OpenXcom
  */
 namespace HiResResample
 {
-	enum Mode { SMOOTH = 0, NEAREST = 1, PIXEL = 2 };
-	/// Current upscale mode (Options::oxceHiResUpscale, clamped).
+	enum Mode { SMOOTH = 0, NEAREST = 1, PIXEL = 2, AUTO = 3 /* option value only */ };
+	/// Current upscale mode (Options::oxceHiResUpscale; AUTO follows the video filter).
 	int mode();
 	/// Source rect (rx, ry, rw, rh; may be fractional) of the w x h straight ARGB picture -> outW x outH premultiplied.
 	void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int mode, std::vector<Uint32> &out);

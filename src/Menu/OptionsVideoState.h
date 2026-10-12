@@ -47,10 +47,11 @@ private:
 	ArrowButton *_btnDisplayResolutionUp, *_btnDisplayResolutionDown;
 
 	Text *_txtLanguage, *_txtFilter, *_txtGeoScale, *_txtBattleScale;
+	ComboBox *_cbxHiRes;
 	ComboBox *_cbxLanguage, *_cbxFilter, *_cbxDisplayMode, *_cbxGeoScale, *_cbxBattleScale;
 	Text *_txtMode;
 	Text *_txtOptions;
-	ToggleTextButton *_btnLetterbox, *_btnLockMouse, *_btnRootWindowedMode, *_btnHiResAssets;
+	ToggleTextButton *_btnLetterbox, *_btnLockMouse, *_btnRootWindowedMode;
 
 	SDL_Rect** _res;
 	int _resAmount, _resCurrent;
@@ -83,7 +84,7 @@ public:
 	/// Handler for clicking the Lock Mouse button.
 	void btnLockMouseClick(Action *action);
 	/// Handler for clicking the Hi-res assets button.
-	void btnHiResAssetsClick(Action *action);
+	void cbxHiResChange(Action *action);
 	/// Handler for clicking the Root Window Pos button.
 	void btnRootWindowedModeClick(Action *action);
 	/// Handler for updating the selected battlescape scale.

@@ -376,7 +376,8 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResOverlay", &oxceHiResOverlay, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceGeoscapeUiOptimized", &oxceGeoscapeUiOptimized, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResAssets", &oxceHiResAssets, false));
-	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResUpscale", &oxceHiResUpscale, 0, "STR_HIRES_UPSCALE", "STR_GENERAL"));
+	// 0 smooth, 1 nearest, 2 pixel art, 3 auto (follows the video filter); set in Options > Video (hi-res dropdown)
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResUpscale", &oxceHiResUpscale, 3));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResText", &oxceHiResText, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFont", &oxceHiResFont, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontFallback", &oxceHiResFontFallback, ""));

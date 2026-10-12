@@ -17,6 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "HiResResample.h"
+#include <string>
+#include <cctype>
 #include "Options.h"
 #include "Scalers/xbrz.h"
 #include <algorithm>
@@ -144,7 +146,23 @@ void separable(const Uint32 *src, int w, int h, double rx, double ry, double rw,
 
 int mode()
 {
-	return std::min(2, std::max(0, Options::oxceHiResUpscale));
+	if (Options::oxceHiResUpscale != AUTO)
+		return std::min(2, std::max(0, Options::oxceHiResUpscale));
+	// Auto: follow the video filter
+	if (Options::useOpenGL && !Options::useOpenGLShader.empty())
+	{
+		std::string f = Options::useOpenGLShader;
+		std::transform(f.begin(), f.end(), f.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+		if (f.find("raw") != std::string::npos)
+			return NEAREST;
+		for (const char *k : { "xbr", "scale", "hq", "sabr", "pixel", "nedi", "super-xbr", "omniscale" })
+			if (f.find(k) != std::string::npos)
+				return PIXEL;
+		return SMOOTH; // CRT, bloom, scanline, bilinear... shaders
+	}
+	if (Options::useScaleFilter || Options::useHQXFilter || Options::useXBRZFilter)
+		return PIXEL;
+	return NEAREST; // no filter
 }
 
 Uint32 premultiply(Uint32 p)

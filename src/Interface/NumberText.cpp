@@ -282,7 +282,7 @@ void NumberText::draw()
 	// cell, and the TTF digits replace the bitmap ones (both would show: they are not the same width).
 	// Others (e.g. inventory stack numbers, composed with blitNShade): bitmap + slot-0 TTF as before.
 	const int numSlot = !(Options::oxceHiResText && HiResLayer::recording()) ? -1
-		: _ttfDigits ? HiResLayer::registerFontId(_bordered ? "NUMBER_TEXT_BORDERED" : "NUMBER_TEXT") : 0;
+		: _ttfDigits ? HiResLayer::registerFontId(_battleDigits ? (_bordered ? "BATTLE_DIGITS_BORDERED" : "BATTLE_DIGITS") : (_bordered ? "NUMBER_TEXT_BORDERED" : "NUMBER_TEXT")) : 0;
 	const bool ttf = numSlot >= 0 && HiResLayer::canRenderGlyph('0', numSlot);
 	if (!ttf || !_ttfDigits)
 	{

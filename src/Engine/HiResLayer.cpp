@@ -39,6 +39,10 @@ bool HiResLayer::_textConfigured = false;
 namespace
 {
 
+/// Extra emboldening (fraction of the em) of font chains without a bold face that must look bold
+/// (battle UI digits); keyed by chain, so the size measurement and the rendering agree.
+std::unordered_map<const HiResFont*, double> extraBold;
+
 struct SlotState
 {
 	HiResFont *font = nullptr;   ///< font chain used by the slot (owned by LayerState::fonts)
@@ -233,6 +237,24 @@ SlotState &slotState(int slot)
 					st.font = f;
 			}
 		}
+		if (S.slotIds[slot].compare(0, 13, "BATTLE_DIGITS") == 0 && S.defaultFont)
+		{
+			// battle UI digits: a bold system font (never bundled); no font map entry -> oxceHiResDigitFont
+			// or the built-in bold list, then the normal chain
+			if (it == m.end() || it->second.first.empty())
+			{
+				std::vector<std::string> specs = splitList(Options::oxceHiResDigitFont);
+				if (specs.empty())
+					specs = { "arialbd.ttf", "segoeuib.ttf", "malgunbd.ttf", "verdanab.ttf", "DejaVuSans-Bold.ttf",
+						"LiberationSans-Bold.ttf", "NanumGothicBold.ttf" };
+				specs.insert(specs.end(), S.defaultSpecs.begin(), S.defaultSpecs.end());
+				if (HiResFont *f = getFontChain(specs))
+					st.font = f;
+			}
+			// the face drawing the digits has no bold style: FreeType emboldening instead
+			if (st.font && !st.font->isBold(st.font->faceFor('0')) && !extraBold.count(st.font))
+				extraBold[st.font] = 0.07;
+		}
 	}
 	return st;
 }
@@ -258,7 +280,17 @@ inline bool isWide(UCode c)
 /// (40 = 4% em; bitmap fonts have ~0.11-0.125 em strokes, typical TTF regular weights ~0.07-0.08 em).
 inline double boldRatio() { return S.boldPct / 1000.0; }
 /// Font sizes are kept in 1/4 px ("size4"), see HiResFont.
-inline int bold64ForSize(int size4) { return (int)std::lround(size4 / 4.0 * boldRatio() * 64.0); }
+inline int bold64ForSize(int size4, const HiResFont *font = nullptr)
+{
+	double r = boldRatio();
+	if (font && !extraBold.empty())
+	{
+		auto it = extraBold.find(font);
+		if (it != extraBold.end())
+			r += it->second;
+	}
+	return (int)std::lround(size4 / 4.0 * r * 64.0);
+}
 
 /// Glyph body height (Latin capital 'H', Hangul '각') and outline thickness of a font type, in base
 /// (1x) pixels; both are multiplied by the output scale and the size options.
@@ -275,6 +307,8 @@ FontRule fontRule(int slot, int lineH)
 		{ "FONT_GEO_SMALL", { 5.0, 0.5 } }, // line 7
 		{ "NUMBER_TEXT", { 5.0, 0.0 } },    // NumberText 3x5 digits (TU, health, ammo...): digit cell height
 		{ "NUMBER_TEXT_BORDERED", { 5.0, 1.0 } },
+		{ "BATTLE_DIGITS", { 5.0, 0.0 } },  // battlescape UI NumberTexts (own bold font, oxceHiResDigitFont)
+		{ "BATTLE_DIGITS_BORDERED", { 5.0, 1.0 } },
 	};
 	if (slot >= 0 && slot < (int)S.slotIds.size())
 		for (const auto &r : rules)
@@ -307,7 +341,7 @@ bool inkExtent(HiResFont *font, UCode ref, int size4, double &asc, double &desc)
 	asc = 0.0; desc = 0.0;
 	if (!font->hasGlyph(ref))
 		return false;
-	const HiResGlyph &g = font->getGlyph(ref, size4, 0, bold64ForSize(size4));
+	const HiResGlyph &g = font->getGlyph(ref, size4, 0, bold64ForSize(size4, font));
 	if (!g.ok || g.fillH <= 0)
 		return false;
 	asc = g.fillT;
@@ -898,7 +932,7 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 				int px, baseline; // px: font size in 1/4 px
 				int outline64;
 				placeVertical(c, font, sx, sy, px, baseline, outline64);
-				const int bold64 = bold64ForSize(px);
+				const int bold64 = bold64ForSize(px, font);
 				const bool space = (c.flags & HiResCmd::GLYPH_SPACE) != 0;
 				const HiResGlyph &g = font->getGlyph(c.code, px, space ? 0 : outline64, space ? 0 : bold64, hs);
 				if (!g.ok)
@@ -1081,6 +1115,7 @@ void HiResLayer::reconfigure()
 	S.settings.hinting = Options::oxceHiResTextHinting;
 	S.settings.antialias = Options::oxceHiResTextAntialias;
 	S.slots.clear();
+	extraBold.clear();
 	S.sizeCache.clear();
 	slotSizeCache.clear();
 	S.defaultFont = nullptr;

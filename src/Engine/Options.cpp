@@ -381,6 +381,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFont", &oxceHiResFont, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontFallback", &oxceHiResFontFallback, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontMap", &oxceHiResFontMap, ""));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDigitFont", &oxceHiResDigitFont, "")); // battle UI digits: font specs, empty = built-in bold list
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontSize", &oxceHiResFontSize, 100));
 	// outline thickness in % of the default of each font type (FONT_BIG/GEO_BIG 1 px, FONT_SMALL/GEO_SMALL 0.5 px at x1), 0..400

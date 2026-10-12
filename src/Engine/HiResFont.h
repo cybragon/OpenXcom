@@ -93,6 +93,8 @@ public:
 	/// Index of first face providing the code point, -1 if none.
 	int faceFor(UCode c);
 	bool hasGlyph(UCode c) { return faceFor(c) >= 0; }
+	/// The face (index in the chain) has a bold style (FreeType style flags or weight in the style name).
+	bool isBold(int face) const;
 	/// Sizes ('size4') are pixel sizes (em) in 1/4 pixel, so fractional sizes can be used.
 	/// Renders (or fetches from cache) a glyph at a size with an outline radius and emboldening (both in 1/64 pixel).
 	/// hscale256: horizontal scale of the glyph (256 = none, 205..255 = narrowed, for text squeezed

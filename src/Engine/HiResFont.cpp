@@ -437,6 +437,17 @@ int HiResFont::load(const std::vector<std::string> &specs, const Settings &setti
 	return (int)_faces.size();
 }
 
+bool HiResFont::isBold(int face) const
+{
+	if (face < 0 || face >= (int)_faces.size())
+		return false;
+	FT_Face f = (FT_Face)_faces[face];
+	if (f->style_flags & FT_STYLE_FLAG_BOLD)
+		return true;
+	const std::string st = f->style_name ? f->style_name : "";
+	return st.find("Bold") != std::string::npos || st.find("Black") != std::string::npos || st.find("Heavy") != std::string::npos;
+}
+
 int HiResFont::faceFor(UCode c)
 {
 	auto it = _faceForCode.find(c);

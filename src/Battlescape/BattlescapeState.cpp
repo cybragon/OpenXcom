@@ -417,6 +417,20 @@ BattlescapeState::BattlescapeState() :
 
 	_numLayers->setColor(Palette::blockOffset(1)-2);
 	_numLayers->setValue(1);
+	// hi-res text: the battle UI digits use their own bold font type (the floor level digits keep NUMBER_TEXT)
+	{
+		std::vector<NumberText*> battleDigits = { _numTwoHandedIndicatorLeft, _numTwoHandedIndicatorRight,
+			_numTimeUnits, _numEnergy, _numHealth, _numMorale };
+		battleDigits.insert(battleDigits.end(), _numAmmoLeft.begin(), _numAmmoLeft.end());
+		battleDigits.insert(battleDigits.end(), _numAmmoRight.begin(), _numAmmoRight.end());
+		battleDigits.insert(battleDigits.end(), _numMedikitLeft.begin(), _numMedikitLeft.end());
+		battleDigits.insert(battleDigits.end(), _numMedikitRight.begin(), _numMedikitRight.end());
+		for (auto *n : _numVisibleUnit)
+			battleDigits.push_back(n);
+		for (auto *n : battleDigits)
+			if (n)
+				n->setBattleDigits(true);
+	}
 
 	for (int slot = 0; slot < RuleItem::AmmoSlotMax; ++slot)
 	{

@@ -33,7 +33,6 @@ private:
 	Surface *_chars[10];
 	Surface *_borderedChars[10];
 	bool _bordered;
-	bool _battleDigits = false; ///< battlescape UI digits: own bold font type BATTLE_DIGITS
 	bool _ttfDigits = false; ///< hi-res text: TTF digits replace the bitmap (only when blitted with its commands, State::add)
 	Uint8 _color;
 public:
@@ -57,7 +56,6 @@ public:
 	void setBordered(bool bordered);
 	/// TTF digits instead of the bitmap ones (hi-res text): set by State::add for state members.
 	void setTtfDigits(bool ttf) { _ttfDigits = ttf; _redraw = true; }
-	void setBattleDigits(bool battle) { _battleDigits = battle; _redraw = true; }
 
 };
 

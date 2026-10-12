@@ -281,8 +281,9 @@ void NumberText::draw()
 	// State members (_ttfDigits): own font type NUMBER_TEXT (HiResLayer fontRule), sized to the 5 px digit
 	// cell, and the TTF digits replace the bitmap ones (both would show: they are not the same width).
 	// Others (e.g. inventory stack numbers, composed with blitNShade): bitmap + slot-0 TTF as before.
+	// every NumberText uses the bold digit font type BATTLE_DIGITS (oxceHiResDigitFont)
 	const int numSlot = !(Options::oxceHiResText && HiResLayer::recording()) ? -1
-		: _ttfDigits ? HiResLayer::registerFontId(_battleDigits ? (_bordered ? "BATTLE_DIGITS_BORDERED" : "BATTLE_DIGITS") : (_bordered ? "NUMBER_TEXT_BORDERED" : "NUMBER_TEXT")) : 0;
+		: HiResLayer::registerFontId(_bordered ? "BATTLE_DIGITS_BORDERED" : "BATTLE_DIGITS");
 	const bool ttf = numSlot >= 0 && HiResLayer::canRenderGlyph('0', numSlot);
 	if (!ttf || !_ttfDigits)
 	{

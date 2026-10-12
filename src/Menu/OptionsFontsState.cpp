@@ -61,6 +61,8 @@ OptionsFontsState::OptionsFontsState(OptionsOrigin origin) : OptionsBaseState(or
 	for (const auto &id : HiResLayer::fontIds())
 	{
 		if ((int)_rowIds.size() >= MAX_ROWS) break;
+		if (id.compare(0, 11, "NUMBER_TEXT") == 0 || id.compare(0, 13, "BATTLE_DIGITS") == 0)
+			continue; // internal digit font types (oxceHiResDigitFont), not Font.dat ids
 		_rowIds.push_back(id);
 	}
 

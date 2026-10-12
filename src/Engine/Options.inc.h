@@ -125,7 +125,7 @@ OPT bool oxceDisableThinkingProgressBar;
 OPT bool oxceEmbeddedOnly;
 OPT bool oxceListVFSContents;
 OPT bool oxceEnablePaletteFlickerFix;
-// hi-res overlay layer prototype (options.cfg only)
+// hi-res overlay layer: UI text/images drawn at the output resolution
 OPT bool oxceHiResOverlay, oxceHiResText, oxceHiResTextAntialias;
 // saved next to geoscapeScale 1x (SCALE_SCREEN): other builds read a valid 1x and keep this key untouched
 OPT bool oxceGeoscapeUiOptimized;
@@ -133,7 +133,7 @@ OPT bool oxceGeoscapeUiOptimized;
 OPT bool oxceHiResAssets;
 // hi-res asset upscaling: 0 smooth (bilinear), 1 nearest, 2 pixel-art (xBRZ, then area downscale)
 OPT int oxceHiResUpscale;
-// native inventory pilot: InventoryState drawn on full-colour canvases at output resolution (needs oxceHiResAssets)
+// hi-res text settings (options.cfg)
 OPT int oxceHiResFontSize, oxceHiResTextOutlineScale, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
 OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap, oxceHiResDigitFont;
 OPT bool oxceRecommendedOptionsWereSet;

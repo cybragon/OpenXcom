@@ -10,6 +10,19 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
   "added" were written for this fork; files listed as "modified" were changed for this fork on the
   dates above.
 
+## 8.7.1-hires-9test (2026-10-13, test build)
+
+- Crew preview / base inventory exit restores 320x200 while the maximized basescape is active
+  (was half-size top-left, rest black, on Windows at x2).
+- Native inventory: vanilla 8-bit paperdolls use the state palette (were black).
+- Shared battlescape sets SMOKE.PCK / BIGOBS.PCK / DETBLOB.DAT: oversized sheets downscaled to the
+  rule width/height before cutting; battlescape-palette proxy plus hi-res picture. SCANG.DAT uses
+  the battlescape palette.
+- Hi-res images off: 32-bit/JPG mod images downscaled and quantized with a warning instead of an
+  error.
+- Option "Hi-res image upscaling" shown as Smooth / Nearest / Pixel art. Modder notes in
+  `MODDING-hires.md`.
+
 ## 8.7.1-hires-1 (2026-10-04)
 
 - **Hi-res TTF text overlay** (`oxceHiResOverlay`, `oxceHiResText`): game text drawn with system

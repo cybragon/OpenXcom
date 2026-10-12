@@ -725,4 +725,7 @@ en-GB:
   STR_HIRES_ASSETS: "Hi-res assets"
   STR_HIRES_ASSETS_DESC: "Mod images of another size are drawn at screen resolution. Allows 32-bit PNG and JPG except for battlescape images. Reloads mods / needs restart."
   STR_HIRES_UPSCALE: "Hi-res image upscaling"
-  STR_HIRES_UPSCALE_DESC: "Hi-res images smaller than the screen: 0 = smooth (default), 1 = nearest (crisp blocks), 2 = pixel art (xBRZ). Downscaling always averages."
+  STR_HIRES_UPSCALE_DESC: "Hi-res images smaller than the screen: smooth (default), nearest (crisp blocks) or pixel art (xBRZ). Downscaling always averages."
+  STR_HIRES_UPSCALE_SMOOTH: "Smooth"
+  STR_HIRES_UPSCALE_NEAREST: "Nearest"
+  STR_HIRES_UPSCALE_PIXELART: "Pixel art"

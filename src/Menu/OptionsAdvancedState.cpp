@@ -33,6 +33,11 @@
 namespace OpenXcom
 {
 
+namespace
+{
+const char *const UPSCALE_NAMES[] = { "STR_HIRES_UPSCALE_SMOOTH", "STR_HIRES_UPSCALE_NEAREST", "STR_HIRES_UPSCALE_PIXELART" };
+}
+
 /**
  * Initializes all the elements in the Advanced Options window.
  * @param game Pointer to the core game.
@@ -260,6 +265,8 @@ void OptionsAdvancedState::addSettings(const std::vector<OptionInfo> &settings)
 			std::ostringstream ss;
 			ss << *optionInfo.asInt();
 			value = ss.str();
+			if (optionInfo.asInt() == &Options::oxceHiResUpscale)
+				value = tr(UPSCALE_NAMES[std::max(0, std::min(2, *optionInfo.asInt()))]);
 		}
 		_lstOptions->addRow(2, name.c_str(), value.c_str());
 		// grey out fixed options
@@ -446,6 +453,8 @@ void OptionsAdvancedState::lstOptionsClick(Action *action)
 		std::ostringstream ss;
 		ss << *i;
 		settingText = ss.str();
+		if (i == &Options::oxceHiResUpscale)
+			settingText = tr(UPSCALE_NAMES[std::max(0, std::min(2, *i))]);
 	}
 	_lstOptions->setCellText(sel, 1, settingText);
 }

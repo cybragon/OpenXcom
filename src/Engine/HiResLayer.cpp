@@ -708,12 +708,12 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 				{
 					if (v < 0 || u < 0 || e[(size_t)v * ew + u])
 						continue; // an opaque proxy pixel that did not reach the screen: covered
-					bool near = false;
-					for (int dy = -1; dy <= 1 && !near; ++dy)
-						for (int dx = -1; dx <= 1 && !near; ++dx)
+					bool nearSil = false;
+					for (int dy = -1; dy <= 1 && !nearSil; ++dy)
+						for (int dx = -1; dx <= 1 && !nearSil; ++dx)
 							if ((dx || dy) && origAt(xx + dx, yy + dy) == MASK_PROXY)
-								near = true;
-					if (near)
+								nearSil = true;
+					if (nearSil)
 					{
 						m[mi] = MASK_EDGE;
 						any = true;

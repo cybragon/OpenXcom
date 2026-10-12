@@ -117,11 +117,12 @@ void HiResCanvas::drawSurface8(const Surface *surface, int lx, int ly)
 	SDL_Surface *s = const_cast<Surface*>(surface)->getSurface();
 	if (s->format->BitsPerPixel != 8 || !s->format->palette)
 		return;
+	const SDL_Palette *spal = _palette ? _palette : s->format->palette;
 	const int dx0 = ox(lx), dy0 = oy(ly), dx1 = ox(lx + s->w), dy1 = oy(ly + s->h);
 	const int ow = dx1 - dx0, oh = dy1 - dy0;
 	if (ow <= 0 || oh <= 0 || s->w <= 0 || s->h <= 0)
 		return;
-	const SDL_Color *pal = s->format->palette->colors;
+	const SDL_Color *pal = spal->colors;
 	Uint32 lut[256];
 	for (int i = 0; i < 256; ++i)
 		lut[i] = i ? (0xFF000000u | ((Uint32)pal[i].r << 16) | ((Uint32)pal[i].g << 8) | pal[i].b) : 0u;
@@ -209,7 +210,7 @@ bool HiResCanvas::drawSurface(const Surface *surface, int lx, int ly)
 	{
 		// resampled once to exactly the output size of its logical rect (cached by HiResAssets)
 		const int pw = ox(lx + lw) - ox(lx), ph = oy(ly + lh) - oy(ly);
-		const Uint32 *px = pw > 0 && ph > 0 ? HiResAssets::nativeRendered(const_cast<Surface*>(surface)->getSurface(), const_cast<Surface*>(surface)->getSurface()->format->palette, pw, ph) : nullptr;
+		const Uint32 *px = pw > 0 && ph > 0 ? HiResAssets::nativeRendered(const_cast<Surface*>(surface)->getSurface(), (_palette ? _palette : const_cast<Surface*>(surface)->getSurface()->format->palette), pw, ph) : nullptr;
 		if (px)
 		{
 			drawPicture(px, pw, ph, lx, ly, lw, lh);

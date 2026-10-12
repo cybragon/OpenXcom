@@ -447,6 +447,7 @@ void InventoryState::blitNativeBack(SDL_Surface *screen)
 	{
 		_backHash = h;
 		_canvasBack->begin(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), sx, sy);
+		_canvasBack->setPalette(_bg->getSurface()->format->palette); // state palette for 8-bit art
 		// background: TAC01's picture when it has one (hi-res asset), else the 8bpp _bg
 		if (!(_bgSource && _canvasBack->drawSurface(_bgSource, _bg->getX(), _bg->getY())))
 		{
@@ -484,6 +485,7 @@ void InventoryState::blitNativeFront(SDL_Surface *screen)
 	{
 		_frontHash = h;
 		_canvasFront->begin(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), sx, sy);
+		_canvasFront->setPalette(_bg->getSurface()->format->palette);
 		if (_selAmmo->getVisible())
 			_canvasFront->drawSurface8(_selAmmo, _selAmmo->getX(), _selAmmo->getY());
 		_inv->drawNative(*_canvasFront, _inv->getX(), _inv->getY());
@@ -520,16 +522,10 @@ InventoryState::~InventoryState()
 		_battleGame->getTileEngine()->calculateLighting(LL_ITEMS); // dropping/picking up flares
 		_battleGame->getTileEngine()->recalculateFOV();
 	}
-	else if (MaximizedBasescape::active())
-	{
-		// back to the maximized basescape: stay at 320x200
-		Options::baseXResolution = Screen::ORIGINAL_WIDTH;
-		Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
-	}
 	else
 	{
-		Screen::updateScale(Options::geoscapeScale, Options::baseXGeoscape, Options::baseYGeoscape, true);
-		_game->getScreen()->resetDisplay(false);
+		// back to the base/craft screens (maximized basescape: stays at 320x200)
+		MaximizedBasescape::restoreResolution(_game);
 	}
 }
 

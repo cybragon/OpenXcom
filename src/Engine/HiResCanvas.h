@@ -44,6 +44,7 @@ class HiResCanvas
 	int _lx = 0, _ly = 0, _lw = 0, _lh = 0;  ///< logical rect covered (base px)
 	double _sx = 1.0, _sy = 1.0;  ///< output px per logical px
 	int _outW = 0, _outH = 0;
+	SDL_Palette *_palette = nullptr; ///< game (state) palette for 8-bit art; nullptr = the surface's own
 	Uint32 _imageId = 0;
 	struct Clip { int x0, y0, x1, y1; };
 	std::vector<Clip> _clips;
@@ -56,6 +57,8 @@ public:
 	~HiResCanvas();
 	/// Starts a frame: logical rect (lx, ly, lw, lh) at sx x sy output px per logical px. Clears it.
 	void begin(int lx, int ly, int lw, int lh, double sx, double sy);
+	/// Palette of the 8-bit art (the state palette: raw sprites such as vanilla SPK paperdolls carry no real palette).
+	void setPalette(SDL_Palette *palette) { _palette = palette; }
 	int getOutputWidth() const { return _outW; }
 	int getOutputHeight() const { return _outH; }
 	/// Clip rect in logical coordinates (intersected with the current one).

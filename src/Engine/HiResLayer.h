@@ -84,6 +84,8 @@ struct HiResCmd
 	Uint32 palKey = 0;               ///< resolved at screen delivery: palette of 8bpp pictures
 	Uint32 maskIdx = 0;              ///< resolved at screen delivery: 1 + index of the per-base-pixel snapshot mask (clip rect)
 	Uint32 underId = 0;              ///< pixels under the transparent proxy pixels at record time (silhouette edge), 0 = none
+	Uint32 tint = 0;                 ///< ARGB colour blended over the picture (8bpp highlight of a copied background), 0 = none;
+	                                 ///< the proxy pixels are recoloured, so they are not verified (every opaque proxy pixel counts)
 	// --- resolved when the command reaches the screen buffer
 	SDL_Color fill = {0, 0, 0, 0};
 	SDL_Color line = {0, 0, 0, 0};
@@ -150,6 +152,12 @@ public:
 	/// The rect (x,y,w,h) of src was magnified 'scale' times into dst (at 0,0), replacing its contents.
 	/// Commands are moved along with scaled geometry; their glyphs are later rendered at
 	/// scale x output resolution (not magnified from bitmaps).
+	/// dst->copy(src): dst now holds the part of src at (fromX, fromY) (Surface::copy). The image
+	/// commands of src (hi-res pictures, not text) move along, replacing dst's commands.
+	static void onCopy(SDL_Surface *src, SDL_Surface *dst, int fromX, int fromY);
+	/// The image commands of holder were recoloured by an 8bpp effect (Surface::offset/offsetBlock):
+	/// the pictures are drawn with the ARGB colour 'tint' blended over them instead.
+	static void tintSurface(SDL_Surface *holder, Uint32 tint);
 	static void transferScaled(SDL_Surface *src, int x, int y, int w, int h, SDL_Surface *dst, int scale);
 
 	// --- glyph helpers

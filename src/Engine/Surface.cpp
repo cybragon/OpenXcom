@@ -775,6 +775,13 @@ void Surface::copy(Surface *surface)
 	);
 
 	unlock();
+	if (HiResLayer::recording())
+	{
+		// hi-res pictures travel with the copied pixels (sidebars, button faces, list highlights)
+		HiResLayer::onCopy(surface->getSurface(), _surface.get(), from_x, from_y);
+		if (HiResAssets::any())
+			HiResAssets::onDraw(surface->getSurface(), from_x, from_y, _surface->w, _surface->h, _surface.get(), 0, 0);
+	}
 }
 
 /**

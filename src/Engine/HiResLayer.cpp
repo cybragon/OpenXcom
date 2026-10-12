@@ -425,6 +425,35 @@ void drawCoverage(const std::vector<uint8_t> &bm, int bw, int bh, int ox, int oy
 	unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }
 
+/// Blends cmd.tint over the output pixels of an image command already drawn in the rect (x0..x1, y0..y1).
+void applyTint(const HiResCmd &c, const std::vector<Uint8> *mask, int x0, int y0, int x1, int y1, double sx, double sy)
+{
+	const unsigned ta = c.tint >> 24;
+	if (!ta)
+		return;
+	const SDL_Color col = { (Uint8)((c.tint >> 16) & 0xFF), (Uint8)((c.tint >> 8) & 0xFF), (Uint8)(c.tint & 0xFF), (Uint8)255 };
+	const double isx = 1.0 / sx, isy = 1.0 / sy;
+	for (int y = y0; y < y1; ++y)
+	{
+		const int by = std::min(S.baseH - 1, (int)(y * isy));
+		const int my = by - c.clipY;
+		if (my < 0 || my >= c.clipH)
+			continue;
+		const Uint32 *stampRow = &S.stamps[by * S.baseW];
+		Uint32 *dst = &S.rgba[y * S.bufW];
+		for (int x = x0; x < x1; ++x)
+		{
+			const int bx = std::min(S.baseW - 1, (int)(x * isx));
+			const int mx = bx - c.clipX;
+			if (mx < 0 || mx >= c.clipW || stampRow[bx] > c.stamp)
+				continue;
+			if (mask && !(*mask)[(size_t)my * c.clipW + mx])
+				continue;
+			blendPixel(dst[x], col, ta);
+		}
+	}
+}
+
 /// Hi-res asset command: the replacement picture resampled to the output size of the box, drawn
 /// only on the base pixels whose proxy pixels reached the screen unchanged (mask) and not hidden later.
 void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
@@ -508,6 +537,8 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			blendPixel(dst[x], col, a);
 		}
 	}
+	if (drawn && c.tint)
+		applyTint(c, &mask, x0, y0, x1, y1, sx, sy);
 	if (drawn)
 		unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }
@@ -564,7 +595,12 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 			if (u < 0)
 				continue;
 			const Uint8 ev = ep[u];
-			if (ev && sp[xx] == ev)
+			if (c.tint && ev && sp[xx])
+			{
+				mp[xx] = MASK_PROXY; // recoloured copy (highlight): every opaque proxy pixel
+				any = true;
+			}
+			else if (!c.tint && ev && sp[xx] == ev)
 			{
 				mp[xx] = MASK_PROXY;
 				any = true;
@@ -735,6 +771,8 @@ void drawImage(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			blendPixel(dst[x], col, a);
 		}
 	}
+	if (c.tint)
+		applyTint(c, nullptr, x0, y0, x1, y1, sx, sy);
 	unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }
 
@@ -1371,6 +1409,46 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 		}
 		dl->push_back(c);
 	}
+}
+
+void HiResLayer::onCopy(SDL_Surface *src, SDL_Surface *dst, int fromX, int fromY)
+{
+	if (!_recording || !src || !dst || src == dst || dst == S.screen)
+		return;
+	std::vector<HiResCmd> out;
+	auto it = S.lists.find(src);
+	if (it != S.lists.end())
+	{
+		for (const HiResCmd &c0 : it->second)
+		{
+			if (c0.kind != HiResCmdKind::Image || (!c0.assetId && !c0.imageId))
+				continue; // text is not copied (the copy is a background for effects)
+			HiResCmd c = c0;
+			c.x -= fromX; c.y -= fromY; c.clipX -= fromX; c.clipY -= fromY;
+			int cx = c.clipX, cy = c.clipY, cw = c.clipW, ch = c.clipH;
+			if (!intersect(cx, cy, cw, ch, 0, 0, dst->w, dst->h))
+				continue;
+			c.clipX = (Sint16)cx; c.clipY = (Sint16)cy; c.clipW = (Sint16)cw; c.clipH = (Sint16)ch;
+			c.origin = src;
+			c.originX = (Sint16)-fromX;
+			c.originY = (Sint16)-fromY;
+			c.tint = 0;
+			out.push_back(c);
+		}
+	}
+	S.lists[dst] = std::move(out);
+}
+
+void HiResLayer::tintSurface(SDL_Surface *holder, Uint32 tint)
+{
+	if (!_recording || !holder)
+		return;
+	auto it = S.lists.find(holder);
+	if (it == S.lists.end())
+		return;
+	for (HiResCmd &c : it->second)
+		if (c.kind == HiResCmdKind::Image)
+			c.tint = tint;
 }
 
 void HiResLayer::transferScaled(SDL_Surface *src, int x, int y, int w, int h, SDL_Surface *dst, int scale)

@@ -657,6 +657,15 @@ bool loadNative(Surface *target, const std::shared_ptr<Picture> &pic, const std:
 		return false;
 	SDL_FillRect(s, 0, 0);
 	makeProxy(target, *pic, 0, 0, pic->w, pic->h, lw, lh, palBattle);
+	if (pw == lw && ph == lh)
+	{
+		// the proxy is the picture's box: one picture for every consumer - the overlay (Ufopaedia item
+		// and armor pages, soldier avatar, unshaded blits) and the native inventory canvas
+		attach(target, pic, 0, 0, pic->w, pic->h, type);
+		Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h
+			<< (boxKnown ? "" : " (no box)") << ": hi-res picture at " << lw << "x" << lh << " (overlay and native canvas), battlescape-palette proxy for the game";
+		return true;
+	}
 	auto e = std::make_unique<Entry>();
 	if (++idCounter == 0) ++idCounter;
 	e->id = idCounter;

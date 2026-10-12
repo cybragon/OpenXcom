@@ -278,6 +278,9 @@ void BattlescapeButton::blit(SDL_Surface *surface)
 		}
 		if (_diffAny)
 		{
+			// the diff carries the button's own hi-res pictures (rank badge, hi-res icons), not only
+			// their 8bpp proxies; the parent's pictures under unchanged pixels stay the parent's
+			HiResLayer::onCopy(s, _diffSurface->getSurface(), 0, 0);
 			_diffSurface->setX(getX());
 			_diffSurface->setY(getY());
 			_diffSurface->blit(surface);

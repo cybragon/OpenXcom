@@ -366,7 +366,11 @@ const SlotSize &slotSize(HiResFont *font, int slot, int lineH, double sy)
 	SlotSize ss;
 	ss.target = rule.body * sy * pct / 100.0;
 	ss.r = rule.outline * sy * pct / 100.0 * S.outlinePct / 100.0;
-	const double limit = std::max(1.0, std::floor(ss.target + 1e-6));
+	// small HUD types (FONT_SMALL, BATTLE_DIGITS): round the target up so the body fills the row like the
+	// original bitmap font (rounding down lost up to one output px); larger types round down as before
+	const std::string &sid = (slot >= 0 && slot < (int)S.slotIds.size()) ? S.slotIds[slot] : std::string();
+	const bool ceilSlot = sid == "FONT_SMALL" || sid.compare(0, 13, "BATTLE_DIGITS") == 0;
+	const double limit = std::max(1.0, ceilSlot ? std::ceil(ss.target - 1e-6) : std::floor(ss.target + 1e-6));
 	const UCode ref = font->hasGlyph(SIZE_REF) ? SIZE_REF : SIZE_REF_NO_HANGUL;
 	double a, d;
 	const int probe4 = 64 * 4;

@@ -679,6 +679,79 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 	SDL_UnlockSurface(src);
 	if (!any)
 		return false;
+	if (!c.tint && S.screen && (S.screen->format->BytesPerPixel == 4 || (S.screen->format->BitsPerPixel == 8 && S.screen->format->palette)))
+	{
+		// Output-resolution coverage: inside the proxy box grown by one base pixel around the silhouette,
+		// the picture's own alpha decides each output pixel (drawAsset). The 8bpp screen pixel next to the
+		// silhouette is the real background (a transparent proxy pixel left it untouched), also for assets
+		// that came through an intermediate surface (no 'under' snapshot). The base-pixel stamps still
+		// hide everything a later blit covers.
+		const std::vector<Uint8> orig = m;
+		static const int nb[4][2] = { {-1, 0}, {1, 0}, {0, -1}, {0, 1} };
+		SDL_LockSurface(S.screen);
+		// screen colour (8bpp palette or 32bpp buffer), -1 = outside
+		auto screenAt = [&](int sx, int sy) -> long
+		{
+			if (sx < 0 || sy < 0 || sx >= S.screen->w || sy >= S.screen->h)
+				return -1;
+			const Uint8 *row = (const Uint8*)S.screen->pixels + sy * S.screen->pitch;
+			const Uint32 pv = S.screen->format->BytesPerPixel == 4 ? ((const Uint32*)row)[sx] : row[sx];
+			Uint8 r, g, b;
+			SDL_GetRGB(pv, S.screen->format, &r, &g, &b);
+			return ((long)r << 16) | ((long)g << 8) | b;
+		};
+		auto origAt = [&](int xx, int yy) -> Uint8
+		{
+			if (xx < vx || yy < vy || xx >= vx + vw || yy >= vy + vh)
+				return MASK_NONE;
+			return orig[(size_t)(yy - vy) * vw + (xx - vx)];
+		};
+		for (int yy = vy; yy < vy + vh; ++yy)
+		{
+			const int v = std::min(eh - 1, std::min(c.srcY + c.srcH - 1, c.srcY + (yy - c.y) * c.srcH / c.h));
+			for (int xx = vx; xx < vx + vw; ++xx)
+			{
+				const size_t mi = (size_t)(yy - vy) * vw + (xx - vx);
+				const int u = std::min(ew - 1, std::min(c.srcX + c.srcW - 1, c.srcX + (xx - c.x) * c.srcW / c.w));
+				if (orig[mi] == MASK_NONE)
+				{
+					if (v < 0 || u < 0 || e[(size_t)v * ew + u])
+						continue; // an opaque proxy pixel that did not reach the screen: covered
+					bool near = false;
+					for (int dy = -1; dy <= 1 && !near; ++dy)
+						for (int dx = -1; dx <= 1 && !near; ++dx)
+							if ((dx || dy) && origAt(xx + dx, yy + dy) == MASK_PROXY)
+								near = true;
+					if (near)
+					{
+						m[mi] = MASK_EDGE;
+						any = true;
+					}
+				}
+				else if (orig[mi] == MASK_PROXY)
+				{
+					for (const auto &d : nb)
+					{
+						const int nx = xx + d[0], ny = yy + d[1];
+						const int nu = std::min(ew - 1, std::max(0, c.srcX + (nx - c.x) * c.srcW / c.w));
+						const int nv = std::min(eh - 1, std::max(0, c.srcY + (ny - c.y) * c.srcH / c.h));
+						const bool outside = nx < c.x || ny < c.y || nx >= c.x + c.w || ny >= c.y + c.h;
+						if (!outside && e[(size_t)nv * ew + nu])
+							continue;
+						const long sv = screenAt(nx, ny);
+						if (sv < 0)
+							continue;
+						if (bk.empty())
+							bk.assign((size_t)vw * vh, 0);
+						bk[mi] = ((Uint32)(&d - nb) << 24) | (Uint32)sv;
+						m[mi] = MASK_BACK;
+						break;
+					}
+				}
+			}
+		}
+		SDL_UnlockSurface(S.screen);
+	}
 	S.masks.push_back(std::move(m));
 	S.backs.push_back(std::move(bk));
 	c.maskIdx = (Uint32)S.masks.size();

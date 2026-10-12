@@ -6163,6 +6163,14 @@ void Mod::classifyHiResBattleTypes()
 		HiResAssets::attachWhenFits(name);
 	}
 	HiResAssets::setTypePalette("AvatarBackground", battlePal);
+	// sprite sets drawn only on basescape-palette screens (craft info, soldier diary); DayNightIndicator
+	// (confirm landing, geoscape palette) keeps the geoscape fallback
+	{
+		auto it = _palettes.find("PAL_BASESCAPE");
+		if (it != _palettes.end())
+			for (const char *name : { "CustomArmorPreviews", "CustomItemPreviews", "Commendations", "CommendationDecorations" })
+				HiResAssets::setTypePalette(name, it->second->getColors());
+	}
 	// native inventory canvas (oxceNativeInventory): 32-bit paperdolls/layers (above) and BIGOBS items
 	HiResAssets::allowNative("BIGOBS.PCK");
 	if (HiResAssets::enabled())

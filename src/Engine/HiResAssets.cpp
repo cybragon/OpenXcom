@@ -535,7 +535,10 @@ void makeProxy(Surface *target, const Picture &pic, double rx, double ry, double
 		if (it != nearest.end()) return it->second;
 		const int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
 		int best = 1, bestD = 1 << 30;
-		for (int i = 1; i < 256; ++i)
+		// battlescape palette: 240-255 differ between PAL_BATTLESCAPE (corrected grey ramp) and
+		// PAL_BATTLEPEDIA (Ufopaedia battle pages) -> only the shared indices 1-239
+		const int last = palette == palBattle ? 239 : 255;
+		for (int i = 1; i <= last; ++i)
 		{
 			const SDL_Color &c = palette[i];
 			const int dr = c.r - r, dg = c.g - g, db = c.b - b;

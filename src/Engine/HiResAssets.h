@@ -74,7 +74,7 @@ namespace HiResAssets
 	/// Picture of a surface for the native canvas (attached hi-res asset or native-only 32-bit picture):
 	/// its logical size (base px, from the top-left of the surface). False = 8-bit only.
 	bool nativeInfo(const SDL_Surface *surface, int &lw, int &lh);
-	/// The picture resampled to outW x outH (straight ARGB), palette for 8bpp pictures; nullptr = none.
+	/// The picture resampled to outW x outH (PREMULTIPLIED ARGB, HiResResample rule), palette for 8bpp pictures; nullptr = none.
 	const Uint32 *nativeRendered(const SDL_Surface *surface, const SDL_Palette *palette, int outW, int outH);
 	bool trueColorAllowed(const std::string &type);
 	size_t deniedCount();
@@ -138,7 +138,7 @@ namespace HiResAssets
 	const Uint8 *expected(Uint32 assetId, int &w, int &h);
 	/// Key of the palette an 8bpp picture is resolved with (0 for 32bpp pictures).
 	Uint32 paletteKey(Uint32 assetId, const SDL_Palette *palette);
-	/// The proxy rect (sx, sy, sw, sh) of an asset resampled to outW x outH output pixels (straight ARGB).
+	/// The proxy rect (sx, sy, sw, sh) of an asset resampled to outW x outH output pixels (PREMULTIPLIED ARGB, HiResResample rule).
 	const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, int sh, int outW, int outH);
 }
 

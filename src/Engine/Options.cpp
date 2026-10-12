@@ -376,6 +376,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResOverlay", &oxceHiResOverlay, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceGeoscapeUiOptimized", &oxceGeoscapeUiOptimized, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResAssets", &oxceHiResAssets, false));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResUpscale", &oxceHiResUpscale, 0, "STR_HIRES_UPSCALE", "STR_GENERAL"));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResText", &oxceHiResText, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFont", &oxceHiResFont, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontFallback", &oxceHiResFontFallback, ""));

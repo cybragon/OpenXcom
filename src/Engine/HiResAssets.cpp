@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "HiResAssets.h"
+#include "HiResResample.h"
 #include "HiResLayer.h"
 #include "Surface.h"
 #include "Options.h"
@@ -86,7 +87,7 @@ std::unordered_map<Uint32, std::vector<SDL_Color>> palettes;
 struct Rendered
 {
 	Uint32 id, palKey;
-	int sx, sy, sw, sh, outW, outH;
+	int sx, sy, sw, sh, outW, outH, mode;
 	std::vector<Uint32> px;
 };
 std::list<Rendered> renderCache;
@@ -134,95 +135,24 @@ bool uniform(const SDL_Color *pal)
 	return true;
 }
 
-/// Tent filter weights of one axis: output cell o covers source [a + o*step, a + (o+1)*step).
-struct Taps
+/// Resamples the picture rect into outW x outH with the unified rule (HiResResample: exact = copy,
+/// down = area average, up = option oxceHiResUpscale). 8bpp pictures: palette first (index 0 = alpha 0),
+/// then the filter. PREMULTIPLIED ARGB result.
+void resample(const Picture &p, const SDL_Color *pal, double rx, double ry, double rw, double rh, int outW, int outH, int mode, std::vector<Uint32> &out)
 {
-	std::vector<int> first, count;
-	std::vector<float> w;
-	std::vector<size_t> offs;
-};
-Taps makeTaps(double a, double len, int outN, int srcN)
-{
-	Taps t;
-	const double step = len / outN;
-	const double radius = std::max(1.0, step);
-	const int lo = std::max(0, (int)std::floor(a)), hi = std::min(srcN, (int)std::ceil(a + len - 1e-9));
-	for (int o = 0; o < outN; ++o)
+	std::vector<Uint32> straight;
+	const Uint32 *src = nullptr;
+	if (p.trueColor || p.ownPalette)
+		src = p.argb.data();
+	else
 	{
-		const double c = a + (o + 0.5) * step - 0.5; // source pixel centre coordinate
-		int i0 = std::max(lo, (int)std::ceil(c - radius)), i1 = std::min(hi - 1, (int)std::floor(c + radius));
-		if (i1 < i0) { i0 = i1 = std::min(hi - 1, std::max(lo, (int)std::lround(c))); }
-		t.first.push_back(i0);
-		t.count.push_back(i1 - i0 + 1);
-		t.offs.push_back(t.w.size());
-		double sum = 0;
-		for (int i = i0; i <= i1; ++i)
-		{
-			const double wt = std::max(0.0, 1.0 - std::fabs(i - c) / radius);
-			t.w.push_back((float)wt);
-			sum += wt;
-		}
-		if (sum <= 0)
-		{
-			for (int i = 0; i <= i1 - i0; ++i) t.w[t.offs.back() + i] = 1.0f / (i1 - i0 + 1);
-		}
-		else
-		{
-			for (int i = 0; i <= i1 - i0; ++i) t.w[t.offs.back() + i] = (float)(t.w[t.offs.back() + i] / sum);
-		}
+		straight.resize((size_t)p.w * p.h);
+		for (int y = 0; y < p.h; ++y)
+			for (int x = 0; x < p.w; ++x)
+				straight[(size_t)y * p.w + x] = pixelOf(p, pal, x, y);
+		src = straight.data();
 	}
-	return t;
-}
-
-/// Resamples the picture rect into outW x outH (premultiplied filtering, straight ARGB result).
-void resample(const Picture &p, const SDL_Color *pal, double rx, double ry, double rw, double rh, int outW, int outH, std::vector<Uint32> &out)
-{
-	const Taps tx = makeTaps(rx, rw, outW, p.w), ty = makeTaps(ry, rh, outH, p.h);
-	const int y0 = std::max(0, (int)std::floor(ry)), y1 = std::min(p.h, (int)std::ceil(ry + rh - 1e-9));
-	const int rows = std::max(0, y1 - y0);
-	std::vector<float> tmp((size_t)rows * outW * 4, 0.0f);
-	for (int y = y0; y < y1; ++y)
-	{
-		float *row = &tmp[(size_t)(y - y0) * outW * 4];
-		for (int o = 0; o < outW; ++o)
-		{
-			float r = 0, g = 0, b = 0, a = 0;
-			const float *w = &tx.w[tx.offs[o]];
-			for (int k = 0; k < tx.count[o]; ++k)
-			{
-				const Uint32 px = pixelOf(p, pal, tx.first[o] + k, y);
-				const float pa = (px >> 24) / 255.0f * w[k];
-				a += pa;
-				r += ((px >> 16) & 0xFF) * pa;
-				g += ((px >> 8) & 0xFF) * pa;
-				b += (px & 0xFF) * pa;
-			}
-			row[o * 4 + 0] = r; row[o * 4 + 1] = g; row[o * 4 + 2] = b; row[o * 4 + 3] = a;
-		}
-	}
-	out.assign((size_t)outW * outH, 0);
-	for (int o = 0; o < outH; ++o)
-	{
-		const float *w = &ty.w[ty.offs[o]];
-		for (int x = 0; x < outW; ++x)
-		{
-			float r = 0, g = 0, b = 0, a = 0;
-			for (int k = 0; k < ty.count[o]; ++k)
-			{
-				const int yy = ty.first[o] + k - y0;
-				if (yy < 0 || yy >= rows) continue;
-				const float *s = &tmp[((size_t)yy * outW + x) * 4];
-				r += s[0] * w[k]; g += s[1] * w[k]; b += s[2] * w[k]; a += s[3] * w[k];
-			}
-			if (a <= 1e-4f)
-				continue;
-			const unsigned A = (unsigned)std::min(255.0f, std::lround(a * 255.0f) * 1.0f);
-			if (!A)
-				continue;
-			auto ch = [&](float v) { return (Uint32)std::min(255.0f, std::max(0.0f, v / a + 0.5f)); };
-			out[(size_t)o * outW + x] = ((Uint32)A << 24) | (ch(r) << 16) | (ch(g) << 8) | ch(b);
-		}
-	}
+	HiResResample::resample(src, p.w, p.h, rx, ry, rw, rh, outW, outH, mode, out);
 }
 
 /// 32bpp decode of a PNG (lodepng) or any SDL_image format, straight-alpha ARGB.
@@ -1014,9 +944,10 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 	Entry *e = find(assetId);
 	if (!e || outW <= 0 || outH <= 0 || sw <= 0 || sh <= 0)
 		return nullptr;
+	const int mode = HiResResample::mode();
 	for (auto it = renderCache.begin(); it != renderCache.end(); ++it)
 	{
-		if (it->id == assetId && it->palKey == palKey && it->sx == sx && it->sy == sy && it->sw == sw && it->sh == sh && it->outW == outW && it->outH == outH)
+		if (it->id == assetId && it->palKey == palKey && it->sx == sx && it->sy == sy && it->sw == sw && it->sh == sh && it->outW == outW && it->outH == outH && it->mode == mode)
 		{
 			if (it != renderCache.begin())
 				renderCache.splice(renderCache.begin(), renderCache, it);
@@ -1031,9 +962,9 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 			return nullptr;
 		pal = p->second.data();
 	}
-	Rendered r{ assetId, palKey, sx, sy, sw, sh, outW, outH, {} };
+	Rendered r{ assetId, palKey, sx, sy, sw, sh, outW, outH, mode, {} };
 	const double fx = e->rw / e->w, fy = e->rh / e->h;
-	resample(*e->pic, pal, e->rx + sx * fx, e->ry + sy * fy, sw * fx, sh * fy, outW, outH, r.px);
+	resample(*e->pic, pal, e->rx + sx * fx, e->ry + sy * fy, sw * fx, sh * fy, outW, outH, mode, r.px);
 	renderBytes += r.px.size() * sizeof(Uint32);
 	renderCache.push_front(std::move(r));
 	while (renderBytes > RENDER_CACHE_LIMIT && renderCache.size() > 1)

@@ -149,6 +149,7 @@ set ( engine_src
   Engine/Font.cpp
   Engine/HiResAssets.cpp
   Engine/HiResCanvas.cpp
+  Engine/HiResResample.cpp
   Engine/HiResFont.cpp
   Engine/HiResLayer.cpp
   Engine/ImeWin32.cpp

@@ -19,6 +19,9 @@
 #include "HiResCanvas.h"
 #include "HiResLayer.h"
 #include "HiResAssets.h"
+#include "HiResResample.h"
+#include <list>
+#include <vector>
 #include "Surface.h"
 #include <algorithm>
 #include <cmath>
@@ -77,23 +80,8 @@ void HiResCanvas::popClip()
 
 void HiResCanvas::blend(Uint32 &d, Uint32 s) const
 {
-	const unsigned a = s >> 24;
-	if (!a)
-		return;
-	if (a == 255 || !(d >> 24))
-	{
-		d = s;
-		return;
-	}
-	// straight alpha "over"
-	const unsigned da = d >> 24;
-	const unsigned oa = a + da * (255 - a) / 255;
-	auto ch = [&](int sh) -> unsigned
-	{
-		const unsigned sc = (s >> sh) & 0xFF, dc = (d >> sh) & 0xFF;
-		return oa ? (sc * a + dc * da * (255 - a) / 255) / oa : 0;
-	};
-	d = (oa << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
+	// premultiplied source "over" a straight-alpha canvas pixel
+	HiResResample::blendOver(d, s);
 }
 
 void HiResCanvas::fillRect(int lx, int ly, int lw, int lh, Uint32 argb)
@@ -101,9 +89,25 @@ void HiResCanvas::fillRect(int lx, int ly, int lw, int lh, Uint32 argb)
 	const Clip c = clip();
 	const int x0 = std::max(c.x0, ox(lx)), y0 = std::max(c.y0, oy(ly));
 	const int x1 = std::min(c.x1, ox(lx + lw)), y1 = std::min(c.y1, oy(ly + lh));
+	const Uint32 pm = HiResResample::premultiply(argb);
 	for (int y = y0; y < y1; ++y)
 		for (int x = x0; x < x1; ++x)
-			blend(_px[(size_t)y * _outW + x], argb);
+			blend(_px[(size_t)y * _outW + x], pm);
+}
+
+namespace
+{
+/// 8-bit art resampled to output pixels (index domain already recoloured/shaded by the caller, then the
+/// palette, then the upscale filter), most recently used first, bounded.
+struct Art8
+{
+	size_t key;
+	int outW, outH;
+	std::vector<Uint32> px;
+};
+std::list<Art8> art8Cache;
+size_t art8Bytes = 0;
+const size_t ART8_LIMIT = 64u * 1024u * 1024u;
 }
 
 void HiResCanvas::drawSurface8(const Surface *surface, int lx, int ly)
@@ -113,30 +117,56 @@ void HiResCanvas::drawSurface8(const Surface *surface, int lx, int ly)
 	SDL_Surface *s = const_cast<Surface*>(surface)->getSurface();
 	if (s->format->BitsPerPixel != 8 || !s->format->palette)
 		return;
+	const int dx0 = ox(lx), dy0 = oy(ly), dx1 = ox(lx + s->w), dy1 = oy(ly + s->h);
+	const int ow = dx1 - dx0, oh = dy1 - dy0;
+	if (ow <= 0 || oh <= 0 || s->w <= 0 || s->h <= 0)
+		return;
 	const SDL_Color *pal = s->format->palette->colors;
 	Uint32 lut[256];
 	for (int i = 0; i < 256; ++i)
 		lut[i] = i ? (0xFF000000u | ((Uint32)pal[i].r << 16) | ((Uint32)pal[i].g << 8) | pal[i].b) : 0u;
-	const Clip c = clip();
+	std::vector<Uint32> straight((size_t)s->w * s->h);
+	size_t key = 1469598103934665603ull;
+	auto mix = [&](size_t v) { key = (key ^ v) * 1099511628211ull; };
 	SDL_LockSurface(s);
 	for (int y = 0; y < s->h; ++y)
 	{
-		const int y0 = std::max(c.y0, oy(ly + y)), y1 = std::min(c.y1, oy(ly + y + 1));
-		if (y0 >= y1)
-			continue;
 		const Uint8 *row = (const Uint8*)s->pixels + y * s->pitch;
 		for (int x = 0; x < s->w; ++x)
 		{
-			const Uint8 v = row[x];
-			if (!v)
-				continue;
-			const int x0 = std::max(c.x0, ox(lx + x)), x1 = std::min(c.x1, ox(lx + x + 1));
-			const Uint32 p = lut[v];
-			for (int yy = y0; yy < y1; ++yy)
-				std::fill(&_px[(size_t)yy * _outW + x0], &_px[(size_t)yy * _outW + std::max(x0, x1)], p);
+			straight[(size_t)y * s->w + x] = lut[row[x]];
+			mix(lut[row[x]]);
 		}
 	}
 	SDL_UnlockSurface(s);
+	const int mode = HiResResample::mode();
+	mix((size_t)s->w); mix((size_t)s->h); mix((size_t)ow); mix((size_t)oh); mix((size_t)mode + 7);
+	const std::vector<Uint32> *px = nullptr;
+	for (auto it = art8Cache.begin(); it != art8Cache.end(); ++it)
+	{
+		if (it->key == key && it->outW == ow && it->outH == oh)
+		{
+			if (it != art8Cache.begin())
+				art8Cache.splice(art8Cache.begin(), art8Cache, it);
+			px = &art8Cache.front().px;
+			break;
+		}
+	}
+	if (!px)
+	{
+		Art8 a{ key, ow, oh, {} };
+		HiResResample::resample(straight.data(), s->w, s->h, 0, 0, s->w, s->h, ow, oh, mode, a.px);
+		art8Bytes += a.px.size() * sizeof(Uint32);
+		art8Cache.push_front(std::move(a));
+		while (art8Bytes > ART8_LIMIT && art8Cache.size() > 1)
+		{
+			art8Bytes -= art8Cache.back().px.size() * sizeof(Uint32);
+			art8Cache.pop_back();
+		}
+		px = &art8Cache.front().px;
+	}
+	if (px->size() == (size_t)ow * oh)
+		drawPicture(px->data(), ow, oh, lx, ly, s->w, s->h);
 }
 
 void HiResCanvas::drawPicture(const Uint32 *argb, int pw, int ph, int lx, int ly, int lw, int lh)

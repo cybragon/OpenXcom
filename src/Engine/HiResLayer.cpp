@@ -19,6 +19,7 @@
 #include "HiResLayer.h"
 #include "HiResFont.h"
 #include "HiResAssets.h"
+#include "HiResResample.h"
 #include "OpenGL.h"
 #include "Options.h"
 #include "Logger.h"
@@ -550,11 +551,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 							out = q;
 					}
 				}
-				if (a)
-				{
-					const SDL_Color col = { (Uint8)((p >> 16) & 0xFF), (Uint8)((p >> 8) & 0xFF), (Uint8)(p & 0xFF), (Uint8)255 };
-					blendPixel(out, col, a);
-				}
+				HiResResample::blendOver(out, p); // premultiplied picture over the background
 				dst[x] = out;
 				drawn = true;
 				continue;
@@ -562,13 +559,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			if (!a)
 				continue;
 			drawn = true;
-			if (a == 255)
-			{
-				dst[x] = p;
-				continue;
-			}
-			const SDL_Color col = { (Uint8)((p >> 16) & 0xFF), (Uint8)((p >> 8) & 0xFF), (Uint8)(p & 0xFF), (Uint8)255 };
-			blendPixel(dst[x], col, a);
+			HiResResample::blendOver(dst[x], p); // premultiplied (HiResResample)
 		}
 	}
 	if (drawn && c.tint)

@@ -466,6 +466,11 @@ public:
 	{
 		return _events;
 	}
+	/// True if only the parser's default script runs (no mod script, no global event script).
+	bool isDefaultCode() const
+	{
+		return _current.isDefaultCode() && (!_events || !*_events);
+	}
 };
 
 /**

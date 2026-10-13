@@ -44,6 +44,9 @@ private:
 	static MapData *_blankTile;
 	static MapData *_scorchedTile;
 public:
+	/// Hi-res battle stage 1 (set by Mod when hi-res images are on): applies extraSprites of type
+	/// <name>.PCK to a freshly loaded terrain set (32-bit terrain sheets). Null = nothing.
+	static void (*hiResTerrainHook)(const std::string &type, SurfaceSet *set);
 	MapDataSet(const std::string &name);
 	~MapDataSet();
 	/// Loads voxeldata from a DAT file.

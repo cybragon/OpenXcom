@@ -245,7 +245,11 @@ void MapDataSet::loadData(MCDPatch *patch, bool validate)
 	// Load terrain sprites/surfaces/PCK files into a surfaceset
 	_surfaceSet = new SurfaceSet(32, 40);
 	_surfaceSet->loadPck("TERRAIN/" + _name + ".PCK", "TERRAIN/" + _name + ".TAB");
+	if (hiResTerrainHook)
+		hiResTerrainHook(_name + ".PCK", _surfaceSet);
 }
+
+void (*MapDataSet::hiResTerrainHook)(const std::string &type, SurfaceSet *set) = nullptr;
 
 /**
  * Unloads the terrain data.

@@ -80,6 +80,7 @@ std::unordered_map<const void*, const SDL_Surface*> byPixels; ///< proxy pixel b
 std::unordered_map<Uint32, std::unique_ptr<Entry>> byId;
 Uint32 idCounter = 0;
 std::set<std::string> deniedTypes, deniedPrefixes;
+std::set<std::string> battleTypes; ///< allowBattle
 const SDL_Color *palGeo = nullptr, *palBase = nullptr, *palBattle = nullptr;
 
 /// Palettes 8bpp pictures were resolved with (key -> colours).
@@ -290,7 +291,6 @@ void beginModLoad()
 	battleTypes.clear();
 }
 
-namespace { std::set<std::string> battleTypes; }
 
 void allowBattle(const std::string &type)
 {

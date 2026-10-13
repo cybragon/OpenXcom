@@ -179,7 +179,7 @@ void UnitSprite::blitBody(Part& body)
 	if (HiResAssets::any() && _burn == 0)
 	{
 		// hi-res battle stage 1: a 32-bit unit sheet frame, shaded/recoloured at output resolution
-		const SDL_Surface *ps = body.src->getSurface();
+		const SDL_Surface *ps = const_cast<Surface*>(body.src)->getSurface();
 		if (HiResAssets::proxyByPixels(ps->pixels) == ps)
 		{
 			const Armor *armor = _unit->getArmor();

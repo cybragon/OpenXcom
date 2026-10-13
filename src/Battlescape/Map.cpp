@@ -960,9 +960,9 @@ void Map::drawTerrain(Surface *surface)
 					if (tmpSurface)
 					{
 						if (tile->getObstacle(O_FLOOR))
-							Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), obstacleShade, false, _nvColor);
+							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), obstacleShade, false, _nvColor); }
 						else
-							Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), tileShade, false, _nvColor);
+							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), tileShade, false, _nvColor); }
 					}
 
 					auto* unit = tile->getUnit();
@@ -987,13 +987,13 @@ void Map::drawTerrain(Surface *surface)
 									frameNumber = 6; // red static crosshairs
 							}
 							tmpSurface = _game->getMod()->getSurfaceSet("CURSOR.PCK")->getFrame(frameNumber);
-							Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0);
+							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); }
 						}
 						else if (_camera->getViewLevel() > itZ)
 						{
 							frameNumber = 2; // blue box
 							tmpSurface = _game->getMod()->getSurfaceSet("CURSOR.PCK")->getFrame(frameNumber);
-							Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0);
+							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); }
 						}
 					}
 
@@ -1021,9 +1021,9 @@ void Map::drawTerrain(Surface *surface)
 						{
 							int wallShade = getWallShade(O_WESTWALL, tile);
 							if (tile->getObstacle(O_WESTWALL))
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), obstacleShade, false, _nvColor);
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), obstacleShade, false, _nvColor); }
 							else
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), wallShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), wallShade, false, _nvColor);
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), wallShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_WESTWALL), wallShade, false, _nvColor); }
 						}
 						// Draw north wall
 						tmpSurface = tile->getSprite(O_NORTHWALL);
@@ -1031,9 +1031,9 @@ void Map::drawTerrain(Surface *surface)
 						{
 							int wallShade = getWallShade(O_NORTHWALL, tile);
 							if (tile->getObstacle(O_NORTHWALL))
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), obstacleShade, bool(tile->getSprite(O_WESTWALL)), _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), obstacleShade, bool(tile->getSprite(O_WESTWALL)), _nvColor);
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), obstacleShade, bool(tile->getSprite(O_WESTWALL)), _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), obstacleShade, bool(tile->getSprite(O_WESTWALL)), _nvColor); }
 							else
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), wallShade, bool(tile->getSprite(O_WESTWALL)), _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), wallShade, bool(tile->getSprite(O_WESTWALL)), _nvColor);
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), wallShade, bool(tile->getSprite(O_WESTWALL)), _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_NORTHWALL), wallShade, bool(tile->getSprite(O_WESTWALL)), _nvColor); }
 						}
 						// Draw object
 						tmpSurface = tile->getSprite(O_OBJECT);
@@ -1042,9 +1042,9 @@ void Map::drawTerrain(Surface *surface)
 							if (tile->isBackTileObject(O_OBJECT))
 							{
 								if (tile->getObstacle(O_OBJECT))
-									Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor);
+									{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor); }
 								else
-									Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor);
+									{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); }
 							}
 						}
 						// draw an item on top of the floor (if any)
@@ -1168,7 +1168,7 @@ void Map::drawTerrain(Surface *surface)
 											_camera->convertVoxelToScreen(voxelPos, &bulletPositionScreen);
 											bulletPositionScreen.x -= tmpSurface.getWidth() / 2;
 											bulletPositionScreen.y -= tmpSurface.getHeight() / 2;
-											Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 16, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 16, false, _nvColor);
+											{ Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 16, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 16, false, _nvColor); }
 										}
 
 										// draw bullet itself
@@ -1181,7 +1181,7 @@ void Map::drawTerrain(Surface *surface)
 											_camera->convertVoxelToScreen(voxelPos, &bulletPositionScreen);
 											bulletPositionScreen.x -= tmpSurface.getWidth() / 2;
 											bulletPositionScreen.y -= tmpSurface.getHeight() / 2;
-											Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 0, false, _nvColor);
+											{ Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x, bulletPositionScreen.y, 0, false, _nvColor); }
 										}
 									}
 								}
@@ -1279,7 +1279,7 @@ void Map::drawTerrain(Surface *surface)
 							frameNumber += halfAnimFrame + tile->getAnimationOffset();
 						}
 						tmpSurface = _game->getMod()->getSurfaceSet("SMOKE.PCK")->getFrame(frameNumber);
-						Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, shade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, shade, false, _nvColor);
+						{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, shade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, shade, false, _nvColor); }
 					}
 
 					//draw particle clouds on front of solder
@@ -1312,13 +1312,13 @@ void Map::drawTerrain(Surface *surface)
 							tmpSurface = _game->getMod()->getSurfaceSet("Pathfinding")->getFrame(11);
 							if (tmpSurface)
 							{
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor()); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor());
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor()); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor()); }
 							}
 						}
 						tmpSurface = _game->getMod()->getSurfaceSet("Pathfinding")->getFrame(tile->getPreview());
 						if (tmpSurface)
 						{
-							Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), 0, false, tileColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), 0, false, tileColor);
+							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), 0, false, tileColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), 0, false, tileColor); }
 						}
 					}
 
@@ -1330,9 +1330,9 @@ void Map::drawTerrain(Surface *surface)
 							if (!tile->isBackTileObject(O_OBJECT))
 							{
 								if (tile->getObstacle(O_OBJECT))
-									Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor);
+									{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), obstacleShade, false, _nvColor); }
 								else
-									Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor);
+									{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); }
 							}
 						}
 					}
@@ -1356,7 +1356,7 @@ void Map::drawTerrain(Surface *surface)
 									frameNumber = 6; // red static crosshairs
 							}
 							tmpSurface = _game->getMod()->getSurfaceSet("CURSOR.PCK")->getFrame(frameNumber);
-							Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0);
+							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); }
 
 							// UFO extender accuracy: display adjusted accuracy value on crosshair in real-time.
 							if (_cursorType >= CT_AIM && _showInfoOnCursor && (_cursorType != CT_THROW || !Options::oxceDisableInfoOnThrowCursor))
@@ -1560,7 +1560,7 @@ void Map::drawTerrain(Surface *surface)
 						{
 							frameNumber = 5; // blue box
 							tmpSurface = _game->getMod()->getSurfaceSet("CURSOR.PCK")->getFrame(frameNumber);
-							Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0);
+							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); }
 						}
 						if (!_isAltPressed && _cursorType > CT_AIM && _camera->getViewLevel() == itZ)
 						{
@@ -1587,7 +1587,7 @@ void Map::drawTerrain(Surface *surface)
 							{
 								int frame[6] = { 0, 0, 0, 11, 13, 15 };
 								tmpSurface = _game->getMod()->getSurfaceSet("CURSOR.PCK")->getFrame(frame[_cursorType] + (_animFrame / 4) % 2);
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0);
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); }
 							}
 						}
 					}
@@ -1604,7 +1604,7 @@ void Map::drawTerrain(Surface *surface)
 							if (waypXOff == 2 && waypYOff == 2)
 							{
 								tmpSurface = _game->getMod()->getSurfaceSet("CURSOR.PCK")->getFrame(7);
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0);
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y, 0); }
 							}
 							if (_save->getBattleGame()->getCurrentAction()->type == BA_LAUNCH || _save->getBattleGame()->getCurrentAction()->sprayTargeting)
 							{
@@ -1658,14 +1658,14 @@ void Map::drawTerrain(Surface *surface)
 								tmpSurface = _game->getMod()->getSurfaceSet("Pathfinding")->getFrame(23);
 								if (tmpSurface)
 								{
-									Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor()); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor());
+									{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor()); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y+2, 0, false, tile->getMarkerColor()); }
 								}
 							}
 							int overlay = tile->getPreview() + 12;
 							tmpSurface = _game->getMod()->getSurfaceSet("Pathfinding")->getFrame(overlay);
 							if (tmpSurface)
 							{
-								Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - adjustment, 0, false, tile->getMarkerColor()); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - adjustment, 0, false, tile->getMarkerColor());
+								{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - adjustment, 0, false, tile->getMarkerColor()); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - adjustment, 0, false, tile->getMarkerColor()); }
 							}
 						}
 
@@ -1846,18 +1846,18 @@ void Map::drawTerrain(Surface *surface)
 					if (explosion->getCurrentFrame() >= 0)
 					{
 						tmpSurface = _game->getMod()->getSurfaceSet("X1.PCK")->getFrame(explosion->getCurrentFrame());
-						Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x - (tmpSurface.getWidth() / 2), bulletPositionScreen.y - (tmpSurface.getHeight() / 2), 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x - (tmpSurface.getWidth() / 2), bulletPositionScreen.y - (tmpSurface.getHeight() / 2), 0, false, _nvColor);
+						{ Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x - (tmpSurface.getWidth() / 2), bulletPositionScreen.y - (tmpSurface.getHeight() / 2), 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x - (tmpSurface.getWidth() / 2), bulletPositionScreen.y - (tmpSurface.getHeight() / 2), 0, false, _nvColor); }
 					}
 				}
 				else if (explosion->isHit())
 				{
 					tmpSurface = _game->getMod()->getSurfaceSet("HIT.PCK")->getFrame(explosion->getCurrentFrame());
-					Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 25, 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 25, 0, false, _nvColor);
+					{ Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 25, 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 25, 0, false, _nvColor); }
 				}
 				else
 				{
 					tmpSurface = _game->getMod()->getSurfaceSet("SMOKE.PCK")->getFrame(explosion->getCurrentFrame());
-					Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 15, 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 15, 0, false, _nvColor);
+					{ Surface::blitRaw(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 15, 0, false, _nvColor); hiResBattle(surface, tmpSurface, bulletPositionScreen.x - 15, bulletPositionScreen.y - 15, 0, false, _nvColor); }
 				}
 			}
 		}

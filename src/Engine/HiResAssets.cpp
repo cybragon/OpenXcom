@@ -94,6 +94,22 @@ struct Rendered
 	std::vector<Uint32> px;
 };
 std::list<Rendered> renderCache;
+/// index of renderCache by key hash (several entries may share a hash)
+std::unordered_multimap<size_t, std::list<Rendered>::iterator> renderIndex;
+inline size_t renderKey(Uint32 id, Uint32 palKey, int sx, int sy, int sw, int sh, int outW, int outH, int mode)
+{
+	size_t h = id * 0x9E3779B97F4A7C15ull;
+	for (size_t v : { (size_t)palKey, (size_t)sx, (size_t)sy, (size_t)sw, (size_t)sh, (size_t)outW, (size_t)outH, (size_t)mode })
+		h = (h ^ v) * 0x100000001B3ull;
+	return h;
+}
+void unindex(std::list<Rendered>::iterator it)
+{
+	const size_t k = renderKey(it->id, it->palKey, it->sx, it->sy, it->sw, it->sh, it->outW, it->outH, it->mode);
+	auto r = renderIndex.equal_range(k);
+	for (auto i = r.first; i != r.second; ++i)
+		if (i->second == it) { renderIndex.erase(i); break; }
+}
 size_t renderBytes = 0;
 const size_t RENDER_CACHE_LIMIT = 128u * 1024u * 1024u;
 
@@ -110,6 +126,7 @@ void dropRendered(Uint32 id)
 		if (it->id == id)
 		{
 			renderBytes -= it->px.size() * sizeof(Uint32);
+			unindex(it);
 			it = renderCache.erase(it);
 		}
 		else
@@ -976,7 +993,7 @@ Uint32 paletteKey(Uint32 assetId, const SDL_Palette *palette)
 			std::vector<SDL_Color> keep = p;
 			palettes.clear();
 			palettes[hsh] = keep;
-			renderCache.clear();
+			renderCache.clear(); renderIndex.clear();
 			renderBytes = 0;
 		}
 	}
@@ -989,13 +1006,17 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 	if (!e || outW <= 0 || outH <= 0 || sw <= 0 || sh <= 0)
 		return nullptr;
 	const int mode = HiResResample::mode();
-	for (auto it = renderCache.begin(); it != renderCache.end(); ++it)
 	{
-		if (it->id == assetId && it->palKey == palKey && it->sx == sx && it->sy == sy && it->sw == sw && it->sh == sh && it->outW == outW && it->outH == outH && it->mode == mode)
+		auto r = renderIndex.equal_range(renderKey(assetId, palKey, sx, sy, sw, sh, outW, outH, mode));
+		for (auto i = r.first; i != r.second; ++i)
 		{
-			if (it != renderCache.begin())
-				renderCache.splice(renderCache.begin(), renderCache, it);
-			return renderCache.front().px.data();
+			auto it = i->second;
+			if (it->id == assetId && it->palKey == palKey && it->sx == sx && it->sy == sy && it->sw == sw && it->sh == sh && it->outW == outW && it->outH == outH && it->mode == mode)
+			{
+				if (it != renderCache.begin())
+					renderCache.splice(renderCache.begin(), renderCache, it); // iterators stay valid
+				return renderCache.front().px.data();
+			}
 		}
 	}
 	const SDL_Color *pal = nullptr;
@@ -1011,9 +1032,11 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 	resample(*e->pic, pal, e->rx + sx * fx, e->ry + sy * fy, sw * fx, sh * fy, outW, outH, mode, r.px);
 	renderBytes += r.px.size() * sizeof(Uint32);
 	renderCache.push_front(std::move(r));
+	renderIndex.emplace(renderKey(assetId, palKey, sx, sy, sw, sh, outW, outH, mode), renderCache.begin());
 	while (renderBytes > RENDER_CACHE_LIMIT && renderCache.size() > 1)
 	{
 		renderBytes -= renderCache.back().px.size() * sizeof(Uint32);
+		unindex(std::prev(renderCache.end()));
 		renderCache.pop_back();
 	}
 	return renderCache.front().px.data();

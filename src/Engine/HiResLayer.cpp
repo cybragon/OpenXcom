@@ -30,6 +30,30 @@
 #include <sstream>
 #include <map>
 #include <cstdlib>
+#include <chrono>
+
+namespace
+{
+/// Optional profiling (env OXCE_HIRES_PROF=1): ms per frame of record / deliver / compose / upload.
+struct Prof
+{
+	bool on = std::getenv("OXCE_HIRES_PROF") != nullptr;
+	double rec = 0, del = 0, comp = 0, up = 0;
+	int frames = 0;
+	size_t cmds = 0;
+};
+Prof prof;
+inline double profNow()
+{
+	return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+struct ProfScope
+{
+	double &acc; double t0;
+	explicit ProfScope(double &a) : acc(a), t0(prof.on ? profNow() : 0) { }
+	~ProfScope() { if (prof.on) acc += profNow() - t0; }
+};
+}
 
 namespace OpenXcom
 {
@@ -545,7 +569,7 @@ inline Uint32 rampTint(Uint32 p, const SDL_Color *pal, int base)
 /// Battle draw at output resolution: mask recolour -> (night vision colour) -> brightness multiply.
 inline Uint32 battlePixel(const HiResCmd &c, Uint32 p, Uint8 m, const SDL_Color *pal, int factor)
 {
-	if (!(p >> 24))
+	if (!(p >> 24) || (factor >= 256 && !m && !c.nvColor))
 		return p;
 	if (m && c.rcFrom[m - 1])
 		p = rampTint(p, pal, c.rcTo[m - 1]);
@@ -741,7 +765,7 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 	SDL_UnlockSurface(src);
 	if (!any)
 		return false;
-	if (!c.tint && S.screen && (S.screen->format->BytesPerPixel == 4 || (S.screen->format->BitsPerPixel == 8 && S.screen->format->palette)))
+	if (!c.tint && !c.battle && S.screen && (S.screen->format->BytesPerPixel == 4 || (S.screen->format->BitsPerPixel == 8 && S.screen->format->palette)))
 	{
 		// Output-resolution coverage: inside the proxy box grown by one base pixel around the silhouette,
 		// the picture's own alpha decides each output pixel (drawAsset). The 8bpp screen pixel next to the
@@ -1397,6 +1421,7 @@ void HiResLayer::record(SDL_Surface *holder, const HiResCmd &cmd, bool front)
 
 void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Surface *origin)
 {
+	ProfScope ps(prof.rec);
 	if (!_recording || !dst)
 		return;
 	HiResCmd c = cmd;
@@ -1407,7 +1432,7 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 	if (!intersect(cx, cy, cw, ch, 0, 0, dst->w, dst->h))
 		return;
 	c.clipX = (Sint16)cx; c.clipY = (Sint16)cy; c.clipW = (Sint16)cw; c.clipH = (Sint16)ch;
-	c.underId = snapshotUnder(c, dst);
+	c.underId = c.battle ? 0 : snapshotUnder(c, dst);
 	if (dst == S.screen)
 	{
 		// drawn straight onto the screen buffer: check it now, against the screen pixels
@@ -1448,6 +1473,7 @@ void HiResLayer::forgetSurface(SDL_Surface *holder)
 
 void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 {
+	ProfScope ps(prof.del);
 	if (!_recording || !src || !dst)
 		return;
 	const bool toScreen = (dst == S.screen);
@@ -1794,7 +1820,9 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 		return;
 	SDL_Rect cleared;
 	bool resized = (S.bufW != dstW || S.bufH != dstH);
+	const double tc0 = prof.on ? profNow() : 0;
 	SDL_Rect dirty = compose(dstW, dstH, cleared);
+	const double tc1 = prof.on ? profNow() : 0;
 	SDL_Rect upload = cleared;
 	unionRect(upload, dirty.x, dirty.y, dirty.w, dirty.h);
 	(void)resized;
@@ -1822,6 +1850,18 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 			S.rgba.data() + upload.y * S.bufW + upload.x);
 	}
 	glErrorCheck();
+	if (prof.on)
+	{
+		glFinish();
+		const double tc2 = profNow();
+		prof.comp += tc1 - tc0; prof.up += tc2 - tc1; prof.cmds += S.frame.size();
+		if (++prof.frames == 60)
+		{
+			Log(LOG_INFO) << "HiResLayer prof (ms/frame): record " << prof.rec / 60 << " deliver " << prof.del / 60 << " compose " << prof.comp / 60
+				<< " upload " << prof.up / 60 << " cmds " << prof.cmds / 60;
+			prof.rec = prof.del = prof.comp = prof.up = 0; prof.frames = 0; prof.cmds = 0;
+		}
+	}
 
 	if (dirty.w > 0)
 	{

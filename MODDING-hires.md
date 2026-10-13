@@ -1,10 +1,12 @@
-# Hi-res images for modders (8.7.1-hires, geoscape/UI stage)
+# Hi-res images for modders (8.7.1-hires-2, geoscape/UI stage)
 
 Options > Video, hi-res dropdown: **Hi-res off (original)**, **Hi-res: Sharp** (nearest),
 **Hi-res: Smooth** (bilinear), **Hi-res: Pixel-art** (xBRZ), **Hi-res: Auto** (follows the screen
 filter: none/Raw -> Sharp, Scale/HQx/xBRZ and pixel-art shaders -> Pixel-art, other GL shaders ->
 Smooth). options.cfg keys: `oxceHiResAssets` (on/off) and `oxceHiResUpscale` (0 smooth, 1 sharp,
 2 pixel-art, 3 auto; default 3). Images larger than their box are always area-averaged down.
+Switching hi-res on/off reloads the mods from the main menu (in a game: after a restart); changing
+only the upscaling style applies at once. The Video tooltip is short on purpose; this file has the details.
 
 ## width / height = logical size
 `extraSprites` keeps its normal rules. `width`/`height` (or the size of the replaced image) is the

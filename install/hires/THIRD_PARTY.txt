@@ -3,7 +3,7 @@ Third-party components of this OpenXcom Extended build (openxcom.exe, win64)
 
 OpenXcom / OpenXcom Extended (incl. the hi-res overlay changes): GNU GPL v3 or later,
 see LICENSE.txt. This is a modified version, see CHANGELOG-hires.md.
-Corresponding source: branch release-hires-1 / tag v8.7.1-hires-1 of <REPOSITORY-URL> (to be published).
+Corresponding source: tag v8.7.1-hires-2 of <REPOSITORY-URL> (to be published).
 
 Statically linked libraries (full license texts in the licenses\ folder):
 - SDL 1.2 (libsdl-org/SDL-1.2, main branch) ......... GNU LGPL 2.1        licenses\SDL-1.2_COPYING.txt

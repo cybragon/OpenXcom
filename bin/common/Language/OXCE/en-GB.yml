@@ -723,7 +723,7 @@ en-GB:
 # ---- 8.7.1-hires fork strings: keep this group at the end of the file (re-append after a Transifex refresh) ----
   STR_GEOSCAPE_SCALE_X1_UI: "x1, UI optimised"
   STR_HIRES_ASSETS: "Hi-res assets"
-  STR_HIRES_ASSETS_DESC: "Mod images of another size drawn at screen resolution, 32-bit PNG/JPG allowed (battlescape: UI chrome and shared sets only). Sharp/Smooth/Pixel-art = how smaller images are enlarged; Auto follows the screen filter. On/off reloads mods / needs restart."
+  STR_HIRES_ASSETS_DESC: "Draws mod images at screen resolution (32-bit PNG/JPG allowed). Sharp/Smooth/Pixel-art: upscaling style; Auto follows the screen filter."
   STR_HIRES_MODE_OFF: "Hi-res off (original)"
   STR_HIRES_MODE_SHARP: "Hi-res: Sharp"
   STR_HIRES_MODE_SMOOTH: "Hi-res: Smooth"

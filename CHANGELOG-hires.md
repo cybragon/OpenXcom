@@ -1,27 +1,72 @@
-# OpenXcom Extended 8.7.1-hires-1 – CHANGELOG / modification notice
+# OpenXcom Extended 8.7.1-hires-2 – CHANGELOG / modification notice
 
 This is a **modified version** of OpenXcom Extended (OXCE) 8.7.1 (upstream commit `441cae1b0`),
 an unofficial fork. It is distributed under the same license, the GNU General Public License
 version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires.ko.md`.
 
-- Version name: `8.7.1-hires-1` (release tag `v8.7.1-hires-1`, branch `hires-1` at https://github.com/cybragon/OpenXcom)
-- Modified: 2026-09-25 – 2026-10-04
+- Version name: `8.7.1-hires-2` (planned release tag `v8.7.1-hires-2`)
+- Modified: 2026-09-25 – 2026-10-13
 - The original OpenXcom / OXCE copyright notices in every file are kept. Files listed below as
   "added" were written for this fork; files listed as "modified" were changed for this fork on the
   dates above.
 
-## 8.7.1-hires-9test (2026-10-13, test build)
+## 8.7.1-hires-2 (2026-10-13)
 
+Changes since 8.7.1-hires-1 (test builds 2test–10test).
+
+### Hi-res images (option `oxceHiResAssets`)
+- extraSprites replacements whose size differs from the replaced image are drawn at the output
+  resolution. `width`/`height` is the logical size; a larger file is fitted into that box keeping its
+  aspect. Sheets (`subX`/`subY`) are cut at one scale. Mod-defined images are fitted per consumer box.
+- 32-bit PNG and JPEG pictures allowed where 32-bit is allowed: geoscape, basescape, Ufopaedia, menus.
+  8-bit pictures with their own palette are drawn in their own colours.
+- 32-bit pictures that fit their box become 8-bit images (drawn like stock images); Ufopaedia images
+  are quantized to their article palette.
+- Edges follow the picture's alpha at the output resolution (also through child surfaces), with
+  premultiplied alpha in the overlay and the native canvas.
+- Unified resampling: exact size = copy, larger = area-average downscale, smaller = upscale mode
+  Sharp (nearest) / Smooth / Pixel-art (xBRZ) / Auto (follows the screen filter).
+- Battlescape: UI chrome allow-listed (TAC00/01, UNIBORD, SCANBORD, DETBORD, MEDIBORD, ICONS,
+  TinyRanks); battlescape-palette proxies use indices 1-239. Shared sets SMOKE.PCK, BIGOBS.PCK and
+  DETBLOB.DAT: oversized sheets downscaled to the rule grid, battlescape-palette proxy for the map and
+  shaded draws, picture for the UI. Other battlescape resources stay 8-bit (converted with a warning).
+- Unpressed battlescape buttons show the parent's hi-res picture and their own pictures (rank badge
+  in full colour); AvatarBackground fitted to its slot.
+- Hi-res pictures move with copied pixels (GEOBORD sidebar, dogfight buttons); list row highlights and
+  scrollbar tracks stay hi-res with a tint. Basescape palette for craft previews and commendations;
+  INTICON keeps its geoscape palette in the dogfight; SCANG.DAT uses the battlescape palette.
+- **Native inventory**: with hi-res images on, the inventory is drawn on a full-colour canvas at the
+  output resolution (32-bit paperdoll layers, BIGOBS items); vanilla 8-bit paperdolls use the state
+  palette.
+- Hi-res images off: 32-bit/JPG mod images are downscaled to the rule size and quantized to the right
+  palette with a log warning instead of an error. Files that cannot be decoded disable the offending
+  mod with a clear log entry.
+- The option value is taken at mod load for loading and drawing alike.
+- Options > Video: one dropdown "Hi-res off (original) / Sharp / Smooth / Pixel-art / Auto"
+  (`oxceHiResAssets` + `oxceHiResUpscale`, 3 = Auto is the default upscale mode; old values 0-2 kept).
+- Modder notes: `MODDING-hires.md`.
+
+### Text
+- Battlescape UI digits (all NumberText) drawn with a bold TTF digit font (`BATTLE_DIGITS`,
+  `oxceHiResDigitFont`, FreeType emboldening fallback), sized by the digit '0' and centred on the digit
+  rows. FONT_SMALL and BATTLE_DIGITS sizes are rounded up.
+- Letter wrapping (CJK languages) does not split a Latin word or number; a Latin run after a space
+  moves to the next line.
+- Game-date displays use `STR_DATE_FORMAT` (en-US "{0} {1} {2}", ko "{2}년 {1} {0}").
+- The fonts menu lists Font.dat font types only.
+
+### Korean / IME input (Windows only)
+- IME input in text fields (`Engine/ImeWin32`) with inline composition; caret and candidate window
+  placed on the TTF glyphs.
+
+### Fixes
 - Crew preview / base inventory exit restores 320x200 while the maximized basescape is active
-  (was half-size top-left, rest black, on Windows at x2).
-- Native inventory: vanilla 8-bit paperdolls use the state palette (were black).
-- Shared battlescape sets SMOKE.PCK / BIGOBS.PCK / DETBLOB.DAT: oversized sheets downscaled to the
-  rule width/height before cutting; battlescape-palette proxy plus hi-res picture. SCANG.DAT uses
-  the battlescape palette.
-- Hi-res images off: 32-bit/JPG mod images downscaled and quantized with a warning instead of an
-  error.
-- Option "Hi-res image upscaling" shown as Smooth / Nearest / Pixel art. Modder notes in
-  `MODDING-hires.md`.
+  (was half-size, rest black).
+- BriefingState and AliensCrashState magnified like the other geoscape-resolution screens while a battle exists.
+
+### Build
+- Win64 package: libjpeg-turbo 3.0.4 (static) for JPEG pictures, license texts; package folder name option.
+- Version string `Extended 8.7.1-hires-2 (v2026-10-13)` (version number for mods and rulesets unchanged: 8.7.1.0).
 
 ## 8.7.1-hires-1 (2026-10-04)
 
@@ -52,6 +97,7 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
 
 ## Added files
 - `CHANGELOG-hires.md`
+- `MODDING-hires.md`
 - `README-hires.en.md`
 - `README-hires.ko.md`
 - `docs/globe-zoom-levels/README.md`
@@ -65,10 +111,18 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
 - `scripts/hires-overlay-package-win64.sh`
 - `src/Basescape/MaximizedBasescape.cpp`
 - `src/Basescape/MaximizedBasescape.h`
+- `src/Engine/HiResAssets.cpp`
+- `src/Engine/HiResAssets.h`
+- `src/Engine/HiResCanvas.cpp`
+- `src/Engine/HiResCanvas.h`
 - `src/Engine/HiResFont.cpp`
 - `src/Engine/HiResFont.h`
 - `src/Engine/HiResLayer.cpp`
 - `src/Engine/HiResLayer.h`
+- `src/Engine/HiResResample.cpp`
+- `src/Engine/HiResResample.h`
+- `src/Engine/ImeWin32.cpp`
+- `src/Engine/ImeWin32.h`
 - `src/Engine/ScaledPanel.cpp`
 - `src/Engine/ScaledPanel.h`
 - `src/Engine/UiImageScaler.cpp`
@@ -84,13 +138,21 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
 - `bin/common/Language/OXCE/en-US.yml`
 - `bin/common/Language/OXCE/ko.yml`
 - `bin/standard/xcom1/interfaces.rul`
+- `src/Basescape/BaseInfoState.cpp`
 - `src/Basescape/BasescapeState.cpp`
 - `src/Basescape/BasescapeState.h`
 - `src/Basescape/PlaceLiftState.cpp`
 - `src/Basescape/PlaceLiftState.h`
+- `src/Basescape/SoldierDiaryOverviewState.cpp`
+- `src/Basescape/SoldierInfoState.cpp`
+- `src/Basescape/SoldierMemorialState.cpp`
+- `src/Battlescape/AliensCrashState.cpp`
+- `src/Battlescape/BattlescapeState.cpp`
 - `src/Battlescape/BriefingState.cpp`
 - `src/Battlescape/Inventory.cpp`
+- `src/Battlescape/Inventory.h`
 - `src/Battlescape/InventoryState.cpp`
+- `src/Battlescape/InventoryState.h`
 - `src/Battlescape/Map.cpp`
 - `src/CMakeLists.txt`
 - `src/Engine/Font.cpp`
@@ -103,24 +165,45 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
 - `src/Engine/State.cpp`
 - `src/Engine/State.h`
 - `src/Engine/Surface.cpp`
+- `src/Engine/Surface.h`
 - `src/Engine/Zoom.cpp`
+- `src/Geoscape/BaseDefenseState.cpp`
 - `src/Geoscape/BuildNewBaseState.cpp`
 - `src/Geoscape/DogfightState.cpp`
+- `src/Geoscape/GeoscapeEventState.cpp`
 - `src/Geoscape/GeoscapeState.cpp`
 - `src/Geoscape/GeoscapeState.h`
 - `src/Geoscape/Globe.cpp`
 - `src/Geoscape/Globe.h`
+- `src/Geoscape/GraphsState.cpp`
+- `src/Geoscape/MissionDetectedState.cpp`
 - `src/Geoscape/SelectDestinationState.cpp`
+- `src/Interface/BattlescapeButton.cpp`
+- `src/Interface/BattlescapeButton.h`
+- `src/Interface/NumberText.cpp`
+- `src/Interface/NumberText.h`
+- `src/Interface/ScrollBar.cpp`
 - `src/Interface/Text.cpp`
+- `src/Interface/Text.h`
+- `src/Interface/TextEdit.cpp`
+- `src/Interface/TextEdit.h`
+- `src/Interface/TextList.cpp`
 - `src/Menu/CutsceneState.cpp`
+- `src/Menu/ErrorMessageState.cpp`
+- `src/Menu/OptionsAdvancedState.cpp`
 - `src/Menu/OptionsBaseState.cpp`
 - `src/Menu/OptionsBaseState.h`
 - `src/Menu/OptionsVideoState.cpp`
+- `src/Menu/OptionsVideoState.h`
 - `src/Menu/StartState.cpp`
+- `src/Menu/StatisticsState.cpp`
 - `src/Menu/VideoState.cpp`
 - `src/Mod/City.cpp`
 - `src/Mod/City.h`
+- `src/Mod/ExtraSprites.cpp`
+- `src/Mod/ExtraSprites.h`
 - `src/Mod/Mod.cpp`
+- `src/Mod/Mod.h`
 - `src/Mod/RuleCountry.cpp`
 - `src/Mod/RuleCountry.h`
 - `src/Mod/RuleRegion.cpp`
@@ -128,4 +211,17 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
 - `src/OpenXcom.2010.vcxproj`
 - `src/OpenXcom.2010.vcxproj.filters`
 - `src/OpenXcom.rc`
+- `src/Savegame/GameTime.cpp`
+- `src/Savegame/GameTime.h`
+- `src/Savegame/SaveConverter.cpp`
+- `src/Savegame/SavedGame.cpp`
+- `src/Ufopaedia/ArticleStateArmor.cpp`
+- `src/Ufopaedia/ArticleStateCraft.cpp`
+- `src/Ufopaedia/ArticleStateCraftWeapon.cpp`
+- `src/Ufopaedia/ArticleStateSoldier.cpp`
+- `src/Ufopaedia/ArticleStateTFTD.cpp`
+- `src/Ufopaedia/ArticleStateTextImage.cpp`
+- `src/Ufopaedia/ArticleStateUfo.cpp`
+- `src/Ufopaedia/ArticleStateUnit.cpp`
+- `src/Ufopaedia/ArticleStateVehicle.cpp`
 - `src/version.h`

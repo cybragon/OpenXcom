@@ -1,17 +1,19 @@
-# OpenXcom Extended 8.7.1-hires-1 (unofficial hi-res text fork)
+# OpenXcom Extended 8.7.1-hires-2 (unofficial hi-res fork)
 
-[한국어](README-hires.ko.md) · [Changelog](CHANGELOG-hires.md)
+[한국어](README-hires.ko.md) · [Changelog](CHANGELOG-hires.md) · [Modder notes](MODDING-hires.md)
 
 > **This is an unofficial fork.** It is a personal build modified from OpenXcom Extended (OXCE) 8.7.1,
 > not an official OXCE/OpenXcom release. **Please do not contact the original teams (OXCE, OpenXcom)
 > about this build.**
 
-- Version name: `8.7.1-hires-1` (window title: `OpenXcom Extended 8.7.1-hires-1 (v2026-09-19)`; the date in brackets is the unchanged date of the OXCE 8.7.1 base)
-- Planned release tag: `v8.7.1-hires-1`
+- Version name: `8.7.1-hires-2` (window title: `OpenXcom Extended 8.7.1-hires-2 (v2026-10-13)`)
+- Planned release tag: `v8.7.1-hires-2`
 - Base: OXCE 8.7.1 (commit `441cae1b0`)
 - License: GNU GPL v3 or later (`LICENSE.txt`)
 
 ## What changed
+The game still runs in 320x200 logical coordinates, but text and (optionally) mod images are drawn
+on a separate layer at your **output resolution**, so they stay sharp when the window is scaled up.
 
 ### 1. Hi-res TTF text overlay
 The game draws a 320x200 frame and scales it up, so the bigger the scale, the blockier the text.
@@ -64,8 +66,38 @@ text off. Without a filter nothing changes. OpenGL shader filters are not suppor
 ### 7. Base screens
 With `maximizeInfoScreens` on, the base screens are also enlarged to the 320x200 size.
 
+### 8. Hi-res mod images
+Options > Video, hi-res dropdown: **Hi-res off (original)** / **Sharp** / **Smooth** / **Pixel-art** / **Auto**.
+- Mods can ship larger 32-bit PNG or JPG images for the geoscape, basescape, Ufopaedia, menus, the
+  inventory and the battlescape UI chrome (TAC00/01, ICONS, UNIBORD, scanner/motion/medikit borders,
+  rank badges) and the shared sets BIGOBS, SMOKE, DETBLOB.
+- The `width`/`height` in `extraSprites` is the logical size; a bigger file is drawn hi-res in that box.
+  Multi-frame sheets (`subX`/`subY`) work the same way.
+- Images larger than their box are area-averaged down. Smaller ones are enlarged with the chosen style:
+  Sharp (nearest), Smooth, Pixel-art (xBRZ). **Auto** follows the screen filter: none/Raw shader →
+  Sharp, Scale/HQx/xBRZ and pixel-art shaders → Pixel-art, other OpenGL shaders → Smooth.
+- Switching hi-res on/off reloads the mods (from the main menu) or needs a restart (in a game).
+  Changing only the upscaling style applies at once.
+- Other battlescape resources (map, units, terrain, hand objects, cursor) stay 8-bit; 32-bit files
+  for them are converted to the battlescape palette with a log warning.
+- **Hi-res off still loads hi-res mods:** 32-bit/JPG images are downscaled to the rule size and
+  quantized to the palette with a log warning instead of failing. Files that cannot be decoded
+  disable the mod as before.
+- Details for modders: `MODDING-hires.md`.
+
+### 9. Native 32-bit inventory
+With hi-res images on, the inventory screen is drawn in full colour at output resolution: 32-bit
+paperdoll layers, item pictures and rank badges as they are.
+
+### 10. Battlescape UI digits
+TU, health, ammo and other battlescape numbers are drawn with a bold TTF digit font (`BATTLE_DIGITS`,
+`oxceHiResDigitFont`), sized to the original 3x5 digit rows.
+
+### 11. Korean (IME) text input (Windows only)
+IME input in text fields, with the caret, composition and candidate window placed on the TTF text.
+
 ## Installation (Windows x64)
-1. Unzip; you get an `Extended-8.7.1-hires-1` folder. Keep it separate from any other OpenXcom install.
+1. Unzip; you get an `Extended-8.7.1-hires-2` folder. Keep it separate from any other OpenXcom install.
 2. **No original game data is included.** Copy the data of your own copy of X-COM: UFO Defense
    (Steam, GOG, ...), i.e. GEODATA, GEOGRAPH, MAPS, ROUTES, SOUND, TERRAIN, UFOGRAPH, UFOINTRO, UNITS ...,
    into the `UFO\` folder. Optionally put TFTD data into `TFTD\`.
@@ -85,7 +117,7 @@ No font files are bundled; installed system fonts are used.
   To use a new font, right-click the .ttf/.otf/.ttc file and choose "Install".
 
 ## Options
-Apart from the "Fonts" tab, these are set in `options.cfg` only.
+Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `options.cfg` only.
 
 | Name | Default | Meaning |
 |---|---|---|
@@ -101,23 +133,28 @@ Apart from the "Fonts" tab, these are set in `options.cfg` only.
 | `oxceHiResTextAntialias` | `true` | Anti-aliased text |
 | `oxceHiResTextLayout` | `1` | 1 = lay out strings with TTF spacing; 0 = each glyph centred in its original bitmap glyph cell |
 | `oxceGeoscapeUiOptimized` | `false` | Geoscape scale "x1, UI optimized" (saved when chosen in the video options) |
+| `oxceHiResAssets` | `false` | Hi-res mod images (Video dropdown: off / on) |
+| `oxceHiResUpscale` | `3` | Upscaling style: 0 Smooth, 1 Sharp, 2 Pixel-art, 3 Auto (Video dropdown) |
+| `oxceHiResDigitFont` | `""` (automatic = bold system font) | Font of the battlescape UI digits |
 
 ## Known limitations
 - Since one size based on Hangul '각' is used, Latin capitals look a bit lower than the original bitmap capitals (depends on the font). Example: at FONT_BIG x3, with a '각' body of 33 px, an H at the same size is 26 px tall in NanumGothic and 27 px in DejaVu Sans (outline excluded, measured on the Linux development box; Segoe UI / Malgun Gothic were not measured).
 - In small-font lists the outlines of neighbouring lines touch. Descenders and Hangul taller than '각' may overlap the outline of the next line.
 - Font types newly defined by mods get an estimated size (line height × 0.7).
 - UI graphics filters work with the software output only, not with OpenGL shaders.
-- Graphics other than text (sprites, backgrounds, ...) stay at their original resolution.
-- IME input (Hangul etc.) was not touched by this fork.
+- The battle map and units are still 8-bit (only the battlescape UI chrome and the shared sets are hi-res).
+- Palette effects on hi-res backgrounds, fades and blinking are not applied to hi-res images yet.
+- The OpenGL shader filter is not applied to the TTF text.
+- IME input is Windows only.
 - Some options (outline, bold, hinting, ...) have no in-game menu and can only be changed in `options.cfg`.
 - The performance impact has not been measured.
-- Testing consisted only of automated screenshot comparisons on a Linux virtual display (Xvfb) and a manual check of the previous build on one Windows PC.
-- The savegame format was not changed. Only the version string in the save header is written as `Extended 8.7.1-hires-1`.
+- Testing was mostly automated screenshot comparisons on a Linux virtual display (Xvfb), plus manual checks of test builds on Windows. Please back up your saves.
+- The savegame format was not changed. Only the version string in the save header is written as `Extended 8.7.1-hires-2`. With hi-res images off, rendering is the same as OXCE 8.7.1; existing mods need no changes.
 
 ## Goals
 - UI graphics filters with OpenGL shader filters too
-- Input of Hangul and other languages (IME)
-- Hi-res replacements for all resources (graphics, fonts, ...)
+- Hi-res battle map and units, palette effects on hi-res images
+- IME input on other platforms
 - Unified date format
 
 **Help is welcome.** Bug reports, testing, code, translations, hi-res resources: any help is appreciated.
@@ -133,5 +170,5 @@ as well as to the original OpenXcom developers and contributors. This fork is on
 
 ## License and source
 - OpenXcom and this fork are distributed under the GNU GPL v3 or later (`LICENSE.txt`). Notices of the linked libraries are in `THIRD_PARTY.txt` and `licenses\`.
-- Source: branch `hires-1` / tag `v8.7.1-hires-1` at https://github.com/cybragon/OpenXcom
+- Source: https://github.com/cybragon/OpenXcom (planned tag `v8.7.1-hires-2`; hires-1: branch `hires-1` / tag `v8.7.1-hires-1`)
 - The modification notice and the list of modified files are in `CHANGELOG-hires.md`.

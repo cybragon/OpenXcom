@@ -742,7 +742,7 @@ en-US:
   STR_ON_UC: "ON"
   STR_OFF_UC: "OFF"
   STR_HIRES_ASSETS: "Hi-res assets"
-  STR_HIRES_ASSETS_DESC: "Mod images of another size drawn at screen resolution, 32-bit PNG/JPG allowed (battlescape: UI chrome and shared sets only). Sharp/Smooth/Pixel-art = how smaller images are enlarged; Auto follows the screen filter. On/off reloads mods / needs restart."
+  STR_HIRES_ASSETS_DESC: "Draws mod images at screen resolution (32-bit PNG/JPG allowed). Sharp/Smooth/Pixel-art: upscaling style; Auto follows the screen filter."
   STR_HIRES_MODE_OFF: "Hi-res off (original)"
   STR_HIRES_MODE_SHARP: "Hi-res: Sharp"
   STR_HIRES_MODE_SMOOTH: "Hi-res: Smooth"

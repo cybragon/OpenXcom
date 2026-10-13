@@ -1,14 +1,14 @@
-OpenXcom Extended 8.7.1-hires-1 (고해상도 글자 오버레이, 비공식 포크, win64)
+OpenXcom Extended 8.7.1-hires-2 (고해상도 글자 오버레이, 비공식 포크, win64)
 ==========================================================================
 
-비공식 수정판입니다(OXCE 8.7.1 기반, GPLv3, 릴리스 태그 예정 이름 v8.7.1-hires-1).
+비공식 수정판입니다(OXCE 8.7.1 기반, GPLv3, 릴리스 태그 예정 이름 v8.7.1-hires-2).
 자세한 설명은 README-hires.ko.md(English: README-hires.en.md), 변경 내역은 CHANGELOG-hires.md 참고.
 원작 OXCE/OpenXcom 팀에 이 빌드에 대한 문의는 하지 말아 주세요.
 이 zip에는 원본 X-COM(UFO/TFTD) 게임 데이터와 글꼴 파일이 들어 있지 않습니다.
 기존 설치는 건드리지 않고, 별도 폴더에 따로 설치해서 씁니다.
 
 1. 압축 풀기
-   zip 안의 Extended-8.7.1-hires-1 폴더를 원하는 위치에 풉니다(한글/OneDrive 경로 가능,
+   zip 안의 Extended-8.7.1-hires-2 폴더를 원하는 위치에 풉니다(한글/OneDrive 경로 가능,
    전체 경로 260자 미만). OneDrive 폴더라면 "항상 이 장치에 유지"를 권장합니다.
 
 2. 원본 UFO 데이터 넣기

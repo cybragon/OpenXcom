@@ -622,7 +622,7 @@ ko:
   STR_ON_UC: "켜짐"
   STR_OFF_UC: "꺼짐"
   STR_HIRES_ASSETS: "고해상도 이미지"
-  STR_HIRES_ASSETS_DESC: "모드가 다른 크기로 바꾼 이미지를 화면 해상도로 그립니다. 32비트 PNG/JPG 허용(전투 화면은 UI와 공유 세트만). 선명하게/부드럽게/도트 보정 = 작은 이미지 확대 방식, 자동은 화면 필터를 따릅니다. 켜고 끄면 모드를 다시 읽거나 재시작해야 적용됩니다."
+  STR_HIRES_ASSETS_DESC: "모드 이미지를 화면 해상도로 그립니다(32비트 PNG/JPG 허용). 선명하게/부드럽게/도트 보정: 확대 방식, 자동: 화면 필터를 따름."
   STR_HIRES_MODE_OFF: "고해상도 끔 (원본)"
   STR_HIRES_MODE_SHARP: "고해상도: 선명하게"
   STR_HIRES_MODE_SMOOTH: "고해상도: 부드럽게"

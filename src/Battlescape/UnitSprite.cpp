@@ -27,6 +27,9 @@
 #include "../Mod/RuleInventory.h"
 #include "../Mod/Mod.h"
 #include "../Engine/Exception.h"
+#include "../Engine/HiResAssets.h"
+#include "../Engine/Logger.h"
+#include <set>
 
 namespace OpenXcom
 {
@@ -172,6 +175,40 @@ void UnitSprite::blitBody(Part& body)
 	work.executeBlit(body.src, _dest,  _x + body.offX, _y + body.offY, _shade, _mask);
 
 	_dest->unlock();
+
+	if (HiResAssets::any() && _burn == 0)
+	{
+		// hi-res battle stage 1: a 32-bit unit sheet frame, shaded/recoloured at output resolution
+		const SDL_Surface *ps = body.src->getSurface();
+		if (HiResAssets::proxyByPixels(ps->pixels) == ps)
+		{
+			const Armor *armor = _unit->getArmor();
+			if (armor->getScript<ModScript::RecolorUnitSprite>())
+			{
+				static std::set<const Armor*> warned;
+				if (warned.insert(armor).second)
+					Log(LOG_WARNING) << "HiResAssets: armor " << armor->getType() << " has a custom recolorUnitSprite script: its 32-bit sprite sheet is drawn without recolour (shade only)";
+				Uint8 none[4] = { 0, 0, 0, 0 };
+				HiResAssets::onBattleDraw(ps, _dest->getSurface(), _x + body.offX, _y + body.offY, _shade, false, 0, none, none,
+					_mask.beg_x, _mask.beg_y, _mask.end_x - _mask.beg_x, _mask.end_y - _mask.beg_y);
+			}
+			else
+			{
+				Uint8 from[4] = { 0, 0, 0, 0 }, to[4] = { 0, 0, 0, 0 };
+				const int groups[4] = { armor->getFaceColorGroup(), armor->getHairColorGroup(), armor->getUtileColorGroup(), armor->getRankColorGroup() };
+				for (const auto &pr : _unit->getRecolor())
+					for (int k = 0; k < 4; ++k)
+						if (groups[k] > 0 && (groups[k] << 4) == pr.first && !from[k])
+						{
+							from[k] = pr.first;
+							to[k] = pr.second;
+							break;
+						}
+				HiResAssets::onBattleDraw(ps, _dest->getSurface(), _x + body.offX, _y + body.offY, _shade, false, 0, from, to,
+					_mask.beg_x, _mask.beg_y, _mask.end_x - _mask.beg_x, _mask.end_y - _mask.beg_y);
+			}
+		}
+	}
 }
 
 /**

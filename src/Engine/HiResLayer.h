@@ -84,6 +84,12 @@ struct HiResCmd
 	Uint32 palKey = 0;               ///< resolved at screen delivery: palette of 8bpp pictures
 	Uint32 maskIdx = 0;              ///< resolved at screen delivery: 1 + index of the per-base-pixel snapshot mask (clip rect)
 	Uint32 underId = 0;              ///< pixels under the transparent proxy pixels at record time (silhouette edge), 0 = none
+	// --- battlescape (stage battle-1): the proxy was drawn shaded/recoloured like the 8bpp map
+	Uint8 battle = 0;                ///< 1 = battle draw: the expected pixel is the transformed proxy pixel
+	Uint8 shade = 0;                 ///< tile shade 0..16 (brightness multiply at draw time)
+	Uint8 nvColor = 0;               ///< night vision / marker base colour + 1 (ColorReplace), 0 = none
+	Uint8 rcFrom[4] = {0, 0, 0, 0};  ///< recolour source group<<4 per channel (face, hair, utile, rank), 0 = off
+	Uint8 rcTo[4] = {0, 0, 0, 0};    ///< recolour target base colour per channel
 	Uint32 tint = 0;                 ///< ARGB colour blended over the picture (8bpp highlight of a copied background), 0 = none;
 	                                 ///< the proxy pixels are recoloured, so they are not verified (every opaque proxy pixel counts)
 	// --- resolved when the command reaches the screen buffer

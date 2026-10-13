@@ -56,6 +56,7 @@ struct Picture
 	std::vector<SDL_Color> pal;   ///< palette of an 8bpp file (as the normal loader sets it)
 	bool ownPalette = false;      ///< 8bpp file whose colours match no game palette: displayed from argb (own palette)
 	std::string file;
+	std::vector<Uint8> mask;      ///< battle unit/terrain sheets: recolour mask (<file>_mask.png), channel 1 face, 2 hair, 3 utile, 4 rank; empty = none
 };
 
 namespace
@@ -75,6 +76,7 @@ struct Entry
 };
 
 std::unordered_map<const SDL_Surface*, Uint32> bySurface;
+std::unordered_map<const void*, const SDL_Surface*> byPixels; ///< proxy pixel buffer -> surface (SurfaceRaw blits)
 std::unordered_map<Uint32, std::unique_ptr<Entry>> byId;
 Uint32 idCounter = 0;
 std::set<std::string> deniedTypes, deniedPrefixes;
@@ -285,6 +287,20 @@ void beginModLoad()
 	nativePrefixes.clear();
 	deniedTypes.clear();
 	deniedPrefixes.clear();
+	battleTypes.clear();
+}
+
+namespace { std::set<std::string> battleTypes; }
+
+void allowBattle(const std::string &type)
+{
+	deniedTypes.erase(type);
+	battleTypes.insert(type);
+}
+
+bool battleType(const std::string &type)
+{
+	return battleTypes.count(type) != 0;
 }
 
 void denyTrueColor(const std::string &type)
@@ -450,6 +466,8 @@ const SDL_Color *quantizePalette(const std::string &type, const SDL_Color *origP
 	auto tp = typePalettes.find(type);
 	if (tp != typePalettes.end())
 		return tp->second;
+	if (palBattle && battleTypes.count(type))
+		return palBattle;
 	if (type == "BASEBITS.PCK" && palBase)
 		return palBase;
 	if (!uniform(origPalette))
@@ -566,6 +584,7 @@ void attach(Surface *proxy, const std::shared_ptr<Picture> &pic, double rx, doub
 		std::memcpy(&e->expected[(size_t)y * s->w], (const Uint8*)s->pixels + y * s->pitch, s->w);
 	SDL_UnlockSurface(s);
 	bySurface[s] = e->id;
+	byPixels[s->pixels] = s;
 	byId[e->id] = std::move(e);
 	registeredCount = bySurface.size();
 }
@@ -682,6 +701,8 @@ bool loadReplacement(Surface *target, const std::string &filename, int boxW, int
 	std::shared_ptr<Picture> pic = decode(filename);
 	if (!pic)
 		return false; // the normal loader reports the error
+	if (pic->trueColor && battleTypes.count(type))
+		loadMask(*pic, filename);
 	if (pic->trueColor && !trueColorAllowed(type))
 	{
 		if (palBattle && nativeAllowed(type))
@@ -864,6 +885,15 @@ void forget(const SDL_Surface *surface)
 	if (it == bySurface.end())
 		return;
 	dropRendered(it->second);
+	{
+		auto pe = find(it->second);
+		if (pe)
+		{
+			auto pj = byPixels.find(pe->pixels);
+			if (pj != byPixels.end() && pj->second == surface)
+				byPixels.erase(pj);
+		}
+	}
 	byId.erase(it->second);
 	bySurface.erase(it);
 	registeredCount = bySurface.size();
@@ -987,6 +1017,169 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 		renderCache.pop_back();
 	}
 	return renderCache.front().px.data();
+}
+
+
+void loadMask(Picture &pic, const std::string &filename)
+{
+	pic.mask.clear();
+	const size_t dot = filename.find_last_of('.');
+	const size_t slash = filename.find_last_of('/');
+	if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+		return;
+	const std::string mf = filename.substr(0, dot) + "_mask" + filename.substr(dot);
+	if (!FileMap::fileExists(mf))
+		return;
+	Picture m;
+	if (!decodeTrueColor(mf, m) || m.w != pic.w || m.h != pic.h)
+	{
+		Log(LOG_WARNING) << "HiResAssets: mask " << mf << " ignored (must be a 32-bit image of " << pic.w << "x" << pic.h << ")";
+		return;
+	}
+	pic.mask.assign((size_t)pic.w * pic.h, 0);
+	size_t n = 0;
+	for (size_t i = 0; i < pic.mask.size(); ++i)
+	{
+		const Uint32 p = m.argb[i];
+		if ((p >> 24) < 128)
+			continue;
+		const int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+		Uint8 ch = 0;
+		if (r >= 128 && g >= 128 && b >= 128) ch = 3;      // white: utile
+		else if (r >= 128 && g < 128 && b < 128) ch = 1;   // red: face
+		else if (g >= 128 && r < 128 && b < 128) ch = 2;   // green: hair
+		else if (b >= 128 && r < 128 && g < 128) ch = 4;   // blue: rank
+		pic.mask[i] = ch;
+		n += ch != 0;
+	}
+	Log(LOG_INFO) << "HiResAssets: recolour mask " << mf << " (" << n << " pixels)";
+}
+
+namespace
+{
+struct MaskRendered
+{
+	Uint32 id;
+	int sx, sy, sw, sh, outW, outH;
+	std::vector<Uint8> px;
+};
+std::list<MaskRendered> maskCache;
+size_t maskBytes = 0;
+int shadeTable[17];
+const SDL_Color *shadeTablePal = nullptr;
+}
+
+const Uint8 *renderedMask(Uint32 assetId, int sx, int sy, int sw, int sh, int outW, int outH)
+{
+	Entry *e = find(assetId);
+	if (!e || e->pic->mask.empty() || outW <= 0 || outH <= 0 || sw <= 0 || sh <= 0)
+		return nullptr;
+	for (auto it = maskCache.begin(); it != maskCache.end(); ++it)
+	{
+		if (it->id == assetId && it->sx == sx && it->sy == sy && it->sw == sw && it->sh == sh && it->outW == outW && it->outH == outH)
+		{
+			if (it != maskCache.begin())
+				maskCache.splice(maskCache.begin(), maskCache, it);
+			return maskCache.front().px.data();
+		}
+	}
+	MaskRendered r{ assetId, sx, sy, sw, sh, outW, outH, std::vector<Uint8>((size_t)outW * outH, 0) };
+	const double fx = e->rw / e->w, fy = e->rh / e->h;
+	const double px0 = e->rx + sx * fx, py0 = e->ry + sy * fy, pw = sw * fx, ph = sh * fy;
+	const Picture &p = *e->pic;
+	for (int y = 0; y < outH; ++y)
+	{
+		const int v = std::min(p.h - 1, std::max(0, (int)(py0 + (y + 0.5) * ph / outH)));
+		for (int x = 0; x < outW; ++x)
+		{
+			const int u = std::min(p.w - 1, std::max(0, (int)(px0 + (x + 0.5) * pw / outW)));
+			r.px[(size_t)y * outW + x] = p.mask[(size_t)v * p.w + u];
+		}
+	}
+	maskBytes += r.px.size();
+	maskCache.push_front(std::move(r));
+	while (maskBytes > 32u * 1024u * 1024u && maskCache.size() > 1)
+	{
+		maskBytes -= maskCache.back().px.size();
+		maskCache.pop_back();
+	}
+	return maskCache.front().px.data();
+}
+
+int shadeFactor(int s)
+{
+	if (s <= 0)
+		return 256;
+	if (s >= 16)
+		return 0;
+	if (shadeTablePal != palBattle)
+	{
+		shadeTablePal = palBattle;
+		// mean luminance ratio shade s / shade 0 over the colour groups of the battlescape palette
+		for (int k = 0; k < 17; ++k)
+		{
+			double sum = 0;
+			int n = 0;
+			for (int g = 1; palBattle && g < 15; ++g)
+			{
+				const SDL_Color &c0 = palBattle[g * 16];
+				const double l0 = 0.299 * c0.r + 0.587 * c0.g + 0.114 * c0.b;
+				if (l0 < 40 || k > 15)
+					continue;
+				const SDL_Color &c = palBattle[g * 16 + k];
+				sum += std::min(1.0, (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / l0);
+				++n;
+			}
+			shadeTable[k] = k > 15 ? 0 : (n ? (int)std::lround(256 * sum / n) : std::max(0, 256 - k * 16));
+		}
+		shadeTable[0] = 256;
+	}
+	return shadeTable[s];
+}
+
+const SDL_Surface *proxyByPixels(const void *pixels)
+{
+	auto it = byPixels.find(pixels);
+	return it == byPixels.end() ? nullptr : it->second;
+}
+
+void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int shade, bool half, int newBaseColor,
+	const Uint8 rcFrom[4], const Uint8 rcTo[4], int clipX, int clipY, int clipW, int clipH)
+{
+	if (!src || !dst || !HiResLayer::recording() || !enabled())
+		return;
+	auto it = bySurface.find(src);
+	if (it == bySurface.end())
+		return;
+	Entry *e = find(it->second);
+	if (!e || e->pixels != src->pixels || e->w != src->w || e->h != src->h)
+		return;
+	if (!battleTypes.count(e->name))
+		return;
+	HiResCmd c;
+	c.kind = HiResCmdKind::Image;
+	c.assetId = e->id;
+	c.battle = 1;
+	c.shade = (Uint8)std::max(0, std::min(16, shade));
+	c.nvColor = (Uint8)std::max(0, std::min(255, newBaseColor));
+	for (int k = 0; k < 4; ++k)
+	{
+		c.rcFrom[k] = rcFrom ? rcFrom[k] : 0;
+		c.rcTo[k] = rcTo ? rcTo[k] : 0;
+	}
+	c.x = (Sint16)dx; c.y = (Sint16)dy; c.w = (Sint16)e->w; c.h = (Sint16)e->h;
+	c.srcX = 0; c.srcY = 0; c.srcW = (Sint16)e->w; c.srcH = (Sint16)e->h;
+	int vx = dx + (half ? e->w / 2 : 0), vy = dy, vw = e->w - (half ? e->w / 2 : 0), vh = e->h;
+	if (clipW > 0 && clipH > 0)
+	{
+		const int x0 = std::max(vx, clipX), y0 = std::max(vy, clipY);
+		const int x1 = std::min(vx + vw, clipX + clipW), y1 = std::min(vy + vh, clipY + clipH);
+		vx = x0; vy = y0; vw = x1 - x0; vh = y1 - y0;
+	}
+	if (vw <= 0 || vh <= 0)
+		return;
+	c.clipX = (Sint16)vx; c.clipY = (Sint16)vy; c.clipW = (Sint16)vw; c.clipH = (Sint16)vh;
+	HiResLayer::recordAsset(dst, c, src);
 }
 
 }

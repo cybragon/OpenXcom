@@ -6130,6 +6130,19 @@ void Mod::classifyHiResBattleTypes()
 		for (auto *mds : *t.second->getMapDataSets())
 			HiResAssets::denyTrueColor(mds->getName() + ".PCK");
 	}
+	if (HiResAssets::enabled())
+	{
+		// battle stage 1: armor sprite sheets and terrain sets may be 32-bit (drawn at output resolution,
+		// shaded/recoloured at draw time; 8-bit sheets keep the palette path)
+		for (const auto &a : _armors)
+			if (!a.second->getSpriteSheet().empty())
+				HiResAssets::allowBattle(a.second->getSpriteSheet());
+		for (const auto &m : _mapDataSets)
+			HiResAssets::allowBattle(m.first + ".PCK");
+		for (const auto &t : _terrains)
+			for (auto *mds : *t.second->getMapDataSets())
+				HiResAssets::allowBattle(mds->getName() + ".PCK");
+	}
 	for (const char *name : { "battlescape", "inventory", "medikit", "minimap", "stats" })
 	{
 		auto it = _interfaces.find(name);

@@ -64,6 +64,24 @@ namespace HiResAssets
 	void denyTrueColorPrefix(const std::string &prefix);
 	/// Undo a deny (battlescape stage-1 UI chrome allow-list after DenyLoaded).
 	void allowTrueColor(const std::string &type);
+	/// Battle stage 1: armor sprite sheets / terrain sets may be 32-bit (proxy in the battlescape palette,
+	/// the picture drawn shaded/recoloured at output resolution, see onBattleDraw).
+	void allowBattle(const std::string &type);
+	bool battleType(const std::string &type);
+	/// Loads <file>_mask.<ext> (same size as the picture) as the recolour mask of a battle picture
+	/// (red face, green hair, white utile, blue rank). No file = no mask.
+	void loadMask(Picture &pic, const std::string &filename);
+	/// Battle draw of a proxy: blitted at (dx, dy) of dst with tile shade, night vision/marker colour
+	/// (newBaseColor + 1, 0 = none), half (right half only) and armor recolour pairs (group<<4, colour),
+	/// clipped to (clipX, clipY, clipW, clipH) of dst (clipW <= 0: no extra clip).
+	void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int shade, bool half, int newBaseColor,
+		const Uint8 rcFrom[4], const Uint8 rcTo[4], int clipX = 0, int clipY = 0, int clipW = 0, int clipH = 0);
+	/// Proxy surface owning this pixel buffer (SurfaceRaw blits), nullptr = none.
+	const SDL_Surface *proxyByPixels(const void *pixels);
+	/// Recolour mask of an asset rect at output size (nearest), nullptr = none.
+	const Uint8 *renderedMask(Uint32 assetId, int sx, int sy, int sw, int sh, int outW, int outH);
+	/// Brightness factor (0..256) of tile shade s (0..16), measured on the battlescape palette.
+	int shadeFactor(int s);
 	/// Battlescape UI chrome: a 32-bit picture that fits its box is still attached (drawn hi-res
 	/// over its 8bpp proxy) instead of becoming a stock-like 8-bit image.
 	void attachWhenFits(const std::string &type);

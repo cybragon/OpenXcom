@@ -269,6 +269,8 @@ SurfaceSet *ExtraSprites::loadSurfaceSet(SurfaceSet *set)
 			{
 				if (!isImageFile(name))
 					continue;
+				if (HiResAssets::enabled() && HiResAssets::battleType(_type) && name.size() > 9 && name.find("_mask.") != std::string::npos)
+					continue; // recolour mask of the frame next to it (hi-res battle sheets)
 				try
 				{
 					bool existed = false;
@@ -360,6 +362,8 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 		return false;
 	const int pw = HiResAssets::pictureWidth(*pic), ph = HiResAssets::pictureHeight(*pic);
 	const bool trueColor = HiResAssets::pictureTrueColor(*pic);
+	if (trueColor && HiResAssets::battleType(_type))
+		HiResAssets::loadMask(*pic, fileName);
 	// shared battlescape sets (SMOKE.PCK ranks, BIGOBS.PCK items, DETBLOB.DAT): battlescape-palette proxy
 	// for the map and shaded draws, the picture for the UI (overlay) and the native inventory canvas
 	const bool shared = trueColor && !HiResAssets::trueColorAllowed(_type) && HiResAssets::nativeAllowed(_type);

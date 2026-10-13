@@ -496,6 +496,67 @@ void applyTint(const HiResCmd &c, const std::vector<Uint8> *mask, int x0, int y0
 	}
 }
 
+/// Battle draw: the 8bpp pixel the map shows for proxy pixel ev (armor recolour, then shade / colour
+/// replace exactly like the default recolorUnitSprite script and Surface::blitRaw).
+inline Uint8 battleExpected(const HiResCmd &c, Uint8 ev)
+{
+	if (!ev)
+		return 0;
+	for (int k = 0; k < 4; ++k)
+	{
+		if (c.rcFrom[k] && (ev & 0xF0) == c.rcFrom[k])
+		{
+			ev = (Uint8)(c.rcTo[k] + (ev & 0x0F));
+			break;
+		}
+	}
+	if (c.nvColor)
+	{
+		const int ns = (ev & 0x0F) + c.shade;
+		return (ns & 0xF0) ? 0x0F : (Uint8)((((c.nvColor - 1) << 4) & 0xF0) | ns);
+	}
+	const Uint8 n = (Uint8)(ev + c.shade);
+	return ((n ^ ev) & 0xF0) ? 0x0F : n;
+}
+
+/// Hue of the 16-step ramp starting at palette index 'base' at the luminance of the premultiplied pixel p.
+inline Uint32 rampTint(Uint32 p, const SDL_Color *pal, int base)
+{
+	const unsigned a = p >> 24;
+	if (!a || !pal)
+		return p;
+	const double r = ((p >> 16) & 0xFF) * 255.0 / a, g = ((p >> 8) & 0xFF) * 255.0 / a, b = (p & 0xFF) * 255.0 / a;
+	const double L = 0.299 * r + 0.587 * g + 0.114 * b;
+	int best = base;
+	double bd = 1e9;
+	for (int i = 0; i < 16 && base + i < 256; ++i)
+	{
+		const SDL_Color &q = pal[base + i];
+		const double d = std::fabs(0.299 * q.r + 0.587 * q.g + 0.114 * q.b - L);
+		if (d < bd) { bd = d; best = base + i; }
+	}
+	const SDL_Color &q = pal[best];
+	const double lq = std::max(1.0, 0.299 * q.r + 0.587 * q.g + 0.114 * q.b);
+	const double k = L / lq;
+	auto ch = [&](double v) { return (Uint32)std::min(255.0, std::max(0.0, v * k * a / 255.0 + 0.5)); };
+	return (p & 0xFF000000u) | (ch(q.r) << 16) | (ch(q.g) << 8) | ch(q.b);
+}
+
+/// Battle draw at output resolution: mask recolour -> (night vision colour) -> brightness multiply.
+inline Uint32 battlePixel(const HiResCmd &c, Uint32 p, Uint8 m, const SDL_Color *pal, int factor)
+{
+	if (!(p >> 24))
+		return p;
+	if (m && c.rcFrom[m - 1])
+		p = rampTint(p, pal, c.rcTo[m - 1]);
+	if (c.nvColor)
+		p = rampTint(p, pal, ((c.nvColor - 1) << 4) & 0xF0);
+	if (factor >= 256)
+		return p;
+	const Uint32 r = (((p >> 16) & 0xFF) * factor) >> 8, g = (((p >> 8) & 0xFF) * factor) >> 8, b = ((p & 0xFF) * factor) >> 8;
+	return (p & 0xFF000000u) | (r << 16) | (g << 8) | b;
+}
+
 /// Hi-res asset command: the replacement picture resampled to the output size of the box, drawn
 /// only on the base pixels whose proxy pixels reached the screen unchanged (mask) and not hidden later.
 void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
@@ -514,6 +575,9 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 	const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, outW, outH);
 	if (!px)
 		return;
+	const Uint8 *bm = c.battle ? HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, outW, outH) : nullptr;
+	const SDL_Color *bpal = HiResAssets::battlePalette();
+	const int bfac = c.battle ? HiResAssets::shadeFactor(c.shade) : 256;
 	const int x0 = std::max(std::max(0, X0), (int)std::floor(c.clipX * sx)), y0 = std::max(std::max(0, Y0), (int)std::floor(c.clipY * sy));
 	const int x1 = std::min(std::min(dstW, X1), (int)std::ceil((c.clipX + c.clipW) * sx));
 	const int y1 = std::min(std::min(dstH, Y1), (int)std::ceil((c.clipY + c.clipH) * sy));
@@ -537,7 +601,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			const int mx = bx - c.clipX;
 			if (mx < 0 || mx >= c.clipW || !maskRow[mx] || stampRow[bx] > c.stamp)
 				continue;
-			const Uint32 p = src[x];
+			const Uint32 p = c.battle ? battlePixel(c, src[x], bm ? bm[(size_t)(y - Y0) * outW + (x - X0)] : 0, bpal, bfac) : src[x];
 			const unsigned a = p >> 24;
 			if (maskRow[mx] == MASK_BACK && a < 255)
 			{
@@ -626,7 +690,7 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 			const int u = std::min(ew - 1, std::min(c.srcX + c.srcW - 1, c.srcX + (xx - c.x) * c.srcW / c.w));
 			if (u < 0)
 				continue;
-			const Uint8 ev = ep[u];
+			const Uint8 ev = c.battle ? battleExpected(c, ep[u]) : ep[u];
 			if (c.tint && ev && sp[xx])
 			{
 				mp[xx] = MASK_PROXY; // recoloured copy (highlight): every opaque proxy pixel
@@ -1361,7 +1425,8 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 	auto &dl = S.lists[dst];
 	dl.erase(std::remove_if(dl.begin(), dl.end(), [&](const HiResCmd &o)
 	{
-		return o.assetId == c.assetId && o.origin == origin && o.originX == c.originX && o.originY == c.originY;
+		return o.assetId == c.assetId && o.origin == origin && o.originX == c.originX && o.originY == c.originY
+			&& (!c.battle || (o.clipX == c.clipX && o.clipY == c.clipY && o.clipW == c.clipW && o.clipH == c.clipH));
 	}), dl.end());
 	dl.push_back(c);
 }

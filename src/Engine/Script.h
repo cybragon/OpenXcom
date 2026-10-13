@@ -387,6 +387,7 @@ class ScriptContainerBase
 {
 	friend struct ParserWriter;
 	std::vector<Uint8> _proc;
+	bool _defaultCode = false; ///< compiled from the parser's default script (no mod script)
 
 public:
 	/// Constructor.
@@ -395,6 +396,9 @@ public:
 	ScriptContainerBase(const ScriptContainerBase&) = delete;
 	/// Move constructor.
 	ScriptContainerBase(ScriptContainerBase&&) = default;
+	/// True if the code is the parser's default script (no script given by the mod).
+	bool isDefaultCode() const { return _defaultCode; }
+	void setDefaultCode(bool d) { _defaultCode = d; }
 
 	/// Destructor.
 	~ScriptContainerBase() = default;

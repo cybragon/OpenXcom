@@ -183,7 +183,7 @@ void UnitSprite::blitBody(Part& body)
 		if (HiResAssets::proxyByPixels(ps->pixels) == ps)
 		{
 			const Armor *armor = _unit->getArmor();
-			if (armor->getScript<ModScript::RecolorUnitSprite>())
+			if (armor->getScript<ModScript::RecolorUnitSprite>() && !armor->getScript<ModScript::RecolorUnitSprite>().isDefaultCode())
 			{
 				static std::set<const Armor*> warned;
 				if (warned.insert(armor).second)

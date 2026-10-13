@@ -3875,6 +3875,7 @@ void ScriptParserBase::parseNode(ScriptContainerBase& container, const std::stri
 		{
 			Log(LOG_ERROR) << ""; // dummy line to separate similar errors
 		}
+		container.setDefaultCode(true);
 	}
 }
 
@@ -3897,6 +3898,7 @@ void ScriptParserBase::parseCode(ScriptContainerBase& container, const std::stri
 		{
 			Log(LOG_ERROR) << ""; // dummy line to separate similar errors
 		}
+		container.setDefaultCode(true);
 	}
 }
 

@@ -1342,6 +1342,7 @@ void updateOptions()
 		}
 		else
 		{
+			loadHiRes(); // an existing hires_option.cfg is kept
 			save();
 		}
 	}

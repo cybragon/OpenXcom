@@ -383,6 +383,10 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontFallback", &oxceHiResFontFallback, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontMap", &oxceHiResFontMap, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDigitFont", &oxceHiResDigitFont, "")); // battle UI digits: font specs, empty = built-in bold list
+	// hi-res battle: brightness (%) of tile shade 0..15 (level 1..16), shade 16 = black; missing entries repeat the last
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResShadeCurve", &oxceHiResShadeCurve, "100,92,84,76,68,60,52,44,36,28,12,10,8,6,4,2"));
+	// hi-res battle: soft shadow under units on the floor, opacity % (0 = off)
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResUnitShadow", &oxceHiResUnitShadow, 35));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontSize", &oxceHiResFontSize, 100));
 	// outline thickness in % of the default of each font type (FONT_BIG/GEO_BIG 1 px, FONT_SMALL/GEO_SMALL 0.5 px at x1), 0..400

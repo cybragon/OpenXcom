@@ -86,6 +86,7 @@ struct HiResCmd
 	Uint32 underId = 0;              ///< pixels under the transparent proxy pixels at record time (silhouette edge), 0 = none
 	// --- battlescape (stage battle-1): the proxy was drawn shaded/recoloured like the 8bpp map
 	Uint8 battle = 0;                ///< 1 = battle draw: the expected pixel is the transformed proxy pixel
+	Uint32 battleId = 0;             ///< draw id in the map ownership buffer (HiResAssets::battleOwners), 0 = untracked
 	Uint8 shade = 0;                 ///< tile shade 0..16 (brightness multiply at draw time)
 	Uint8 nvColor = 0;               ///< night vision / marker base colour + 1 (ColorReplace), 0 = none
 	Uint8 rcFrom[4] = {0, 0, 0, 0};  ///< recolour source group<<4 per channel (face, hair, utile, rank), 0 = off

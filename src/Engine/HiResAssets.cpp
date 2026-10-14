@@ -1088,8 +1088,6 @@ struct MaskRendered
 };
 std::list<MaskRendered> maskCache;
 size_t maskBytes = 0;
-int shadeTable[17];
-const SDL_Color *shadeTablePal = nullptr;
 }
 
 const Uint8 *renderedMask(Uint32 assetId, int sx, int sy, int sw, int sh, int outW, int outH)
@@ -1131,33 +1129,84 @@ const Uint8 *renderedMask(Uint32 assetId, int sx, int sy, int sw, int sh, int ou
 
 int shadeFactor(int s)
 {
-	if (s <= 0)
-		return 256;
-	if (s >= 16)
-		return 0;
-	if (shadeTablePal != palBattle)
+	// Options::oxceHiResShadeCurve: brightness % per shade 0..15 (user-tunable), shade 16 = black
+	static std::string parsed = "\x01";
+	static int table[17];
+	if (parsed != Options::oxceHiResShadeCurve)
 	{
-		shadeTablePal = palBattle;
-		// mean luminance ratio shade s / shade 0 over the colour groups of the battlescape palette
-		for (int k = 0; k < 17; ++k)
+		parsed = Options::oxceHiResShadeCurve;
+		std::vector<int> v;
+		std::string cur;
+		for (char ch : parsed + ",")
 		{
-			double sum = 0;
-			int n = 0;
-			for (int g = 1; palBattle && g < 15; ++g)
+			if (ch == ',' || ch == ' ' || ch == ';')
 			{
-				const SDL_Color &c0 = palBattle[g * 16];
-				const double l0 = 0.299 * c0.r + 0.587 * c0.g + 0.114 * c0.b;
-				if (l0 < 40 || k > 15)
-					continue;
-				const SDL_Color &c = palBattle[g * 16 + k];
-				sum += std::min(1.0, (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / l0);
-				++n;
+				if (!cur.empty()) v.push_back(std::max(0, std::min(100, std::atoi(cur.c_str()))));
+				cur.clear();
 			}
-			shadeTable[k] = k > 15 ? 0 : (n ? (int)std::lround(256 * sum / n) : std::max(0, 256 - k * 16));
+			else
+				cur += ch;
 		}
-		shadeTable[0] = 256;
+		static const int def[16] = { 100, 92, 84, 76, 68, 60, 52, 44, 36, 28, 12, 10, 8, 6, 4, 2 };
+		for (int k = 0; k < 16; ++k)
+		{
+			const int pct = v.empty() ? def[k] : v[std::min((size_t)k, v.size() - 1)];
+			table[k] = (pct * 256 + 50) / 100;
+		}
+		table[16] = 0;
 	}
-	return shadeTable[s];
+	return table[std::max(0, std::min(16, s))];
+}
+
+namespace
+{
+const SDL_Surface *ownSurf = nullptr;
+std::vector<Uint32> owners;
+int ownW = 0, ownH = 0;
+Uint32 ownCounter = 0;
+/// Writes v into the ownership buffer for the opaque pixels of px blitted at (dx, dy), clipped.
+void markOwner(const Uint8 *px, int w, int h, int pitch, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH, Uint32 v)
+{
+	int x0 = dx + (half ? w / 2 : 0), y0 = dy, x1 = dx + w, y1 = dy + h;
+	if (clipW > 0 && clipH > 0)
+	{
+		x0 = std::max(x0, clipX); y0 = std::max(y0, clipY);
+		x1 = std::min(x1, clipX + clipW); y1 = std::min(y1, clipY + clipH);
+	}
+	x0 = std::max(x0, 0); y0 = std::max(y0, 0); x1 = std::min(x1, ownW); y1 = std::min(y1, ownH);
+	for (int y = y0; y < y1; ++y)
+	{
+		const Uint8 *sp = px + (size_t)(y - dy) * pitch - dx;
+		Uint32 *op = &owners[(size_t)y * ownW];
+		for (int x = x0; x < x1; ++x)
+			if (sp[x])
+				op[x] = v;
+	}
+}
+}
+
+void battleBegin(SDL_Surface *map)
+{
+	ownSurf = map;
+	ownW = map ? map->w : 0;
+	ownH = map ? map->h : 0;
+	owners.assign((size_t)ownW * ownH, 0);
+	ownCounter = 0;
+}
+
+void battleMark8(const SDL_Surface *dst, const Uint8 *px, int w, int h, int pitch, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH)
+{
+	if (!dst || dst != ownSurf || !px || owners.empty())
+		return;
+	markOwner(px, w, h, pitch, dx, dy, half, clipX, clipY, clipW, clipH, 0);
+}
+
+const Uint32 *battleOwners(const SDL_Surface *s, int &w, int &h)
+{
+	if (!s || s != ownSurf || owners.empty())
+		return nullptr;
+	w = ownW; h = ownH;
+	return owners.data();
 }
 
 const SDL_Surface *proxyByPixels(const void *pixels)
@@ -1202,6 +1251,11 @@ void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int 
 	if (vw <= 0 || vh <= 0)
 		return;
 	c.clipX = (Sint16)vx; c.clipY = (Sint16)vy; c.clipW = (Sint16)vw; c.clipH = (Sint16)vh;
+	if (dst == ownSurf && !owners.empty())
+	{
+		c.battleId = ++ownCounter;
+		markOwner(e->expected.data(), e->w, e->h, e->w, dx, dy, half, vx, vy, vw, vh, c.battleId);
+	}
 	HiResLayer::recordAsset(dst, c, src);
 }
 

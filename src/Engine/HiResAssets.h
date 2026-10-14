@@ -76,6 +76,14 @@ namespace HiResAssets
 	/// clipped to (clipX, clipY, clipW, clipH) of dst (clipW <= 0: no extra clip).
 	void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int shade, bool half, int newBaseColor,
 		const Uint8 rcFrom[4], const Uint8 rcTo[4], int clipX = 0, int clipY = 0, int clipW = 0, int clipH = 0);
+	/// Battle draw ownership (per base pixel of the map surface: id of the last battle draw that wrote
+	/// an opaque pixel there, 0 = an 8-bit sprite / not hi-res). Started by Map::draw each frame.
+	void battleBegin(SDL_Surface *map);
+	/// An 8-bit (non hi-res) sprite was blitted into the map: its opaque pixels are no longer hi-res.
+	void battleMark8(const SDL_Surface *dst, const Uint8 *px, int w, int h, int pitch, int dx, int dy, bool half,
+		int clipX = 0, int clipY = 0, int clipW = 0, int clipH = 0);
+	/// Ownership buffer of surface s (w x h), nullptr = not tracked.
+	const Uint32 *battleOwners(const SDL_Surface *s, int &w, int &h);
 	/// Proxy surface owning this pixel buffer (SurfaceRaw blits), nullptr = none.
 	const SDL_Surface *proxyByPixels(const void *pixels);
 	/// Recolour mask of an asset rect at output size (nearest), nullptr = none.

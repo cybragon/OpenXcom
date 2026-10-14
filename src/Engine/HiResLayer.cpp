@@ -700,6 +700,10 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 		return (*under)[(size_t)(v - c.srcY) * c.srcW + (u - c.srcX)];
 	};
 	const SDL_Color *spal = src->format->palette ? src->format->palette->colors : nullptr;
+	int bownW = 0, bownH = 0;
+	const Uint32 *bown = (c.battle && c.battleId) ? HiResAssets::battleOwners(src, bownW, bownH) : nullptr;
+	if (bown && (bownW != src->w || bownH != src->h))
+		bown = nullptr;
 	SDL_LockSurface(src);
 	for (int yy = vy; yy < vy + vh; ++yy)
 	{
@@ -714,6 +718,8 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 			const int u = std::min(ew - 1, std::min(c.srcX + c.srcW - 1, c.srcX + (xx - c.x) * c.srcW / c.w));
 			if (u < 0)
 				continue;
+			if (bown && bown[(size_t)(yy - y) * bownW + (xx - x)] != c.battleId)
+				continue; // a later 8-bit sprite / other battle draw owns this map pixel
 			const Uint8 ev = c.battle ? battleExpected(c, ep[u]) : ep[u];
 			if (c.tint && ev && sp[xx])
 			{

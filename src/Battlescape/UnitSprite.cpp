@@ -155,6 +155,13 @@ void UnitSprite::blitItem(Part& item)
 	work.executeBlit(item.src, _dest,  _x + item.offX, _y + item.offY, _shade, _mask);
 
 	_dest->unlock();
+
+	if (HiResAssets::any())
+	{
+		const SDL_Surface *ps = const_cast<Surface*>(item.src)->getSurface();
+		HiResAssets::battleMark8(_dest->getSurface(), (const Uint8*)ps->pixels, ps->w, ps->h, ps->pitch, _x + item.offX, _y + item.offY, false,
+			_mask.beg_x, _mask.beg_y, _mask.end_x - _mask.beg_x, _mask.end_y - _mask.beg_y);
+	}
 }
 
 /**
@@ -176,11 +183,16 @@ void UnitSprite::blitBody(Part& body)
 
 	_dest->unlock();
 
-	if (HiResAssets::any() && _burn == 0)
+	if (HiResAssets::any())
 	{
 		// hi-res battle stage 1: a 32-bit unit sheet frame, shaded/recoloured at output resolution
 		const SDL_Surface *ps = const_cast<Surface*>(body.src)->getSurface();
-		if (HiResAssets::proxyByPixels(ps->pixels) == ps)
+		if (_burn != 0 || HiResAssets::proxyByPixels(ps->pixels) != ps)
+		{
+			HiResAssets::battleMark8(_dest->getSurface(), (const Uint8*)ps->pixels, ps->w, ps->h, ps->pitch, _x + body.offX, _y + body.offY, false,
+				_mask.beg_x, _mask.beg_y, _mask.end_x - _mask.beg_x, _mask.end_y - _mask.beg_y);
+		}
+		else
 		{
 			const Armor *armor = _unit->getArmor();
 			if (armor->getScript<ModScript::RecolorUnitSprite>() && !armor->getScript<ModScript::RecolorUnitSprite>().isDefaultCode())

@@ -103,8 +103,12 @@ namespace
 inline void hiResBattle(Surface *dst, SurfaceRaw<const Uint8> src, int x, int y, int shade, bool half = false, int newBaseColor = 0)
 {
 	if (HiResAssets::any() && src && dst)
+	{
 		if (const SDL_Surface *ps = HiResAssets::proxyByPixels(src.getBuffer()))
 			HiResAssets::onBattleDraw(ps, dst->getSurface(), x, y, shade, half, newBaseColor, nullptr, nullptr);
+		else
+			HiResAssets::battleMark8(dst->getSurface(), src.getBuffer(), src.getWidth(), src.getHeight(), src.getPitch(), x, y, half);
+	}
 }
 }
 
@@ -336,6 +340,8 @@ void Map::draw()
 		// the whole map is repainted below without Surface::clear(): drop the hi-res draw commands
 		// of the previous frame too (e.g. the hidden movement message blitted into the map)
 		HiResLayer::clearSurface(getSurface());
+		if (HiResAssets::any())
+			HiResAssets::battleBegin(getSurface());
 	}
 	ShaderDrawFunc(
 		[](Uint8& dest, Uint8 color)

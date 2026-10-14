@@ -2451,8 +2451,40 @@ struct GlMap
 	Uint64 use = 0;
 	std::vector<Uint32> scratch;
 	std::vector<Uint8> maskPx;
+	// scale-mask interpolation on the GPU (GLSL + MRT): A = colour + class (fboTex, clsTex),
+	// S = one class on its source grid, B = result (outTex)
+	bool smTried = false, smOk = false;
+	GLuint clsTex = 0, fboB = 0, outTex = 0, fboS = 0, sTex = 0;
+	int bW = 0, bH = 0, sW = 0, sH = 0;
+	GLuint progDraw = 0, progShrink = 0, progUp = 0;
 };
 GlMap G;
+
+typedef GLuint (APIENTRY *HR_CreateShader)(GLenum);
+typedef void (APIENTRY *HR_ShaderSource)(GLuint, GLsizei, const char *const*, const GLint*);
+typedef void (APIENTRY *HR_UInt)(GLuint);
+typedef void (APIENTRY *HR_GetIv)(GLuint, GLenum, GLint*);
+typedef void (APIENTRY *HR_GetLog)(GLuint, GLsizei, GLsizei*, char*);
+typedef GLuint (APIENTRY *HR_CreateProgram)();
+typedef void (APIENTRY *HR_Attach)(GLuint, GLuint);
+typedef GLint (APIENTRY *HR_UniLoc)(GLuint, const char*);
+typedef void (APIENTRY *HR_Uni1i)(GLint, GLint);
+typedef void (APIENTRY *HR_Uni1f)(GLint, GLfloat);
+typedef void (APIENTRY *HR_Uni2f)(GLint, GLfloat, GLfloat);
+typedef void (APIENTRY *HR_DrawBuffers)(GLsizei, const GLenum*);
+typedef void (APIENTRY *HR_ActiveTex)(GLenum);
+struct GlFn
+{
+	HR_CreateShader createShader = nullptr; HR_ShaderSource shaderSource = nullptr; HR_UInt compileShader = nullptr;
+	HR_GetIv getShaderiv = nullptr, getProgramiv = nullptr; HR_GetLog getShaderLog = nullptr, getProgramLog = nullptr;
+	HR_CreateProgram createProgram = nullptr; HR_Attach attachShader = nullptr; HR_UInt linkProgram = nullptr, useProgram = nullptr;
+	HR_UniLoc uniLoc = nullptr; HR_Uni1i uni1i = nullptr; HR_Uni1f uni1f = nullptr; HR_Uni2f uni2f = nullptr;
+	HR_DrawBuffers drawBuffers = nullptr; HR_ActiveTex activeTex = nullptr;
+} GF;
+#define HR_TEX0 0x84C0
+#ifndef HR_COLOR_ATTACHMENT1
+#define HR_COLOR_ATTACHMENT1 0x8CE1
+#endif
 
 void *glProc(const char *a, const char *b)
 {
@@ -2482,6 +2514,163 @@ void glMapReset()
 	G.fbo = G.fboTex = G.maskTex = 0;
 	G.fboW = G.fboH = G.maskW = G.maskH = 0;
 	G.tried = false; G.ok = false;
+	G.smTried = false; G.smOk = false;
+	G.clsTex = G.fboB = G.outTex = G.fboS = G.sTex = 0;
+	G.bW = G.bH = G.sW = G.sH = 0;
+	G.progDraw = G.progShrink = G.progUp = 0;
+}
+
+GLuint makeTex(int w, int h, const void *bgra);
+
+const char *const SM_VS =
+	"void main() { gl_Position = ftransform(); gl_TexCoord[0] = gl_MultiTexCoord0; gl_FrontColor = gl_Color; }\n";
+/// draw: premultiplied texel (shade = vertex colour) or flat colour; class id into the 2nd target
+const char *const SM_FS_DRAW =
+	"uniform sampler2D tex; uniform float useTex; uniform float cls;\n"
+	"void main() {\n"
+	"  vec4 c = useTex > 0.5 ? texture2D(tex, gl_TexCoord[0].xy) * vec4(gl_Color.rgb, 1.0) : gl_Color;\n"
+	"  if (c.a <= 0.0) discard;\n"
+	"  gl_FragData[0] = c; gl_FragData[1] = vec4(cls, 0.0, 0.0, 1.0);\n"
+	"}\n";
+/// shrink: one sample per source cell (a pixel of the cell's block still showing this class)
+const char *const SM_FS_SHRINK =
+	"uniform sampler2D colTex; uniform sampler2D clsTex; uniform vec2 outSize; uniform vec2 kps; uniform vec2 ph; uniform float cls;\n"
+	"vec4 pick(vec2 o) {\n"
+	"  if (o.x < 0.0 || o.y < 0.0 || o.x >= outSize.x || o.y >= outSize.y) return vec4(0.0);\n"
+	"  vec2 t = vec2((o.x + 0.5) / outSize.x, 1.0 - (o.y + 0.5) / outSize.y);\n"
+	"  if (abs(texture2D(clsTex, t).r - cls) > 0.5 / 255.0) return vec4(0.0);\n"
+	"  return vec4(texture2D(colTex, t).rgb, 1.0);\n"
+	"}\n"
+	"void main() {\n"
+	"  vec2 g = floor(gl_FragCoord.xy) - 1.0;\n"
+	"  vec2 oc = floor((g + 0.5 + ph) / kps);\n"
+	"  vec2 o0 = ceil((g + ph) / kps - 0.0001);\n"
+	"  vec2 o1 = ceil((g + 1.0 + ph) / kps - 0.0001) - 1.0;\n"
+	"  vec4 r = pick(oc);\n"
+	"  if (r.a == 0.0) r = pick(o0);\n"
+	"  if (r.a == 0.0) r = pick(o1);\n"
+	"  if (r.a == 0.0) r = pick(vec2(o0.x, o1.y));\n"
+	"  if (r.a == 0.0) r = pick(vec2(o1.x, o0.y));\n"
+	"  gl_FragColor = r;\n"
+	"}\n";
+/// upscale: alpha-weighted bilinear from the source grid, only on this class's pixels
+const char *const SM_FS_UP =
+	"uniform sampler2D sTex; uniform sampler2D clsTex; uniform sampler2D colTex; uniform vec2 outSize; uniform vec2 sSize; uniform vec2 kps; uniform vec2 ph; uniform float cls; uniform float debug;\n"
+	"vec4 sm(vec2 i) { i = clamp(i, vec2(0.0), sSize - 1.0); return texture2D(sTex, (i + 0.5) / sSize); }\n"
+	"void main() {\n"
+	"  vec2 o = vec2(floor(gl_FragCoord.x), outSize.y - 1.0 - floor(gl_FragCoord.y));\n"
+	"  vec2 t = vec2((o.x + 0.5) / outSize.x, 1.0 - (o.y + 0.5) / outSize.y);\n"
+	"  if (abs(texture2D(clsTex, t).r - cls) > 0.5 / 255.0) discard;\n"
+	"  if (debug > 0.5) {\n"
+	"    float k = floor(cls * 255.0 + 0.5) - 1.0; float m = mod(k, 6.0);\n"
+	"    vec3 tint = m < 0.5 ? vec3(1,0,0) : m < 1.5 ? vec3(0,1,0) : m < 2.5 ? vec3(0,0,1) : m < 3.5 ? vec3(1,1,0) : m < 4.5 ? vec3(0,1,1) : vec3(1,0,1);\n"
+	"    vec4 p = texture2D(colTex, t); gl_FragColor = vec4(mix(p.rgb, tint, 0.375), p.a); return;\n"
+	"  }\n"
+	"  vec2 c = (o + 0.5) * kps - ph - 0.5;\n"
+	"  vec2 i0 = floor(c); vec2 f = c - i0; i0 += 1.0;\n"
+	"  vec4 a = sm(i0), b = sm(i0 + vec2(1.0, 0.0)), d = sm(i0 + vec2(0.0, 1.0)), e = sm(i0 + vec2(1.0, 1.0));\n"
+	"  float wa = (1.0 - f.x) * (1.0 - f.y) * a.a, wb = f.x * (1.0 - f.y) * b.a, wd = (1.0 - f.x) * f.y * d.a, we = f.x * f.y * e.a;\n"
+	"  float w = wa + wb + wd + we;\n"
+	"  if (w <= 0.0) discard;\n"
+	"  gl_FragColor = vec4((a.rgb * wa + b.rgb * wb + d.rgb * wd + e.rgb * we) / w, texture2D(colTex, t).a);\n"
+	"}\n";
+
+GLuint smProgram(const char *fs)
+{
+	auto compile = [](GLenum type, const char *src) -> GLuint
+	{
+		GLuint sh = GF.createShader(type);
+		GF.shaderSource(sh, 1, &src, nullptr);
+		GF.compileShader(sh);
+		GLint ok = 0;
+		GF.getShaderiv(sh, 0x8B81 /* GL_COMPILE_STATUS */, &ok);
+		if (!ok)
+		{
+			char log[1024] = {0};
+			GF.getShaderLog(sh, sizeof(log) - 1, nullptr, log);
+			Log(LOG_WARNING) << "HiResLayer: GL scale-mask shader: " << log;
+			return 0;
+		}
+		return sh;
+	};
+	const GLuint v = compile(0x8B31 /* GL_VERTEX_SHADER */, SM_VS), f = compile(0x8B30 /* GL_FRAGMENT_SHADER */, fs);
+	if (!v || !f)
+		return 0;
+	const GLuint p = GF.createProgram();
+	GF.attachShader(p, v);
+	GF.attachShader(p, f);
+	GF.linkProgram(p);
+	GLint ok = 0;
+	GF.getProgramiv(p, 0x8B82 /* GL_LINK_STATUS */, &ok);
+	if (!ok)
+	{
+		char log[1024] = {0};
+		GF.getProgramLog(p, sizeof(log) - 1, nullptr, log);
+		Log(LOG_WARNING) << "HiResLayer: GL scale-mask program: " << log;
+		return 0;
+	}
+	return p;
+}
+
+/// GLSL + glDrawBuffers available and the three programs built (once per context)
+bool glScaleMaskInit()
+{
+	if (G.smTried)
+		return G.smOk;
+	G.smTried = true;
+	GF.createShader = (HR_CreateShader)glProc("glCreateShader", "glCreateShaderObjectARB");
+	GF.shaderSource = (HR_ShaderSource)glProc("glShaderSource", "glShaderSourceARB");
+	GF.compileShader = (HR_UInt)glProc("glCompileShader", "glCompileShaderARB");
+	GF.getShaderiv = (HR_GetIv)glProc("glGetShaderiv", "glGetShaderiv");
+	GF.getProgramiv = (HR_GetIv)glProc("glGetProgramiv", "glGetProgramiv");
+	GF.getShaderLog = (HR_GetLog)glProc("glGetShaderInfoLog", "glGetShaderInfoLog");
+	GF.getProgramLog = (HR_GetLog)glProc("glGetProgramInfoLog", "glGetProgramInfoLog");
+	GF.createProgram = (HR_CreateProgram)glProc("glCreateProgram", "glCreateProgramObjectARB");
+	GF.attachShader = (HR_Attach)glProc("glAttachShader", "glAttachObjectARB");
+	GF.linkProgram = (HR_UInt)glProc("glLinkProgram", "glLinkProgramARB");
+	GF.useProgram = (HR_UInt)glProc("glUseProgram", "glUseProgramObjectARB");
+	GF.uniLoc = (HR_UniLoc)glProc("glGetUniformLocation", "glGetUniformLocationARB");
+	GF.uni1i = (HR_Uni1i)glProc("glUniform1i", "glUniform1iARB");
+	GF.uni1f = (HR_Uni1f)glProc("glUniform1f", "glUniform1fARB");
+	GF.uni2f = (HR_Uni2f)glProc("glUniform2f", "glUniform2fARB");
+	GF.drawBuffers = (HR_DrawBuffers)glProc("glDrawBuffers", "glDrawBuffersARB");
+	GF.activeTex = (HR_ActiveTex)glProc("glActiveTexture", "glActiveTextureARB");
+	const bool fn = GF.createShader && GF.shaderSource && GF.compileShader && GF.getShaderiv && GF.getProgramiv && GF.getShaderLog
+		&& GF.getProgramLog && GF.createProgram && GF.attachShader && GF.linkProgram && GF.useProgram && GF.uniLoc && GF.uni1i
+		&& GF.uni1f && GF.uni2f && GF.drawBuffers && GF.activeTex;
+	if (fn)
+	{
+		G.progDraw = smProgram(SM_FS_DRAW);
+		G.progShrink = smProgram(SM_FS_SHRINK);
+		G.progUp = smProgram(SM_FS_UP);
+	}
+	GLint maxDb = 0;
+	if (fn) glGetIntegerv(0x8824 /* GL_MAX_DRAW_BUFFERS */, &maxDb);
+	G.smOk = fn && G.progDraw && G.progShrink && G.progUp && maxDb >= 2;
+	if (fn) GF.useProgram(0);
+	Log(LOG_INFO) << "HiResLayer: GL scale-mask " << (G.smOk ? "available (GLSL + 2 draw buffers)" : "unavailable: CPU scale-mask");
+	return G.smOk;
+}
+
+void quadF(double x0, double y0, double x1, double y1)
+{
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0); glVertex2d(x0, y0);
+	glTexCoord2f(1, 0); glVertex2d(x1, y0);
+	glTexCoord2f(1, 1); glVertex2d(x1, y1);
+	glTexCoord2f(0, 1); glVertex2d(x0, y1);
+	glEnd();
+}
+
+/// texture 'tex' (size w x h) attached to framebuffer 'fb' (created when 0); false = incomplete
+bool smTarget(GLuint &fb, GLuint &tex, int w, int h)
+{
+	if (!fb) G.genFB(1, &fb);
+	if (tex) glDeleteTextures(1, &tex);
+	tex = makeTex(w, h, nullptr);
+	G.bindFB(GL_FRAMEBUFFER_EXT, fb);
+	G.fbTex(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, tex, 0);
+	return G.fbStatus(GL_FRAMEBUFFER_EXT) == GL_FRAMEBUFFER_COMPLETE_EXT;
 }
 
 GLuint makeTex(int w, int h, const void *bgra)
@@ -2569,6 +2758,30 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 		G.fboW = dstW; G.fboH = dstH;
 		G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
 		G.fbTex(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, G.fboTex, 0);
+		if (G.smOk)
+		{
+			// class target (scale mask) + result target B
+			if (G.clsTex) glDeleteTextures(1, &G.clsTex);
+			G.clsTex = makeTex(dstW, dstH, nullptr);
+			G.fbTex(GL_FRAMEBUFFER_EXT, HR_COLOR_ATTACHMENT1, GL_TEXTURE_2D, G.clsTex, 0);
+			const bool okA = G.fbStatus(GL_FRAMEBUFFER_EXT) == GL_FRAMEBUFFER_COMPLETE_EXT;
+			const bool okB = smTarget(G.fboB, G.outTex, dstW, dstH);
+			G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
+			if (!okA || !okB)
+			{
+				Log(LOG_WARNING) << "HiResLayer: GL scale-mask framebuffers incomplete: CPU scale-mask";
+				G.smOk = false;
+				G.fbTex(GL_FRAMEBUFFER_EXT, HR_COLOR_ATTACHMENT1, GL_TEXTURE_2D, 0, 0);
+				G.fboW = 0; // rebuild next frame
+				G.bindFB(GL_FRAMEBUFFER_EXT, 0);
+				glMatrixMode(GL_TEXTURE); glPopMatrix();
+				glMatrixMode(GL_MODELVIEW); glPopMatrix();
+				glMatrixMode(GL_PROJECTION); glPopMatrix();
+				glPopAttrib();
+				glViewport(vp[0], vp[1], vp[2], vp[3]);
+				return false;
+			}
+		}
 		if (G.fbStatus(GL_FRAMEBUFFER_EXT) != GL_FRAMEBUFFER_COMPLETE_EXT)
 		{
 			Log(LOG_WARNING) << "HiResLayer: GL map pass framebuffer incomplete: CPU compositing";
@@ -2586,6 +2799,34 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 	glViewport(0, 0, dstW, dstH);
 	glDisable(GL_SCISSOR_TEST);
 	glClearColor(0, 0, 0, 0);
+	// scale mask on the GPU: colour + class targets, everything nearest on its source grid
+	const bool interp = HiResResample::mode() != HiResResample::NEAREST;
+	if (interp && (!G.smOk || !G.clsTex))
+	{
+		G.bindFB(GL_FRAMEBUFFER_EXT, 0);
+		glMatrixMode(GL_TEXTURE); glPopMatrix();
+		glMatrixMode(GL_MODELVIEW); glPopMatrix();
+		glMatrixMode(GL_PROJECTION); glPopMatrix();
+		glPopAttrib();
+		glViewport(vp[0], vp[1], vp[2], vp[3]);
+		return false;
+	}
+	const GLenum bufs2[2] = { GL_COLOR_ATTACHMENT0_EXT, HR_COLOR_ATTACHMENT1 };
+	if (interp)
+	{
+		GF.drawBuffers(2, bufs2);
+		GF.useProgram(G.progDraw);
+		GF.uni1i(GF.uniLoc(G.progDraw, "tex"), 0);
+		SM.classes.clear();
+		scaleClass(1.0, 1.0, 0.0, 0.0);
+	}
+	const GLint locUseTex = interp ? GF.uniLoc(G.progDraw, "useTex") : -1, locCls = interp ? GF.uniLoc(G.progDraw, "cls") : -1;
+	auto setCls = [&](bool useTex, int k)
+	{
+		if (!interp) return;
+		GF.uni1f(locUseTex, useTex ? 1.0f : 0.0f);
+		GF.uni1f(locCls, k / 255.0f);
+	};
 	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -2607,6 +2848,7 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 		if (c.clearRect)
 		{
 			glDisable(GL_TEXTURE_2D);
+			setCls(false, 1);
 			glColor4ub(c.fill.r, c.fill.g, c.fill.b, 255);
 			quad(x0, y0, x1, y1);
 			continue;
@@ -2617,6 +2859,73 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 			continue;
 		GLuint tex = 0;
 		float f = 1.0f;
+		if (interp)
+		{
+			// nearest on the source grid: quad at exact (fractional) output coordinates, class id
+			int k = 0, tw = 0, th = 0;
+			if (c.spriteKey)
+			{
+				auto si = sprites.find(c.spriteKey);
+				if (si == sprites.end())
+					continue;
+				tw = si->second.w; th = si->second.h;
+				size_t key = 0x5350384241ull;
+				auto mix = [&](size_t v) { key = (key ^ v) * 1099511628211ull; };
+				mix(c.spriteKey); mix((size_t)tw); mix((size_t)th);
+				const Sprite8 &sp = si->second;
+				tex = cachedTex(key, tw, th, [&]() { return sp.px.data(); });
+				k = 1;
+			}
+			else if (c.assetId)
+			{
+				double fx = 0, fy = 0;
+				if (HiResAssets::nativeScale(c.assetId, fx, fy))
+				{
+					const int nW = std::max(1, (int)std::lround(c.srcW * fx)), nH = std::max(1, (int)std::lround(c.srcH * fy));
+					const double kx = nW / (double)c.w, ky = nH / (double)c.h;
+					if (sx / kx > 1.0 + 1e-6 && sy / ky > 1.0 + 1e-6)
+						k = scaleClass(kx, ky, fracOf(c.x * kx), fracOf(c.y * ky));
+					if (k)
+					{
+						const bool variant = c.nvColor || c.rcFrom[0] || c.rcFrom[1] || c.rcFrom[2] || c.rcFrom[3];
+						size_t key = 0x4E41544956ull;
+						auto mix = [&](size_t v) { key = (key ^ v) * 1099511628211ull; };
+						mix(c.assetId); mix(c.palKey); mix((size_t)c.srcX); mix((size_t)c.srcY); mix((size_t)c.srcW); mix((size_t)c.srcH);
+						mix((size_t)nW); mix((size_t)nH);
+						if (variant)
+						{
+							mix(c.nvColor);
+							for (int q = 0; q < 4; ++q) { mix(c.rcFrom[q]); mix(c.rcTo[q]); }
+						}
+						tex = cachedTex(key, nW, nH, [&]() -> const Uint32*
+						{
+							const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH);
+							if (!px || !variant)
+								return px;
+							const Uint8 *bm = HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH);
+							G.scratch.resize((size_t)nW * nH);
+							for (size_t q = 0; q < G.scratch.size(); ++q)
+								G.scratch[q] = battlePixel(c, px[q], bm ? bm[q] : 0, bpal, 256);
+							return G.scratch.data();
+						});
+						f = HiResAssets::shadeFactor(c.shade) / 256.0f;
+					}
+				}
+			}
+			if (k)
+			{
+				if (!tex)
+					continue;
+				(void)tw; (void)th;
+				glEnable(GL_TEXTURE_2D);
+				glBindTexture(GL_TEXTURE_2D, tex);
+				setCls(true, k);
+				glColor4f(f, f, f, 1.0f);
+				quadF(c.x * sx, c.y * sy, (c.x + c.w) * sx, (c.y + c.h) * sy);
+				continue;
+			}
+			setCls(true, 0); // 1x / downscaled hi-res picture: final (drawn as before)
+		}
 		if (c.spriteKey)
 		{
 			size_t k = 0x5350524954ull;
@@ -2657,6 +2966,80 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 		quad(X0, Y0, X0 + oW, Y0 + oH);
 	}
 	glDisable(GL_SCISSOR_TEST);
+	GLuint presentTex = G.fboTex;
+	if (interp)
+	{
+		// B = A's colour; then per class: shrink A to its source grid (S), interpolate up into B
+		GF.drawBuffers(1, bufs2);
+		GF.useProgram(0);
+		glDisable(GL_BLEND);
+		auto ortho = [](int w, int h)
+		{
+			glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, w, h, 0, -1, 1);
+			glMatrixMode(GL_MODELVIEW);
+		};
+		G.bindFB(GL_FRAMEBUFFER_EXT, G.fboB);
+		glViewport(0, 0, dstW, dstH);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, G.fboTex);
+		glColor4f(1, 1, 1, 1);
+		quad(0, 0, dstW, dstH, 0, 1, 1, 0);
+		const bool debug = Options::oxceHiResDebugScaleMask;
+		for (size_t ci = 0; ci < SM.classes.size(); ++ci)
+		{
+			const ScaleClass &sc = SM.classes[ci];
+			const float cls = (ci + 1) / 255.0f;
+			const float kpx = (float)(sc.kx / sx), kpy = (float)(sc.ky / sy);
+			const int W = (int)std::ceil(S.baseW * sc.kx) + 3, H = (int)std::ceil(S.baseH * sc.ky) + 3;
+			if (!debug)
+			{
+				if (G.sW != W || G.sH != H || !G.sTex)
+				{
+					if (!smTarget(G.fboS, G.sTex, W, H))
+						continue;
+					G.sW = W; G.sH = H;
+				}
+				G.bindFB(GL_FRAMEBUFFER_EXT, G.fboS);
+				glViewport(0, 0, W, H);
+				ortho(W, H);
+				GF.useProgram(G.progShrink);
+				GF.activeTex(HR_TEX0 + 1); glBindTexture(GL_TEXTURE_2D, G.clsTex);
+				GF.activeTex(HR_TEX0); glBindTexture(GL_TEXTURE_2D, G.fboTex);
+				GF.uni1i(GF.uniLoc(G.progShrink, "colTex"), 0);
+				GF.uni1i(GF.uniLoc(G.progShrink, "clsTex"), 1);
+				GF.uni2f(GF.uniLoc(G.progShrink, "outSize"), (float)dstW, (float)dstH);
+				GF.uni2f(GF.uniLoc(G.progShrink, "kps"), kpx, kpy);
+				GF.uni2f(GF.uniLoc(G.progShrink, "ph"), (float)sc.phx, (float)sc.phy);
+				GF.uni1f(GF.uniLoc(G.progShrink, "cls"), cls);
+				quad(0, 0, W, H);
+			}
+			G.bindFB(GL_FRAMEBUFFER_EXT, G.fboB);
+			glViewport(0, 0, dstW, dstH);
+			ortho(dstW, dstH);
+			GF.useProgram(G.progUp);
+			GF.activeTex(HR_TEX0 + 2); glBindTexture(GL_TEXTURE_2D, G.fboTex);
+			GF.activeTex(HR_TEX0 + 1); glBindTexture(GL_TEXTURE_2D, G.clsTex);
+			GF.activeTex(HR_TEX0); glBindTexture(GL_TEXTURE_2D, G.sTex);
+			GF.uni1i(GF.uniLoc(G.progUp, "sTex"), 0);
+			GF.uni1i(GF.uniLoc(G.progUp, "clsTex"), 1);
+			GF.uni1i(GF.uniLoc(G.progUp, "colTex"), 2);
+			GF.uni2f(GF.uniLoc(G.progUp, "outSize"), (float)dstW, (float)dstH);
+			GF.uni2f(GF.uniLoc(G.progUp, "sSize"), (float)std::max(1, G.sW), (float)std::max(1, G.sH));
+			GF.uni2f(GF.uniLoc(G.progUp, "kps"), kpx, kpy);
+			GF.uni2f(GF.uniLoc(G.progUp, "ph"), (float)sc.phx, (float)sc.phy);
+			GF.uni1f(GF.uniLoc(G.progUp, "cls"), cls);
+			GF.uni1f(GF.uniLoc(G.progUp, "debug"), debug ? 1.0f : 0.0f);
+			quad(0, 0, dstW, dstH);
+		}
+		GF.useProgram(0);
+		GF.activeTex(HR_TEX0);
+		presentTex = G.outTex;
+		// B is the target of the visibility cut below
+		G.bindFB(GL_FRAMEBUFFER_EXT, G.fboB);
+		glViewport(0, 0, dstW, dstH);
+		ortho(dstW, dstH);
+		glEnable(GL_BLEND);
+	}
 	// visibility: base pixels covered by later screen blits (panels, windows over the map) are cut out
 	if (G.maskW != S.baseW || G.maskH != S.baseH || !G.maskTex)
 	{
@@ -2695,7 +3078,7 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 	// FBO over the screen (OpenGL::refresh's ortho: (0,0) bottom-left of the window)
 	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, G.fboTex);
+	glBindTexture(GL_TEXTURE_2D, presentTex);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glColor4f(1, 1, 1, 1);
@@ -2729,10 +3112,9 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 	bool resized = (S.bufW != dstW || S.bufH != dstH);
 	const double tc0 = prof.on ? profNow() : 0;
 	// layered battlescape on the GPU (option oxceHiResBattleGL), CPU compositing otherwise
-	// the scale-mask interpolation runs on the CPU composition: the GL map pass (nearest quads, no mask)
-	// is used only when no interpolation is selected; with the OpenGL output the interpolation is always
-	// smooth, so the map is composed on the CPU and uploaded
-	const bool wantGL = Options::oxceHiResBattleGL && layerSurf && HiResResample::mode() == HiResResample::NEAREST && glMapInit();
+	// with interpolation the GL map pass runs the scale mask on the GPU (GLSL + 2 draw buffers);
+	// without those features the map is composed (and scale-masked) on the CPU and uploaded
+	const bool wantGL = Options::oxceHiResBattleGL && layerSurf && glMapInit() && (HiResResample::mode() == HiResResample::NEAREST || glScaleMaskInit());
 	glMapActive = false;
 	double tg = 0;
 	if (wantGL)

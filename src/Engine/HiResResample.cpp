@@ -153,8 +153,6 @@ int mode()
 	{
 		std::string f = Options::useOpenGLShader;
 		std::transform(f.begin(), f.end(), f.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-		if (f.find("raw") != std::string::npos)
-			return NEAREST;
 		for (const char *k : { "xbr", "scale", "hq", "sabr", "pixel", "nedi", "super-xbr", "omniscale" })
 			if (f.find(k) != std::string::npos)
 				return PIXEL;
@@ -162,7 +160,10 @@ int mode()
 	}
 	if (Options::useScaleFilter || Options::useHQXFilter || Options::useXBRZFilter)
 		return PIXEL;
-	return NEAREST; // no filter
+	// no filter / Raw shader: Smooth. Sharp (nearest) magnifies a picture smaller than the output in
+	// blocks, outline included (the stair-steps reported on hi-res paperdolls at 1280x800); it stays
+	// available as an explicit choice (oxceHiResUpscale 1)
+	return SMOOTH;
 }
 
 Uint32 premultiply(Uint32 p)

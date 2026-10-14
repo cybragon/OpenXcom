@@ -74,8 +74,8 @@ Options > Video, hi-res dropdown: **Hi-res off (original)** / **Sharp** / **Smoo
 - The `width`/`height` in `extraSprites` is the logical size; a bigger file is drawn hi-res in that box.
   Multi-frame sheets (`subX`/`subY`) work the same way.
 - Images larger than their box are area-averaged down. Smaller ones are enlarged with the chosen style:
-  Sharp (nearest), Smooth, Pixel-art (xBRZ). **Auto** follows the screen filter: none/Raw shader →
-  Sharp, Scale/HQx/xBRZ and pixel-art shaders → Pixel-art, other OpenGL shaders → Smooth.
+  Sharp (nearest), Smooth, Pixel-art (xBRZ). **Auto** follows the screen filter: Scale/HQx/xBRZ and
+  pixel-art shaders → Pixel-art, anything else (none, Raw, other OpenGL shaders) → Smooth.
 - Switching hi-res on/off reloads the mods (from the main menu) or needs a restart (in a game).
   Changing only the upscaling style applies at once.
 - Other battlescape resources (map, units, terrain, hand objects, cursor) stay 8-bit; 32-bit files

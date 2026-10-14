@@ -732,42 +732,6 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 	}
 	if (drawn && c.tint && !c.layered)
 		applyTint(c, &mask, x0, y0, x1, y1, sx, sy);
-	if (c.shadow)
-	{
-		// unit shadow: its own step right after the floor tile, independent of the floor's delivery mask.
-		// Darkens what is on screen now (this floor and earlier draws) in a soft ellipse at the tile centre
-		// (base 16, 32 of the 32x40 sprite); pixels covered by later draws (the unit, walls) are skipped
-		// by the stamp test, and the unit drawn after this lands on top.
-		const double cxb = c.x + c.w * 0.5, cyb = c.y + c.h * 0.8, rx = 11.0, ry = 5.5;
-		const int sx0 = std::max(0, (int)std::floor((cxb - rx) * sx)), sx1 = std::min(dstW, (int)std::ceil((cxb + rx) * sx));
-		const int sy0 = std::max(0, (int)std::floor((cyb - ry) * sy)), sy1 = std::min(dstH, (int)std::ceil((cyb + ry) * sy));
-		bool sh = false;
-		for (int y = sy0; y < sy1; ++y)
-		{
-			const int by = std::min(S.baseH - 1, (int)(y * isy));
-			if (by < c.clipY || by >= c.clipY + c.clipH)
-				continue;
-			Uint32 *dst = &S.rgba[y * S.bufW];
-			const double ey = ((y + 0.5) * isy - cyb) / ry;
-			for (int x = sx0; x < sx1; ++x)
-			{
-				const int bx = std::min(S.baseW - 1, (int)(x * isx));
-				if (bx < c.clipX || bx >= c.clipX + c.clipW || S.stamps[by * S.baseW + bx] > c.stamp)
-					continue;
-				const double ex = ((x + 0.5) * isx - cxb) / rx;
-				const double d = ex * ex + ey * ey;
-				if (d >= 1.0)
-					continue;
-				const double f = d < 0.5 ? 1.0 : (1.0 - d) * 2.0; // flat core, soft rim
-				const int k = 256 - (int)(c.shadow * 2.56 * f);
-				Uint32 &q = dst[x];
-				q = (q & 0xFF000000u) | ((((q >> 16) & 0xFF) * k >> 8) << 16) | ((((q >> 8) & 0xFF) * k >> 8) << 8) | ((q & 0xFF) * k >> 8);
-				sh = true;
-			}
-		}
-		if (sh)
-			unionRect(dirty, sx0, sy0, sx1 - sx0, sy1 - sy0);
-	}
 	if (drawn)
 		unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }
@@ -1824,7 +1788,9 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 
 bool HiResLayer::layered()
 {
-	return _recording && Options::oxceHiResBattleLayered;
+	// hi-res images off: the battlescape is the stock 8-bit blit (+ stock screen filter); the layer
+	// only carries text/UI then
+	return _recording && Options::oxceHiResBattleLayered && Options::oxceHiResAssets && HiResAssets::enabled();
 }
 
 void HiResLayer::layerBegin(SDL_Surface *map, Uint8 bg)
@@ -2137,7 +2103,7 @@ struct GlMap
 	HR_BindFB bindFB = nullptr;
 	HR_FBTex fbTex = nullptr;
 	HR_FBStatus fbStatus = nullptr;
-	GLuint fbo = 0, fboTex = 0, maskTex = 0, shadowTex = 0;
+	GLuint fbo = 0, fboTex = 0, maskTex = 0;
 	int fboW = 0, fboH = 0, maskW = 0, maskH = 0;
 	struct Tex { GLuint id = 0; Uint64 used = 0; size_t bytes = 0; };
 	std::unordered_map<size_t, Tex> texs;
@@ -2173,7 +2139,7 @@ void glMapReset()
 {
 	// context lost: every GL name is gone
 	G.texs.clear(); G.texBytes = 0;
-	G.fbo = G.fboTex = G.maskTex = G.shadowTex = 0;
+	G.fbo = G.fboTex = G.maskTex = 0;
 	G.fboW = G.fboH = G.maskW = G.maskH = 0;
 	G.tried = false; G.ok = false;
 }
@@ -2349,29 +2315,6 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 		glBindTexture(GL_TEXTURE_2D, tex);
 		glColor4f(f, f, f, 1.0f);
 		quad(X0, Y0, X0 + oW, Y0 + oH);
-		if (c.shadow)
-		{
-			// unit shadow right after its floor tile: black, alpha = soft ellipse x opacity
-			if (!G.shadowTex)
-			{
-				const int W = 64, H = 32;
-				std::vector<Uint32> e((size_t)W * H);
-				for (int y = 0; y < H; ++y)
-					for (int x = 0; x < W; ++x)
-					{
-						const double ex = (x + 0.5) / W * 2 - 1, ey = (y + 0.5) / H * 2 - 1, d = ex * ex + ey * ey;
-						const double a = d >= 1 ? 0 : (d < 0.5 ? 1.0 : (1.0 - d) * 2.0);
-						e[(size_t)y * W + x] = (Uint32)std::lround(a * 255) << 24;
-					}
-				G.shadowTex = makeTex(W, H, e.data());
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			}
-			const double cxb = c.x + c.w * 0.5, cyb = c.y + c.h * 0.8;
-			glBindTexture(GL_TEXTURE_2D, G.shadowTex);
-			glColor4f(1.0f, 1.0f, 1.0f, c.shadow / 100.0f);
-			quad((int)std::lround((cxb - 11.0) * sx), (int)std::lround((cyb - 5.5) * sy), (int)std::lround((cxb + 11.0) * sx), (int)std::lround((cyb + 5.5) * sy));
-		}
 	}
 	glDisable(GL_SCISSOR_TEST);
 	// visibility: base pixels covered by later screen blits (panels, windows over the map) are cut out

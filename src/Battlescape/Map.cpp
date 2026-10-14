@@ -966,13 +966,6 @@ void Map::drawTerrain(Surface *surface)
 
 					// Draw floor
 					tmpSurface = tile->getSprite(O_FLOOR);
-					if (tmpSurface && HiResAssets::any() && Options::oxceHiResUnitShadow > 0)
-					{
-						// hi-res battle: soft shadow of a standing unit on this floor (the original draws none)
-						const BattleUnit *su = tile->getUnit();
-						if (su && !su->isOut() && (su->getVisible() || su->getFaction() == FACTION_PLAYER) && su->getPosition().z == itZ && !su->isFloating())
-							HiResAssets::setNextShadow(Options::oxceHiResUnitShadow);
-					}
 					if (tmpSurface)
 					{
 						if (tile->getObstacle(O_FLOOR))

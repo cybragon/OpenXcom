@@ -136,7 +136,6 @@ OPT int oxceHiResUpscale;
 // hi-res text settings (options.cfg)
 OPT int oxceHiResFontSize, oxceHiResTextOutlineScale, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
 OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap, oxceHiResDigitFont, oxceHiResShadeCurve;
-OPT int oxceHiResUnitShadow;
 OPT bool oxceHiResBattleLayered;
 OPT bool oxceHiResBattleGL;
 OPT bool oxceRecommendedOptionsWereSet;

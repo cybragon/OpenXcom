@@ -91,7 +91,6 @@ struct HiResCmd
 	Uint8 clearRect = 0;             ///< layered map start: fill the clip rect with 'fill' (opaque) before the map's draws
 	Uint8 nearest = 0;               ///< sprite drawn magnified by nearest neighbour (8bpp overlay of the map)
 	Uint32 spriteKey = 0;            ///< 8bpp sprite (as drawn, base px ARGB) kept by HiResLayer::storeSprite, drawn magnified
-	Uint8 shadow = 0;                ///< unit shadow opacity % drawn on this floor tile (soft ellipse), 0 = none
 	Uint32 battleId = 0;             ///< draw id in the map ownership buffer (HiResAssets::battleOwners), 0 = untracked
 	Uint8 shade = 0;                 ///< tile shade 0..16 (brightness multiply at draw time)
 	Uint8 nvColor = 0;               ///< night vision / marker base colour + 1 (ColorReplace), 0 = none

@@ -86,6 +86,10 @@ struct HiResCmd
 	Uint32 underId = 0;              ///< pixels under the transparent proxy pixels at record time (silhouette edge), 0 = none
 	// --- battlescape (stage battle-1): the proxy was drawn shaded/recoloured like the 8bpp map
 	Uint8 battle = 0;                ///< 1 = battle draw: the expected pixel is the transformed proxy pixel
+	Uint8 layered = 0;               ///< battle draw composited by draw order at output resolution (no per-pixel 8bpp match)
+	Uint8 clearRect = 0;             ///< layered map start: fill the clip rect with 'fill' (opaque) before the map's draws
+	Uint8 nearest = 0;               ///< sprite drawn magnified by nearest neighbour (8bpp overlay of the map)
+	Uint32 spriteKey = 0;            ///< 8bpp sprite (as drawn, base px ARGB) kept by HiResLayer::storeSprite, drawn magnified
 	Uint8 shadow = 0;                ///< unit shadow opacity % drawn on this floor tile (soft ellipse), 0 = none
 	Uint32 battleId = 0;             ///< draw id in the map ownership buffer (HiResAssets::battleOwners), 0 = untracked
 	Uint8 shade = 0;                 ///< tile shade 0..16 (brightness multiply at draw time)
@@ -179,6 +183,17 @@ public:
 	/// valid until replaced or dropped) and their size.
 	static Uint32 newImageId();
 	static void setImage(Uint32 id, const Uint32 *argb, int w, int h);
+	// --- layered battlescape (all map draws at output resolution, in draw order)
+	/// Map::draw start: 'map' is repainted; bg = its fill colour. Records the clear command.
+	static void layerBegin(SDL_Surface *map, Uint8 bg);
+	/// A recorded map draw wrote these pixels (opaque src pixels, after the blit): they are explained by
+	/// a command; any other map pixel that changes later comes from an unrecorded 8bpp draw (overlay).
+	static void layerMark(SDL_Surface *dst, const Uint8 *src, int w, int h, int pitch, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH);
+	/// An 8bpp sprite was blitted into the map (after the blit): recorded as a magnified sprite command
+	/// built from the map pixels it produced (shade/recolour/script included).
+	static void layerSprite8(SDL_Surface *dst, const Uint8 *src, int w, int h, int pitch, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH);
+	/// Layered battlescape active (option on, recording)?
+	static bool layered();
 	static void dropImage(Uint32 id);
 	/// Output px per screen base px of the last composed frame (false before the first frame).
 	static bool outputScale(double &sx, double &sy);

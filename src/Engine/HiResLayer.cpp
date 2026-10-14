@@ -131,6 +131,75 @@ struct LayerState
 
 LayerState S;
 
+/// layered battlescape: 8bpp sprites (base px straight ARGB) and their output-size renders
+struct Sprite8 { int w = 0, h = 0; std::vector<Uint32> px; };
+std::unordered_map<Uint32, Sprite8> sprites;
+std::unordered_map<size_t, Uint32> spriteByHash;
+Uint32 spriteCounter = 0;
+struct SpriteRender { std::vector<Uint32> px; Uint64 used = 0; };
+std::unordered_map<size_t, SpriteRender> spriteRenders;
+size_t spriteRenderBytes = 0;
+Uint64 spriteUse = 0;
+SDL_Surface *layerSurf = nullptr;     ///< the map surface of the layered frame
+std::vector<Uint16> layerVal;         ///< per map pixel: 1 + value written by a recorded draw, 0 = none
+Uint8 layerBg = 0;
+
+Uint32 storeSprite(std::vector<Uint32> &&px, int w, int h)
+{
+	size_t hsh = 1469598103934665603ull;
+	auto mix = [&](size_t v) { hsh = (hsh ^ v) * 1099511628211ull; };
+	mix((size_t)w); mix((size_t)h);
+	for (Uint32 v : px) mix(v);
+	auto it = spriteByHash.find(hsh);
+	if (it != spriteByHash.end())
+	{
+		auto si = sprites.find(it->second);
+		if (si != sprites.end() && si->second.w == w && si->second.h == h && si->second.px == px)
+			return it->second;
+	}
+	if (++spriteCounter == 0)
+		++spriteCounter;
+	Sprite8 &sp = sprites[spriteCounter];
+	sp.w = w; sp.h = h; sp.px = std::move(px);
+	spriteByHash[hsh] = spriteCounter;
+	return spriteCounter;
+}
+
+const Uint32 *spriteRendered(Uint32 key, int outW, int outH, bool nearest)
+{
+	auto si = sprites.find(key);
+	if (si == sprites.end() || outW <= 0 || outH <= 0)
+		return nullptr;
+	const int mode = nearest ? HiResResample::NEAREST : HiResResample::mode();
+	size_t rk = 1469598103934665603ull;
+	auto mix = [&](size_t v) { rk = (rk ^ v) * 1099511628211ull; };
+	mix(key); mix((size_t)outW); mix((size_t)outH); mix((size_t)mode);
+	auto ri = spriteRenders.find(rk);
+	if (ri != spriteRenders.end())
+	{
+		ri->second.used = ++spriteUse;
+		return ri->second.px.data();
+	}
+	if (spriteRenderBytes > ((size_t)192 << 20))
+	{
+		// bounded: drop the least recently used half
+		std::vector<std::pair<Uint64, size_t>> order;
+		for (auto &r : spriteRenders) order.emplace_back(r.second.used, r.first);
+		std::sort(order.begin(), order.end());
+		for (size_t i = 0; i < order.size() / 2; ++i)
+		{
+			auto e = spriteRenders.find(order[i].second);
+			spriteRenderBytes -= e->second.px.size() * 4;
+			spriteRenders.erase(e);
+		}
+	}
+	SpriteRender &r = spriteRenders[rk];
+	HiResResample::resample(si->second.px.data(), si->second.w, si->second.h, 0, 0, si->second.w, si->second.h, outW, outH, mode, r.px);
+	r.used = ++spriteUse;
+	spriteRenderBytes += r.px.size() * 4;
+	return r.px.data();
+}
+
 /// The layer is also needed without hi-res text: in "x1, UI optimized" (software path) the UI
 /// panels magnified with HQX/xBRZ are true-colour pictures drawn by this layer (image commands).
 /// Text stays bitmap then (canRenderGlyph/textConfigured are false).
@@ -585,12 +654,16 @@ inline Uint32 battlePixel(const HiResCmd &c, Uint32 p, Uint8 m, const SDL_Color 
 /// only on the base pixels whose proxy pixels reached the screen unchanged (mask) and not hidden later.
 void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
 {
-	if (!c.maskIdx || c.maskIdx > S.masks.size() || c.w <= 0 || c.h <= 0)
+	static const std::vector<Uint8> noMask;
+	static const std::vector<Uint32> noBack;
+	if (!c.layered && (!c.maskIdx || c.maskIdx > S.masks.size()))
 		return;
-	const std::vector<Uint8> &mask = S.masks[c.maskIdx - 1];
-	if (mask.size() != (size_t)c.clipW * c.clipH)
+	if (c.w <= 0 || c.h <= 0)
 		return;
-	const std::vector<Uint32> &back = S.backs[c.maskIdx - 1];
+	const std::vector<Uint8> &mask = c.layered ? noMask : S.masks[c.maskIdx - 1];
+	if (!c.layered && mask.size() != (size_t)c.clipW * c.clipH)
+		return;
+	const std::vector<Uint32> &back = c.layered ? noBack : S.backs[c.maskIdx - 1];
 	const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
 	const int X1 = (int)std::lround((c.x + c.w) * sx), Y1 = (int)std::lround((c.y + c.h) * sy);
 	const int outW = X1 - X0, outH = Y1 - Y0;
@@ -616,18 +689,18 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 		if (my < 0 || my >= c.clipH)
 			continue;
 		const Uint32 *stampRow = &S.stamps[by * S.baseW];
-		const Uint8 *maskRow = &mask[(size_t)my * c.clipW];
+		const Uint8 *maskRow = c.layered ? nullptr : &mask[(size_t)my * c.clipW];
 		const Uint32 *src = px + (size_t)(y - Y0) * outW - X0;
 		Uint32 *dst = &S.rgba[y * S.bufW];
 		for (int x = x0; x < x1; ++x)
 		{
 			const int bx = std::min(S.baseW - 1, (int)(x * isx));
 			const int mx = bx - c.clipX;
-			if (mx < 0 || mx >= c.clipW || !maskRow[mx] || stampRow[bx] > c.stamp)
+			if (mx < 0 || mx >= c.clipW || (maskRow && !maskRow[mx]) || stampRow[bx] > c.stamp)
 				continue;
 			Uint32 p = c.battle ? battlePixel(c, src[x], bm ? bm[(size_t)(y - Y0) * outW + (x - X0)] : 0, bpal, bfac) : src[x];
 			const unsigned a = p >> 24;
-			if (maskRow[mx] == MASK_BACK && a < 255)
+			if (maskRow && maskRow[mx] == MASK_BACK && a < 255)
 			{
 				// silhouette pixel with a known background: the picture over that colour, opaque
 				// (covers the low-res proxy pixel, the outline follows the picture's alpha)
@@ -657,7 +730,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			HiResResample::blendOver(dst[x], p); // premultiplied (HiResResample)
 		}
 	}
-	if (drawn && c.tint)
+	if (drawn && c.tint && !c.layered)
 		applyTint(c, &mask, x0, y0, x1, y1, sx, sy);
 	if (c.shadow)
 	{
@@ -712,6 +785,8 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 		return false;
 	c.clipX = (Sint16)vx; c.clipY = (Sint16)vy; c.clipW = (Sint16)vw; c.clipH = (Sint16)vh;
 	c.palKey = HiResAssets::paletteKey(c.assetId, src->format->palette);
+	if (c.layered)
+		return true; // draw order decides (layered battlescape): no 8bpp pixel match
 	std::vector<Uint8> m((size_t)vw * vh, 0);
 	std::vector<Uint32> bk;
 	bool any = false;
@@ -961,6 +1036,55 @@ void drawImage(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 	if (c.assetId)
 	{
 		drawAsset(c, dstW, dstH, sx, sy, dirty);
+		return;
+	}
+	if (c.clearRect || c.spriteKey)
+	{
+		const int x0 = std::max(0, (int)std::floor(c.clipX * sx)), y0 = std::max(0, (int)std::floor(c.clipY * sy));
+		const int x1 = std::min(dstW, (int)std::ceil((c.clipX + c.clipW) * sx));
+		const int y1 = std::min(dstH, (int)std::ceil((c.clipY + c.clipH) * sy));
+		if (x0 >= x1 || y0 >= y1)
+			return;
+		const double isx = 1.0 / sx, isy = 1.0 / sy;
+		if (c.clearRect)
+		{
+			const Uint32 col = 0xFF000000u | ((Uint32)c.fill.r << 16) | ((Uint32)c.fill.g << 8) | c.fill.b;
+			for (int y = y0; y < y1; ++y)
+			{
+				const int by = std::min(S.baseH - 1, (int)(y * isy));
+				const Uint32 *stampRow = &S.stamps[by * S.baseW];
+				Uint32 *dst = &S.rgba[y * S.bufW];
+				for (int x = x0; x < x1; ++x)
+					if (stampRow[std::min(S.baseW - 1, (int)(x * isx))] <= c.stamp)
+						dst[x] = col;
+			}
+			unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
+			return;
+		}
+		const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
+		const int outW = (int)std::lround((c.x + c.w) * sx) - X0, outH = (int)std::lround((c.y + c.h) * sy) - Y0;
+		const Uint32 *px = spriteRendered(c.spriteKey, outW, outH, c.nearest != 0);
+		if (!px)
+			return;
+		const int xa = std::max(x0, X0), ya = std::max(y0, Y0), xb = std::min(x1, X0 + outW), yb = std::min(y1, Y0 + outH);
+		bool drawn = false;
+		for (int y = ya; y < yb; ++y)
+		{
+			const int by = std::min(S.baseH - 1, (int)(y * isy));
+			const Uint32 *stampRow = &S.stamps[by * S.baseW];
+			const Uint32 *src = px + (size_t)(y - Y0) * outW - X0;
+			Uint32 *dst = &S.rgba[y * S.bufW];
+			for (int x = xa; x < xb; ++x)
+			{
+				const Uint32 p = src[x];
+				if (!(p >> 24) || stampRow[std::min(S.baseW - 1, (int)(x * isx))] > c.stamp)
+					continue;
+				HiResResample::blendOver(dst[x], p);
+				drawn = true;
+			}
+		}
+		if (drawn)
+			unionRect(dirty, xa, ya, xb - xa, yb - ya);
 		return;
 	}
 	auto it = images.find(c.imageId);
@@ -1648,6 +1772,145 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 		}
 		dl->push_back(c);
 	}
+	if (toScreen && src == layerSurf && layerVal.size() == (size_t)src->w * src->h && pal)
+	{
+		// layered map: pixels changed by unrecorded 8bpp draws (arrows, indicators, waypoints, projectiles,
+		// messages...) go on top of the map's commands, magnified as they are
+		std::vector<Uint32> ov((size_t)src->w * src->h, 0);
+		bool any = false;
+		SDL_LockSurface(src);
+		for (int yy = 0; yy < src->h; ++yy)
+		{
+			const Uint8 *sp = (const Uint8*)src->pixels + yy * src->pitch;
+			const Uint16 *lv = &layerVal[(size_t)yy * src->w];
+			for (int xx = 0; xx < src->w; ++xx)
+			{
+				const Uint8 v = sp[xx];
+				if (lv[xx] ? (lv[xx] == v + 1) : (v == layerBg || v == 0))
+					continue;
+				const SDL_Color &col = pal->colors[v];
+				ov[(size_t)yy * src->w + xx] = 0xFF000000u | ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
+				any = true;
+			}
+		}
+		SDL_UnlockSurface(src);
+		if (any)
+		{
+			HiResCmd c;
+			c.kind = HiResCmdKind::Image;
+			c.spriteKey = storeSprite(std::move(ov), src->w, src->h);
+			c.nearest = 1;
+			c.x = (Sint16)x; c.y = (Sint16)y; c.w = (Sint16)src->w; c.h = (Sint16)src->h;
+			int cx = x, cy = y, cw = src->w, ch = src->h;
+			if (intersect(cx, cy, cw, ch, 0, 0, dst->w, dst->h))
+			{
+				c.clipX = (Sint16)cx; c.clipY = (Sint16)cy; c.clipW = (Sint16)cw; c.clipH = (Sint16)ch;
+				c.stamp = stamp;
+				dl->push_back(c);
+			}
+		}
+	}
+}
+
+bool HiResLayer::layered()
+{
+	return _recording && Options::oxceHiResBattleLayered;
+}
+
+void HiResLayer::layerBegin(SDL_Surface *map, Uint8 bg)
+{
+	if (!map || !layered())
+	{
+		layerSurf = nullptr;
+		return;
+	}
+	if (sprites.size() > 20000)
+	{
+		// bounded store (commands of the previous frame are gone: the map list was just cleared)
+		sprites.clear();
+		spriteByHash.clear();
+	}
+	layerSurf = map;
+	layerBg = bg;
+	layerVal.assign((size_t)map->w * map->h, 0);
+	HiResCmd c;
+	c.kind = HiResCmdKind::Image;
+	c.clearRect = 1;
+	c.fillIdx = bg;
+	c.x = 0; c.y = 0; c.w = (Sint16)map->w; c.h = (Sint16)map->h;
+	c.clipX = 0; c.clipY = 0; c.clipW = c.w; c.clipH = c.h;
+	record(map, c);
+}
+
+namespace
+{
+/// visible rect of a sprite blit (half = right half only, clip = optional extra clip), map coordinates
+bool layerRect(SDL_Surface *dst, int w, int h, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH, int &x0, int &y0, int &x1, int &y1)
+{
+	x0 = dx + (half ? w / 2 : 0); y0 = dy; x1 = dx + w; y1 = dy + h;
+	if (clipW > 0 && clipH > 0)
+	{
+		x0 = std::max(x0, clipX); y0 = std::max(y0, clipY);
+		x1 = std::min(x1, clipX + clipW); y1 = std::min(y1, clipY + clipH);
+	}
+	x0 = std::max(x0, 0); y0 = std::max(y0, 0); x1 = std::min(x1, dst->w); y1 = std::min(y1, dst->h);
+	return x0 < x1 && y0 < y1;
+}
+}
+
+void HiResLayer::layerMark(SDL_Surface *dst, const Uint8 *src, int w, int h, int pitch, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH)
+{
+	if (!dst || dst != layerSurf || !src || layerVal.size() != (size_t)dst->w * dst->h)
+		return;
+	int x0, y0, x1, y1;
+	if (!layerRect(dst, w, h, dx, dy, half, clipX, clipY, clipW, clipH, x0, y0, x1, y1))
+		return;
+	for (int y = y0; y < y1; ++y)
+	{
+		const Uint8 *sp = src + (size_t)(y - dy) * pitch - dx;
+		const Uint8 *dp = (const Uint8*)dst->pixels + y * dst->pitch;
+		Uint16 *lv = &layerVal[(size_t)y * dst->w];
+		for (int x = x0; x < x1; ++x)
+			if (sp[x])
+				lv[x] = (Uint16)(dp[x] + 1);
+	}
+}
+
+void HiResLayer::layerSprite8(SDL_Surface *dst, const Uint8 *src, int w, int h, int pitch, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH)
+{
+	if (!dst || dst != layerSurf || !src || !dst->format->palette)
+		return;
+	int x0, y0, x1, y1;
+	if (!layerRect(dst, w, h, dx, dy, half, clipX, clipY, clipW, clipH, x0, y0, x1, y1))
+		return;
+	layerMark(dst, src, w, h, pitch, dx, dy, half, clipX, clipY, clipW, clipH);
+	// the sprite as it landed on the map (palette colours of the written pixels), base px, its own box
+	const SDL_Color *pal = dst->format->palette->colors;
+	std::vector<Uint32> px((size_t)w * h, 0);
+	bool any = false;
+	for (int y = y0; y < y1; ++y)
+	{
+		const Uint8 *sp = src + (size_t)(y - dy) * pitch - dx;
+		const Uint8 *dp = (const Uint8*)dst->pixels + y * dst->pitch;
+		Uint32 *op = &px[(size_t)(y - dy) * w - dx];
+		for (int x = x0; x < x1; ++x)
+			if (sp[x])
+			{
+				const SDL_Color &col = pal[dp[x]];
+				op[x] = 0xFF000000u | ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
+				any = true;
+			}
+	}
+	if (!any)
+		return;
+	HiResCmd c;
+	c.kind = HiResCmdKind::Image;
+	c.battle = 1;
+	c.layered = 1;
+	c.spriteKey = storeSprite(std::move(px), w, h);
+	c.x = (Sint16)dx; c.y = (Sint16)dy; c.w = (Sint16)w; c.h = (Sint16)h;
+	c.clipX = (Sint16)x0; c.clipY = (Sint16)y0; c.clipW = (Sint16)(x1 - x0); c.clipH = (Sint16)(y1 - y0);
+	record(dst, c);
 }
 
 void HiResLayer::onCopy(SDL_Surface *src, SDL_Surface *dst, int fromX, int fromY)

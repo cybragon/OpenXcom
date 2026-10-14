@@ -1204,6 +1204,12 @@ void battleMark8(const SDL_Surface *dst, const Uint8 *px, int w, int h, int pitc
 {
 	if (!dst || dst != ownSurf || !px || owners.empty())
 		return;
+	if (HiResLayer::layered())
+	{
+		// layered battlescape: the 8bpp sprite becomes a magnified sprite command in the draw order
+		HiResLayer::layerSprite8(const_cast<SDL_Surface*>(dst), px, w, h, pitch, dx, dy, half, clipX, clipY, clipW, clipH);
+		return;
+	}
 	markOwner(px, w, h, pitch, dx, dy, half, clipX, clipY, clipW, clipH, 0);
 }
 
@@ -1259,7 +1265,12 @@ void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int 
 	if (vw <= 0 || vh <= 0)
 		return;
 	c.clipX = (Sint16)vx; c.clipY = (Sint16)vy; c.clipW = (Sint16)vw; c.clipH = (Sint16)vh;
-	if (dst == ownSurf && !owners.empty())
+	if (dst == ownSurf && HiResLayer::layered())
+	{
+		c.layered = 1; // draw order decides, no ownership / pixel match
+		HiResLayer::layerMark(dst, e->expected.data(), e->w, e->h, e->w, dx, dy, half, vx, vy, vw, vh);
+	}
+	else if (dst == ownSurf && !owners.empty())
 	{
 		c.battleId = ++ownCounter;
 		markOwner(e->expected.data(), e->w, e->h, e->w, dx, dy, half, vx, vy, vw, vh, c.battleId);

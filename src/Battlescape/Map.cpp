@@ -341,7 +341,10 @@ void Map::draw()
 		// of the previous frame too (e.g. the hidden movement message blitted into the map)
 		HiResLayer::clearSurface(getSurface());
 		if (HiResAssets::any())
+		{
 			HiResAssets::battleBegin(getSurface());
+			HiResLayer::layerBegin(getSurface(), (Uint8)(Palette::blockOffset(0) + _bgColor));
+		}
 	}
 	ShaderDrawFunc(
 		[](Uint8& dest, Uint8 color)

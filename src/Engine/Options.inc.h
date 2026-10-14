@@ -137,6 +137,7 @@ OPT int oxceHiResUpscale;
 OPT int oxceHiResFontSize, oxceHiResTextOutlineScale, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
 OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap, oxceHiResDigitFont, oxceHiResShadeCurve;
 OPT int oxceHiResUnitShadow;
+OPT bool oxceHiResBattleLayered;
 OPT bool oxceRecommendedOptionsWereSet;
 OPT std::string password;
 

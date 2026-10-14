@@ -387,6 +387,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResShadeCurve", &oxceHiResShadeCurve, "100,92,84,76,68,60,52,44,36,28,12,10,8,6,4,2"));
 	// hi-res battle: soft shadow under units on the floor, opacity % (0 = off)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResUnitShadow", &oxceHiResUnitShadow, 60));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleLayered", &oxceHiResBattleLayered, true)); // battlescape: every map draw at output resolution in draw order (false = 8-bit pixel match)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontSize", &oxceHiResFontSize, 100));
 	// outline thickness in % of the default of each font type (FONT_BIG/GEO_BIG 1 px, FONT_SMALL/GEO_SMALL 0.5 px at x1), 0..400

@@ -1090,6 +1090,16 @@ std::list<MaskRendered> maskCache;
 size_t maskBytes = 0;
 }
 
+bool nativeScale(Uint32 assetId, double &fx, double &fy)
+{
+	Entry *e = find(assetId);
+	if (!e || e->w <= 0 || e->h <= 0)
+		return false;
+	fx = e->rw / e->w;
+	fy = e->rh / e->h;
+	return true;
+}
+
 const Uint8 *renderedMask(Uint32 assetId, int sx, int sy, int sw, int sh, int outW, int outH)
 {
 	Entry *e = find(assetId);

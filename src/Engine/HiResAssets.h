@@ -173,6 +173,8 @@ namespace HiResAssets
 	Uint32 paletteKey(Uint32 assetId, const SDL_Palette *palette);
 	/// The proxy rect (sx, sy, sw, sh) of an asset resampled to outW x outH output pixels (PREMULTIPLIED ARGB, HiResResample rule).
 	const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, int sh, int outW, int outH);
+	/// Picture pixels per proxy pixel of an asset (its own resolution relative to the 8-bit proxy).
+	bool nativeScale(Uint32 assetId, double &fx, double &fy);
 }
 
 }

@@ -24,6 +24,7 @@
 #include "Options.h"
 #include "Logger.h"
 #include "UiImageScaler.h"
+#include "Scalers/hqx.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -38,7 +39,7 @@ namespace
 struct Prof
 {
 	bool on = std::getenv("OXCE_HIRES_PROF") != nullptr;
-	double rec = 0, del = 0, comp = 0, up = 0, gl = 0;
+	double rec = 0, del = 0, comp = 0, up = 0, gl = 0, smask = 0;
 	int frames = 0;
 	size_t cmds = 0;
 };
@@ -650,6 +651,179 @@ inline Uint32 battlePixel(const HiResCmd &c, Uint32 p, Uint8 m, const SDL_Color 
 	return (p & 0xFF000000u) | (r << 16) | (g << 8) | b;
 }
 
+/// Scale-mask interpolation of the layered battlescape (CPU). Every map draw lands at output
+/// resolution by nearest neighbour on its own source grid; each output pixel records the scale class
+/// of the picture that wrote it last (cls, 0 = exactly 1x or downscaled = final). Afterwards, per
+/// class, the pixels are taken back to their source grid (one sample per block), interpolated up once
+/// (smooth / xBRZ / hqx, from the screen filter) and written back only where that class is.
+struct ScaleClass { double kx, ky, phx, phy; }; ///< source pixels per base pixel + grid phase
+struct ScaleMaskState
+{
+	bool inMap = false;               ///< drawing the layered map's commands now
+	std::vector<Uint8> cls;           ///< per output pixel
+	std::vector<ScaleClass> classes;  ///< class id - 1
+} SM;
+
+/// Class of a source grid (1 = the 8-bit grid). 0 = table full (caller falls back).
+Uint8 scaleClass(double kx, double ky, double phx, double phy)
+{
+	for (size_t i = 0; i < SM.classes.size(); ++i)
+	{
+		const ScaleClass &c = SM.classes[i];
+		if (std::fabs(c.kx - kx) < 1e-6 && std::fabs(c.ky - ky) < 1e-6 && std::fabs(c.phx - phx) < 1e-6 && std::fabs(c.phy - phy) < 1e-6)
+			return (Uint8)(i + 1);
+	}
+	if (SM.classes.size() >= 250)
+		return 0;
+	SM.classes.push_back(ScaleClass{ kx, ky, phx, phy });
+	return (Uint8)SM.classes.size();
+}
+
+void scaleMaskBegin(int dstW, int dstH)
+{
+	SM.inMap = true;
+	SM.cls.assign((size_t)dstW * dstH, 0);
+	SM.classes.clear();
+	scaleClass(1.0, 1.0, 0.0, 0.0); // class 1: 8-bit sprites, map background
+}
+
+inline void setCls(int x, int y, Uint8 k)
+{
+	if (SM.inMap)
+		SM.cls[(size_t)y * S.bufW + x] = k;
+}
+
+inline double fracOf(double v) { return v - std::floor(v); }
+
+/// The pass: region = the map's drawn rect (output px).
+void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
+{
+	SM.inMap = false;
+	const int mode = HiResResample::mode();
+	const bool debug = Options::oxceHiResDebugScaleMask;
+	if ((mode == HiResResample::NEAREST && !debug) || region.w <= 0 || region.h <= 0)
+		return;
+	ProfScope ps(prof.smask);
+	const int nc = (int)SM.classes.size();
+	std::vector<int> bx0(nc + 1, INT32_MAX), by0(nc + 1, INT32_MAX), bx1(nc + 1, -1), by1(nc + 1, -1);
+	for (int y = region.y; y < region.y + region.h; ++y)
+	{
+		const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
+		for (int x = region.x; x < region.x + region.w; ++x)
+		{
+			const int k = cr[x];
+			if (!k) continue;
+			if (x < bx0[k]) bx0[k] = x;
+			if (x > bx1[k]) bx1[k] = x;
+			if (y < by0[k]) by0[k] = y;
+			if (y > by1[k]) by1[k] = y;
+		}
+	}
+	const double isx = 1.0 / sx, isy = 1.0 / sy;
+	static bool hqxReady = false;
+	std::vector<Uint32> small, big, out;
+	for (int k = 1; k <= nc; ++k)
+	{
+		if (bx1[k] < 0)
+			continue;
+		const ScaleClass &sc = SM.classes[k - 1];
+		const int X0 = bx0[k], X1 = bx1[k] + 1, Y0 = by0[k], Y1 = by1[k] + 1;
+		const int outW = X1 - X0, outH = Y1 - Y0;
+		// source grid cell of an output pixel (same rule as the nearest draw: left/top edge of the pixel)
+		auto cellX = [&](int x) { return (int)std::floor(x * isx * sc.kx - sc.phx + 1e-9); };
+		auto cellY = [&](int y) { return (int)std::floor(y * isy * sc.ky - sc.phy + 1e-9); };
+		const int gx0 = cellX(X0), gy0 = cellY(Y0), gx1 = cellX(X1 - 1) + 1, gy1 = cellY(Y1 - 1) + 1;
+		const int W = gx1 - gx0, H = gy1 - gy0;
+		if (W <= 0 || H <= 0)
+			continue;
+		if (debug)
+		{
+			static const Uint32 tint[6] = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0xFF00FF };
+			const Uint32 t = tint[(k - 1) % 6];
+			for (int y = Y0; y < Y1; ++y)
+			{
+				const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
+				Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+				for (int x = X0; x < X1; ++x)
+					if (cr[x] == k)
+					{
+						const Uint32 p = dr[x];
+						auto mix = [&](int sh) { return (Uint32)(((((p >> sh) & 0xFF) * 5) + (((t >> sh) & 0xFF) * 3)) / 8) << sh; };
+						dr[x] = (p & 0xFF000000u) | mix(16) | mix(8) | mix(0);
+					}
+			}
+			continue;
+		}
+		// shrink: one sample per source block (any pixel of the block still showing this class)
+		small.assign((size_t)W * H, 0);
+		std::vector<int> colCell(outW);
+		for (int x = X0; x < X1; ++x) colCell[x - X0] = cellX(x) - gx0;
+		for (int y = Y0; y < Y1; ++y)
+		{
+			const int gy = cellY(y) - gy0;
+			const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
+			const Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+			Uint32 *sr = &small[(size_t)gy * W];
+			for (int x = X0; x < X1; ++x)
+				if (cr[x] == k && (dr[x] >> 24))
+					sr[colCell[x - X0]] = dr[x] | 0xFF000000u;
+		}
+		const double rx = X0 * isx * sc.kx - sc.phx - gx0, ry = Y0 * isy * sc.ky - sc.phy - gy0;
+		const double rw = outW * isx * sc.kx, rh = outH * isy * sc.ky;
+		const double scale = std::max(sx / sc.kx, sy / sc.ky);
+		if (mode == HiResResample::HQX)
+		{
+			// hqx has no alpha: blocks without a sample take their nearest sampled neighbour (clamp)
+			for (int pass = 0; pass < 2; ++pass)
+			{
+				for (int y = 0; y < H; ++y)
+				{
+					Uint32 *r = &small[(size_t)y * W];
+					for (int x = 1; x < W; ++x) if (!r[x] && r[x - 1]) r[x] = r[x - 1];
+					for (int x = W - 2; x >= 0; --x) if (!r[x] && r[x + 1]) r[x] = r[x + 1];
+				}
+				for (int x = 0; x < W; ++x)
+				{
+					for (int y = 1; y < H; ++y) if (!small[(size_t)y * W + x] && small[(size_t)(y - 1) * W + x]) small[(size_t)y * W + x] = small[(size_t)(y - 1) * W + x];
+					for (int y = H - 2; y >= 0; --y) if (!small[(size_t)y * W + x] && small[(size_t)(y + 1) * W + x]) small[(size_t)y * W + x] = small[(size_t)(y + 1) * W + x];
+				}
+			}
+			if (!hqxReady) { hqxInit(); hqxReady = true; }
+			const int f = std::min(4, std::max(2, (int)std::ceil(scale - 1e-9)));
+			big.assign((size_t)W * f * H * f, 0);
+			if (f == 2) hq2x_32(small.data(), big.data(), W, H);
+			else if (f == 3) hq3x_32(small.data(), big.data(), W, H);
+			else hq4x_32(small.data(), big.data(), W, H);
+			for (auto &q : big) q |= 0xFF000000u;
+			HiResResample::resample(big.data(), W * f, H * f, rx * f, ry * f, rw * f, rh * f, outW, outH, HiResResample::SMOOTH, out);
+		}
+		else
+		{
+			HiResResample::resample(small.data(), W, H, rx, ry, rw, rh, outW, outH, mode == HiResResample::PIXEL ? HiResResample::PIXEL : HiResResample::SMOOTH, out);
+		}
+		if (out.size() != (size_t)outW * outH)
+			continue;
+		// write back where this class is; premultiplied result over missing neighbours -> normalised
+		for (int y = Y0; y < Y1; ++y)
+		{
+			const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
+			Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+			const Uint32 *orow = &out[(size_t)(y - Y0) * outW - X0];
+			for (int x = X0; x < X1; ++x)
+			{
+				if (cr[x] != k)
+					continue;
+				const Uint32 q = orow[x];
+				const unsigned a = q >> 24;
+				if (!a)
+					continue;
+				auto ch = [&](int sh) { return std::min(255u, (((q >> sh) & 0xFF) * 255 + a / 2) / a); };
+				dr[x] = (dr[x] & 0xFF000000u) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
+			}
+		}
+	}
+}
+
 /// Hi-res asset command: the replacement picture resampled to the output size of the box, drawn
 /// only on the base pixels whose proxy pixels reached the screen unchanged (mask) and not hidden later.
 void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
@@ -682,6 +856,52 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 		return;
 	const double isx = 1.0 / sx, isy = 1.0 / sy;
 	bool drawn = false;
+	double fx = 0, fy = 0;
+	if (SM.inMap && c.layered && HiResAssets::nativeScale(c.assetId, fx, fy))
+	{
+		// scale mask: source pixels per base pixel; upscaled (output > source) = nearest on its grid + class
+		const int nW = std::max(1, (int)std::lround(c.srcW * fx)), nH = std::max(1, (int)std::lround(c.srcH * fy));
+		const double kx = nW / (double)c.w, ky = nH / (double)c.h;
+		const bool up = sx / kx > 1.0 + 1e-6 && sy / ky > 1.0 + 1e-6;
+		const Uint8 k = up ? scaleClass(kx, ky, fracOf(c.x * kx), fracOf(c.y * ky)) : 0;
+		const Uint32 *npx = k ? HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH) : nullptr;
+		if (npx)
+		{
+			const Uint8 *nbm = c.battle ? HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH) : nullptr;
+			std::vector<int> colU(x1 - x0);
+			for (int x = x0; x < x1; ++x)
+				colU[x - x0] = (int)std::floor((x * isx - c.x) * kx + 1e-9);
+			for (int y = y0; y < y1; ++y)
+			{
+				const int by = std::min(S.baseH - 1, (int)(y * isy));
+				if (by < c.clipY || by >= c.clipY + c.clipH)
+					continue;
+				const int v = (int)std::floor((y * isy - c.y) * ky + 1e-9);
+				if (v < 0 || v >= nH)
+					continue;
+				const Uint32 *stampRow = &S.stamps[by * S.baseW];
+				const Uint32 *src = npx + (size_t)v * nW;
+				Uint32 *dst = &S.rgba[y * S.bufW];
+				Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
+				for (int x = x0; x < x1; ++x)
+				{
+					const int u = colU[x - x0];
+					const int bx = std::min(S.baseW - 1, (int)(x * isx));
+					if (u < 0 || u >= nW || bx < c.clipX || bx >= c.clipX + c.clipW || stampRow[bx] > c.stamp)
+						continue;
+					const Uint32 p = c.battle ? battlePixel(c, src[u], nbm ? nbm[(size_t)v * nW + u] : 0, bpal, bfac) : src[u];
+					if (!(p >> 24))
+						continue;
+					HiResResample::blendOver(dst[x], p);
+					cr[x] = k;
+					drawn = true;
+				}
+			}
+			if (drawn)
+				unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
+			return;
+		}
+	}
 	for (int y = y0; y < y1; ++y)
 	{
 		const int by = std::min(S.baseH - 1, (int)(y * isy));
@@ -728,6 +948,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 				continue;
 			drawn = true;
 			HiResResample::blendOver(dst[x], p); // premultiplied (HiResResample)
+			setCls(x, y, 0); // 1x / downscaled: final
 		}
 	}
 	if (drawn && c.tint && !c.layered)
@@ -1020,9 +1241,48 @@ void drawImage(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 				Uint32 *dst = &S.rgba[y * S.bufW];
 				for (int x = x0; x < x1; ++x)
 					if (stampRow[std::min(S.baseW - 1, (int)(x * isx))] <= c.stamp)
+					{
 						dst[x] = col;
+						setCls(x, y, 1);
+					}
 			}
 			unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
+			return;
+		}
+		if (SM.inMap)
+		{
+			// scale mask: the base-pixel sprite by nearest on the 8-bit grid (the stamps' grid), class 1
+			auto si = sprites.find(c.spriteKey);
+			if (si == sprites.end())
+				return;
+			const Sprite8 &sp = si->second;
+			bool drawn = false;
+			for (int y = y0; y < y1; ++y)
+			{
+				const int by = std::min(S.baseH - 1, (int)(y * isy));
+				const int v = by - c.y;
+				if (v < 0 || v >= sp.h)
+					continue;
+				const Uint32 *stampRow = &S.stamps[by * S.baseW];
+				const Uint32 *src = &sp.px[(size_t)v * sp.w];
+				Uint32 *dst = &S.rgba[y * S.bufW];
+				Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
+				for (int x = x0; x < x1; ++x)
+				{
+					const int bx = std::min(S.baseW - 1, (int)(x * isx));
+					const int u = bx - c.x;
+					if (u < 0 || u >= sp.w)
+						continue;
+					const Uint32 p = src[u];
+					if (!(p >> 24) || stampRow[bx] > c.stamp)
+						continue;
+					dst[x] = p;
+					cr[x] = 1;
+					drawn = true;
+				}
+			}
+			if (drawn)
+				unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 			return;
 		}
 		const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
@@ -1191,9 +1451,22 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 			++groupEnd;
 		placed.assign(groupEnd - groupStart, Placed());
 		// pictures of this blit first (under its glyphs)
+		bool mapGroup = false;
+		if (!glMapActive)
+			for (size_t i = groupStart; i < groupEnd && !mapGroup; ++i)
+				mapGroup = S.frame[i].mapLayer && S.frame[i].kind == HiResCmdKind::Image;
+		if (mapGroup)
+			scaleMaskBegin(dstW, dstH);
+		SDL_Rect mapDirty = {0, 0, 0, 0};
 		for (size_t i = groupStart; i < groupEnd; ++i)
 			if (S.frame[i].kind == HiResCmdKind::Image && !(glMapActive && S.frame[i].mapLayer))
-				drawImage(S.frame[i], dstW, dstH, sx, sy, dirty);
+				drawImage(S.frame[i], dstW, dstH, sx, sy, mapGroup ? mapDirty : dirty);
+		if (mapGroup)
+		{
+			scaleMaskPass(mapDirty, sx, sy);
+			if (mapDirty.w > 0)
+				unionRect(dirty, mapDirty.x, mapDirty.y, mapDirty.w, mapDirty.h);
+		}
 		// layout, run by run (natural width first)
 		struct RunInfo { size_t start, end; long long width64; int hs; };
 		std::vector<RunInfo> runs;
@@ -2389,7 +2662,10 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 	bool resized = (S.bufW != dstW || S.bufH != dstH);
 	const double tc0 = prof.on ? profNow() : 0;
 	// layered battlescape on the GPU (option oxceHiResBattleGL), CPU compositing otherwise
-	const bool wantGL = Options::oxceHiResBattleGL && layerSurf && glMapInit();
+	// the scale-mask interpolation runs on the CPU composition: the GL map pass (nearest quads, no mask)
+	// is used only when no interpolation is selected; with the OpenGL output the interpolation is always
+	// smooth, so the map is composed on the CPU and uploaded
+	const bool wantGL = Options::oxceHiResBattleGL && layerSurf && HiResResample::mode() == HiResResample::NEAREST && glMapInit();
 	glMapActive = false;
 	double tg = 0;
 	if (wantGL)
@@ -2436,8 +2712,8 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 		if (++prof.frames == 60)
 		{
 			Log(LOG_INFO) << "HiResLayer prof (ms/frame): record " << prof.rec / 60 << " deliver " << prof.del / 60 << " compose " << prof.comp / 60
-				<< " upload " << prof.up / 60 << " glmap " << prof.gl / 60 << " cmds " << prof.cmds / 60;
-			prof.rec = prof.del = prof.comp = prof.up = prof.gl = 0; prof.frames = 0; prof.cmds = 0;
+				<< " (scale-mask " << prof.smask / 60 << ") upload " << prof.up / 60 << " glmap " << prof.gl / 60 << " cmds " << prof.cmds / 60;
+			prof.rec = prof.del = prof.comp = prof.up = prof.gl = prof.smask = 0; prof.frames = 0; prof.cmds = 0;
 		}
 	}
 

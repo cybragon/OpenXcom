@@ -156,7 +156,7 @@ bool uniform(const SDL_Color *pal)
 }
 
 /// Resamples the picture rect into outW x outH with the unified rule (HiResResample: exact = copy,
-/// down = area average, up = option oxceHiResUpscale). 8bpp pictures: palette first (index 0 = alpha 0),
+/// down = area average, up = HiResResample::mode(), from the screen filter). 8bpp pictures: palette first (index 0 = alpha 0),
 /// then the filter. PREMULTIPLIED ARGB result.
 void resample(const Picture &p, const SDL_Color *pal, double rx, double ry, double rw, double rh, int outW, int outH, int mode, std::vector<Uint32> &out)
 {

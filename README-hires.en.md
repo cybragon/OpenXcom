@@ -67,17 +67,17 @@ text off. Without a filter nothing changes. OpenGL shader filters are not suppor
 With `maximizeInfoScreens` on, the base screens are also enlarged to the 320x200 size.
 
 ### 8. Hi-res mod images
-Options > Video, hi-res dropdown: **Hi-res off (original)** / **Sharp** / **Smooth** / **Pixel-art** / **Auto**.
+Options > Video, hi-res dropdown: **Hi-res off (original)** / **Hi-res on**.
 - Mods can ship larger 32-bit PNG or JPG images for the geoscape, basescape, Ufopaedia, menus, the
   inventory and the battlescape UI chrome (TAC00/01, ICONS, UNIBORD, scanner/motion/medikit borders,
   rank badges) and the shared sets BIGOBS, SMOKE, DETBLOB.
 - The `width`/`height` in `extraSprites` is the logical size; a bigger file is drawn hi-res in that box.
   Multi-frame sheets (`subX`/`subY`) work the same way.
-- Images larger than their box are area-averaged down. Smaller ones are enlarged with the chosen style:
-  Sharp (nearest), Smooth, Pixel-art (xBRZ). **Auto** follows the screen filter: Scale/HQx/xBRZ and
-  pixel-art shaders → Pixel-art, anything else (none, Raw, other OpenGL shaders) → Smooth.
+- Images larger than their box are area-averaged down. Smaller ones are enlarged with the interpolation of the
+  screen filter: none → sharp (nearest), Scale or any OpenGL output → smooth, HQx / xBRZ → that filter.
+  Battlescape: every map picture is placed by nearest neighbour, then each scale group is interpolated once
+  over the whole map (no seams between tiles); pictures at exactly 1x stay untouched.
 - Switching hi-res on/off reloads the mods (from the main menu) or needs a restart (in a game).
-  Changing only the upscaling style applies at once.
 - Other battlescape resources (map, units, terrain, hand objects, cursor) stay 8-bit; 32-bit files
   for them are converted to the battlescape palette with a log warning.
 - **Hi-res off still loads hi-res mods:** 32-bit/JPG images are downscaled to the rule size and
@@ -113,11 +113,11 @@ No font files are bundled; installed system fonts are used.
 - Search order: `oxceHiResFont` → `oxceHiResFontFallback` → segoeui.ttf → malgun.ttf → gulim.ttc → batang.ttc → NanumGothic.ttf → NotoSansCJK-Regular.ttc → DejaVuSans.ttf → AppleSDGothicNeo.ttc.
   Each character is drawn with the first font in this order that has it. If none is found, the original bitmap fonts are used.
 - Folders searched on Windows: `%WINDIR%\Fonts`, `%LOCALAPPDATA%\Microsoft\Windows\Fonts`, and fonts registered in the registry.
-- To change: pick the primary font in Options > "Fonts", or set `oxceHiResFont` (primary) and `oxceHiResFontFallback` (fallback) in `user\options.cfg` to a file name or full path (several separated by `;`).
+- To change: pick the primary font in Options > "Fonts", or set `oxceHiResFont` (primary) and `oxceHiResFontFallback` (fallback) in `user\hires_option.cfg` to a file name or full path (several separated by `;`).
   To use a new font, right-click the .ttf/.otf/.ttc file and choose "Install".
 
 ## Options
-Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `options.cfg` only.
+Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `user\hires_option.cfg` (next to `options.cfg`; created with the defaults if missing, read at game start and at every battlescape start).
 
 | Name | Default | Meaning |
 |---|---|---|
@@ -134,7 +134,8 @@ Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `opti
 | `oxceHiResTextLayout` | `1` | 1 = lay out strings with TTF spacing; 0 = each glyph centred in its original bitmap glyph cell |
 | `oxceGeoscapeUiOptimized` | `false` | Geoscape scale "x1, UI optimized" (saved when chosen in the video options) |
 | `oxceHiResAssets` | `false` | Hi-res mod images (Video dropdown: off / on) |
-| `oxceHiResUpscale` | `3` | Upscaling style: 0 Smooth, 1 Sharp, 2 Pixel-art, 3 Auto (Video dropdown) |
+| `oxceHiResShadeCurve` | `100,92,…,2` | Battlescape brightness % per light level 1–16 |
+| `oxceHiResDebugScaleMask` | `false` | Battlescape debug: tint pixels by scale group |
 | `oxceHiResDigitFont` | `""` (automatic = bold system font) | Font of the battlescape UI digits |
 
 ## Known limitations
@@ -146,7 +147,7 @@ Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `opti
 - Palette effects on hi-res backgrounds, fades and blinking are not applied to hi-res images yet.
 - The OpenGL shader filter is not applied to the TTF text.
 - IME input is Windows only.
-- Some options (outline, bold, hinting, ...) have no in-game menu and can only be changed in `options.cfg`.
+- Some options (outline, bold, hinting, ...) have no in-game menu and can only be changed in `hires_option.cfg`.
 - The performance impact has not been measured.
 - Testing was mostly automated screenshot comparisons on a Linux virtual display (Xvfb), plus manual checks of test builds on Windows. Please back up your saves.
 - The savegame format was not changed. Only the version string in the save header is written as `Extended 8.7.1-hires-2`. With hi-res images off, rendering is the same as OXCE 8.7.1; existing mods need no changes.

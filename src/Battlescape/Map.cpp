@@ -967,7 +967,7 @@ void Map::drawTerrain(Surface *surface)
 					{
 						// hi-res battle: soft shadow of a standing unit on this floor (the original draws none)
 						const BattleUnit *su = tile->getUnit();
-						if (su && !su->isOut() && su->getVisible() && su->getPosition().z == itZ && !su->isFloating())
+						if (su && !su->isOut() && (su->getVisible() || su->getFaction() == FACTION_PLAYER) && su->getPosition().z == itZ && !su->isFloating())
 							HiResAssets::setNextShadow(Options::oxceHiResUnitShadow);
 					}
 					if (tmpSurface)

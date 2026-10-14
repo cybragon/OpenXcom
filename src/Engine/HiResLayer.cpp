@@ -626,17 +626,6 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			if (mx < 0 || mx >= c.clipW || !maskRow[mx] || stampRow[bx] > c.stamp)
 				continue;
 			Uint32 p = c.battle ? battlePixel(c, src[x], bm ? bm[(size_t)(y - Y0) * outW + (x - X0)] : 0, bpal, bfac) : src[x];
-			if (c.shadow && (p >> 24))
-			{
-				// soft unit shadow on the floor diamond: ellipse at the tile centre (base 16, 32 of the 32x40 sprite)
-				const double ex = ((x - X0) / sx - c.w * 0.5) / 9.0, ey = ((y - Y0) / sy - c.h * 0.8) / 4.5;
-				const double d = ex * ex + ey * ey;
-				if (d < 1.0)
-				{
-					const int k = 256 - (int)(c.shadow * 2.56 * (1.0 - d) * (1.0 - d));
-					p = (p & 0xFF000000u) | ((((p >> 16) & 0xFF) * k >> 8) << 16) | ((((p >> 8) & 0xFF) * k >> 8) << 8) | ((p & 0xFF) * k >> 8);
-				}
-			}
 			const unsigned a = p >> 24;
 			if (maskRow[mx] == MASK_BACK && a < 255)
 			{
@@ -670,6 +659,42 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 	}
 	if (drawn && c.tint)
 		applyTint(c, &mask, x0, y0, x1, y1, sx, sy);
+	if (c.shadow)
+	{
+		// unit shadow: its own step right after the floor tile, independent of the floor's delivery mask.
+		// Darkens what is on screen now (this floor and earlier draws) in a soft ellipse at the tile centre
+		// (base 16, 32 of the 32x40 sprite); pixels covered by later draws (the unit, walls) are skipped
+		// by the stamp test, and the unit drawn after this lands on top.
+		const double cxb = c.x + c.w * 0.5, cyb = c.y + c.h * 0.8, rx = 11.0, ry = 5.5;
+		const int sx0 = std::max(0, (int)std::floor((cxb - rx) * sx)), sx1 = std::min(dstW, (int)std::ceil((cxb + rx) * sx));
+		const int sy0 = std::max(0, (int)std::floor((cyb - ry) * sy)), sy1 = std::min(dstH, (int)std::ceil((cyb + ry) * sy));
+		bool sh = false;
+		for (int y = sy0; y < sy1; ++y)
+		{
+			const int by = std::min(S.baseH - 1, (int)(y * isy));
+			if (by < c.clipY || by >= c.clipY + c.clipH)
+				continue;
+			Uint32 *dst = &S.rgba[y * S.bufW];
+			const double ey = ((y + 0.5) * isy - cyb) / ry;
+			for (int x = sx0; x < sx1; ++x)
+			{
+				const int bx = std::min(S.baseW - 1, (int)(x * isx));
+				if (bx < c.clipX || bx >= c.clipX + c.clipW || S.stamps[by * S.baseW + bx] > c.stamp)
+					continue;
+				const double ex = ((x + 0.5) * isx - cxb) / rx;
+				const double d = ex * ex + ey * ey;
+				if (d >= 1.0)
+					continue;
+				const double f = d < 0.5 ? 1.0 : (1.0 - d) * 2.0; // flat core, soft rim
+				const int k = 256 - (int)(c.shadow * 2.56 * f);
+				Uint32 &q = dst[x];
+				q = (q & 0xFF000000u) | ((((q >> 16) & 0xFF) * k >> 8) << 16) | ((((q >> 8) & 0xFF) * k >> 8) << 8) | ((q & 0xFF) * k >> 8);
+				sh = true;
+			}
+		}
+		if (sh)
+			unionRect(dirty, sx0, sy0, sx1 - sx0, sy1 - sy0);
+	}
 	if (drawn)
 		unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }

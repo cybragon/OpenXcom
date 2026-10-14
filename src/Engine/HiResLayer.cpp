@@ -797,9 +797,76 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 			for (auto &q : big) q |= 0xFF000000u;
 			HiResResample::resample(big.data(), W * f, H * f, rx * f, ry * f, rw * f, rh * f, outW, outH, HiResResample::SMOOTH, out);
 		}
+		else if (mode == HiResResample::SMOOTH || mode == HiResResample::NEAREST)
+		{
+			// smooth: bilinear in fixed point straight from the source grid, rows interpolated once
+			// (same taps as HiResResample: centre-aligned, clamped), samples weighted by alpha, written
+			// back only where this class is
+			const double stx = rw / outW, sty = rh / outH;
+			std::vector<int> c0(outW), c1(outW), cw(outW);
+			for (int o = 0; o < outW; ++o)
+			{
+				const double c = rx + (o + 0.5) * stx - 0.5;
+				const int i0 = (int)std::floor(c);
+				cw[o] = (int)std::lround((c - i0) * 256);
+				c0[o] = std::min(W - 1, std::max(0, i0)); c1[o] = std::min(W - 1, std::max(0, i0 + 1));
+			}
+			// horizontally interpolated source rows (premultiplied r, g, b, a in 1/256), cached by row
+			std::vector<int> rowBuf[2]; int rowId[2] = { -1, -1 };
+			auto hrow = [&](int j) -> const int*
+			{
+				for (int b = 0; b < 2; ++b) if (rowId[b] == j) return rowBuf[b].data();
+				const int b = (rowId[0] == -1 || (rowId[1] != -1 && rowId[0] < rowId[1])) ? 0 : 1;
+				rowBuf[b].resize((size_t)outW * 4);
+				rowId[b] = j;
+				const Uint32 *sr = &small[(size_t)j * W];
+				int *d = rowBuf[b].data();
+				for (int o = 0; o < outW; ++o)
+				{
+					const Uint32 p0 = sr[c0[o]], p1 = sr[c1[o]];
+					const int w1 = cw[o], w0 = 256 - w1;
+					const int a0 = (p0 >> 24) ? w0 : 0, a1 = (p1 >> 24) ? w1 : 0;
+					d[o * 4 + 0] = (int)((p0 >> 16) & 0xFF) * a0 + (int)((p1 >> 16) & 0xFF) * a1;
+					d[o * 4 + 1] = (int)((p0 >> 8) & 0xFF) * a0 + (int)((p1 >> 8) & 0xFF) * a1;
+					d[o * 4 + 2] = (int)(p0 & 0xFF) * a0 + (int)(p1 & 0xFF) * a1;
+					d[o * 4 + 3] = a0 + a1;
+				}
+				return d;
+			};
+			for (int y = Y0; y < Y1; ++y)
+			{
+				const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
+				bool anyK = false;
+				for (int x = X0; x < X1 && !anyK; ++x) anyK = cr[x] == k;
+				if (!anyK) continue;
+				const double c = ry + (y - Y0 + 0.5) * sty - 0.5;
+				const int j0 = (int)std::floor(c);
+				const int wy1 = (int)std::lround((c - j0) * 256), wy0 = 256 - wy1;
+				const int *r0 = hrow(std::min(H - 1, std::max(0, j0)));
+				const int *r1 = hrow(std::min(H - 1, std::max(0, j0 + 1)));
+				Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+				for (int x = X0; x < X1; ++x)
+				{
+					if (cr[x] != k) continue;
+					const int o = (x - X0) * 4;
+					const long long A = (long long)r0[o + 3] * wy0 + (long long)r1[o + 3] * wy1;
+					if (A <= 0) continue;
+					if (A == 65536)
+					{
+						// all four samples present (the usual case): plain shift
+						const Uint32 r = (Uint32)((r0[o] * wy0 + r1[o] * wy1 + 32768) >> 16), g = (Uint32)((r0[o + 1] * wy0 + r1[o + 1] * wy1 + 32768) >> 16), b = (Uint32)((r0[o + 2] * wy0 + r1[o + 2] * wy1 + 32768) >> 16);
+						dr[x] = (dr[x] & 0xFF000000u) | (r << 16) | (g << 8) | b;
+						continue;
+					}
+					auto ch = [&](int i) { return (Uint32)std::min<long long>(255, ((long long)r0[o + i] * wy0 + (long long)r1[o + i] * wy1 + A / 2) / A); };
+					dr[x] = (dr[x] & 0xFF000000u) | (ch(0) << 16) | (ch(1) << 8) | ch(2);
+				}
+			}
+			continue;
+		}
 		else
 		{
-			HiResResample::resample(small.data(), W, H, rx, ry, rw, rh, outW, outH, mode == HiResResample::PIXEL ? HiResResample::PIXEL : HiResResample::SMOOTH, out);
+			HiResResample::resample(small.data(), W, H, rx, ry, rw, rh, outW, outH, HiResResample::PIXEL, out);
 		}
 		if (out.size() != (size_t)outW * outH)
 			continue;

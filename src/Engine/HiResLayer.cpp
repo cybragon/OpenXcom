@@ -625,7 +625,18 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			const int mx = bx - c.clipX;
 			if (mx < 0 || mx >= c.clipW || !maskRow[mx] || stampRow[bx] > c.stamp)
 				continue;
-			const Uint32 p = c.battle ? battlePixel(c, src[x], bm ? bm[(size_t)(y - Y0) * outW + (x - X0)] : 0, bpal, bfac) : src[x];
+			Uint32 p = c.battle ? battlePixel(c, src[x], bm ? bm[(size_t)(y - Y0) * outW + (x - X0)] : 0, bpal, bfac) : src[x];
+			if (c.shadow && (p >> 24))
+			{
+				// soft unit shadow on the floor diamond: ellipse at the tile centre (base 16, 32 of the 32x40 sprite)
+				const double ex = ((x - X0) / sx - c.w * 0.5) / 9.0, ey = ((y - Y0) / sy - c.h * 0.8) / 4.5;
+				const double d = ex * ex + ey * ey;
+				if (d < 1.0)
+				{
+					const int k = 256 - (int)(c.shadow * 2.56 * (1.0 - d) * (1.0 - d));
+					p = (p & 0xFF000000u) | ((((p >> 16) & 0xFF) * k >> 8) << 16) | ((((p >> 8) & 0xFF) * k >> 8) << 8) | ((p & 0xFF) * k >> 8);
+				}
+			}
 			const unsigned a = p >> 24;
 			if (maskRow[mx] == MASK_BACK && a < 255)
 			{

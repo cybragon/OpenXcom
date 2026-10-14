@@ -1185,6 +1185,12 @@ void markOwner(const Uint8 *px, int w, int h, int pitch, int dx, int dy, bool ha
 }
 }
 
+namespace { int pendingShadow = 0; }
+void setNextShadow(int pct)
+{
+	pendingShadow = std::max(0, std::min(100, pct));
+}
+
 void battleBegin(SDL_Surface *map)
 {
 	ownSurf = map;
@@ -1232,6 +1238,8 @@ void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int 
 	c.kind = HiResCmdKind::Image;
 	c.assetId = e->id;
 	c.battle = 1;
+	c.shadow = (Uint8)pendingShadow;
+	pendingShadow = 0;
 	c.shade = (Uint8)std::max(0, std::min(16, shade));
 	c.nvColor = (Uint8)std::max(0, std::min(255, newBaseColor));
 	for (int k = 0; k < 4; ++k)

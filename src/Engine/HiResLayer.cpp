@@ -38,7 +38,7 @@ namespace
 struct Prof
 {
 	bool on = std::getenv("OXCE_HIRES_PROF") != nullptr;
-	double rec = 0, del = 0, comp = 0, up = 0;
+	double rec = 0, del = 0, comp = 0, up = 0, gl = 0;
 	int frames = 0;
 	size_t cmds = 0;
 };
@@ -1193,6 +1193,8 @@ void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int
 	baseline = (int)std::lround(top + k.asc);
 }
 
+bool glMapActive = false; ///< this frame the layered map commands are drawn by the GL map pass (renderGL)
+
 /// Composes the current frame into S.rgba (dstW x dstH). Returns the dirty rect of this frame;
 /// 'clearRect' receives the rect cleared from the previous frame.
 SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
@@ -1226,7 +1228,7 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 		placed.assign(groupEnd - groupStart, Placed());
 		// pictures of this blit first (under its glyphs)
 		for (size_t i = groupStart; i < groupEnd; ++i)
-			if (S.frame[i].kind == HiResCmdKind::Image)
+			if (S.frame[i].kind == HiResCmdKind::Image && !(glMapActive && S.frame[i].mapLayer))
 				drawImage(S.frame[i], dstW, dstH, sx, sy, dirty);
 		// layout, run by run (natural width first)
 		struct RunInfo { size_t start, end; long long width64; int hs; };
@@ -1524,9 +1526,13 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 	slotSizeCache.clear();
 }
 
+#ifndef __NO_OPENGL
+namespace { void glMapReset(); }
+#endif
 void HiResLayer::onContextLost()
 {
 #ifndef __NO_OPENGL
+	glMapReset();
 	S.tex = 0; // the old context and its textures are gone
 	S.texW = S.texH = 0;
 #endif
@@ -1633,6 +1639,8 @@ void HiResLayer::clearSurface(SDL_Surface *holder)
 
 void HiResLayer::forgetSurface(SDL_Surface *holder)
 {
+	if (holder && holder == layerSurf)
+		layerSurf = nullptr; // the layered map surface is gone
 	if (holder)
 		S.lists.erase(holder);
 }
@@ -1749,6 +1757,7 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 		if (toScreen)
 		{
 			c.stamp = stamp;
+			c.mapLayer = (src == layerSurf) ? 1 : 0;
 			if (c.assetId && !deliverAsset(c, src, x, y))
 				continue; // proxy pixels did not reach the screen unchanged
 			if (pal)
@@ -1806,6 +1815,7 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 			{
 				c.clipX = (Sint16)cx; c.clipY = (Sint16)cy; c.clipW = (Sint16)cw; c.clipH = (Sint16)ch;
 				c.stamp = stamp;
+				c.mapLayer = 1;
 				dl->push_back(c);
 			}
 		}
@@ -2110,6 +2120,315 @@ void HiResLayer::renderSoftware(SDL_Surface *out, int top, int bottom, int left,
 		SDL_UnlockSurface(out);
 }
 
+#ifndef __NO_OPENGL
+namespace
+{
+/// GL map pass (layered battlescape): every map command as a textured quad into an FBO at output
+/// resolution (shade = vertex colour, recolour/night vision baked into the texture variant), then the
+/// FBO times the map's visibility mask (screen blits over the map) over the screen. CPU path = fallback.
+typedef void (APIENTRY *HR_GenFB)(GLsizei, GLuint*);
+typedef void (APIENTRY *HR_BindFB)(GLenum, GLuint);
+typedef void (APIENTRY *HR_FBTex)(GLenum, GLenum, GLenum, GLuint, GLint);
+typedef GLenum (APIENTRY *HR_FBStatus)(GLenum);
+struct GlMap
+{
+	bool tried = false, ok = false;
+	HR_GenFB genFB = nullptr, delFB = nullptr;
+	HR_BindFB bindFB = nullptr;
+	HR_FBTex fbTex = nullptr;
+	HR_FBStatus fbStatus = nullptr;
+	GLuint fbo = 0, fboTex = 0, maskTex = 0, shadowTex = 0;
+	int fboW = 0, fboH = 0, maskW = 0, maskH = 0;
+	struct Tex { GLuint id = 0; Uint64 used = 0; size_t bytes = 0; };
+	std::unordered_map<size_t, Tex> texs;
+	size_t texBytes = 0;
+	Uint64 use = 0;
+	std::vector<Uint32> scratch;
+	std::vector<Uint8> maskPx;
+};
+GlMap G;
+
+void *glProc(const char *a, const char *b)
+{
+	void *p = SDL_GL_GetProcAddress(a);
+	return p ? p : SDL_GL_GetProcAddress(b);
+}
+
+bool glMapInit()
+{
+	if (G.tried)
+		return G.ok;
+	G.tried = true;
+	G.genFB = (HR_GenFB)glProc("glGenFramebuffers", "glGenFramebuffersEXT");
+	G.delFB = (HR_GenFB)glProc("glDeleteFramebuffers", "glDeleteFramebuffersEXT");
+	G.bindFB = (HR_BindFB)glProc("glBindFramebuffer", "glBindFramebufferEXT");
+	G.fbTex = (HR_FBTex)glProc("glFramebufferTexture2D", "glFramebufferTexture2DEXT");
+	G.fbStatus = (HR_FBStatus)glProc("glCheckFramebufferStatus", "glCheckFramebufferStatusEXT");
+	G.ok = G.genFB && G.delFB && G.bindFB && G.fbTex && G.fbStatus;
+	Log(LOG_INFO) << "HiResLayer: GL map pass " << (G.ok ? "available (framebuffer objects)" : "unavailable (no framebuffer objects): CPU compositing");
+	return G.ok;
+}
+
+void glMapReset()
+{
+	// context lost: every GL name is gone
+	G.texs.clear(); G.texBytes = 0;
+	G.fbo = G.fboTex = G.maskTex = G.shadowTex = 0;
+	G.fboW = G.fboH = G.maskW = G.maskH = 0;
+	G.tried = false; G.ok = false;
+}
+
+GLuint makeTex(int w, int h, const void *bgra)
+{
+	GLuint t = 0;
+	glGenTextures(1, &t);
+	glBindTexture(GL_TEXTURE_2D, t);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
+	return t;
+}
+
+/// cached texture of an output-size picture; 'make' fills the pixels when it is not cached
+template <class F>
+GLuint cachedTex(size_t key, int w, int h, F make)
+{
+	auto it = G.texs.find(key);
+	if (it != G.texs.end())
+	{
+		it->second.used = ++G.use;
+		return it->second.id;
+	}
+	if (G.texBytes > ((size_t)256 << 20) || G.texs.size() > 6000)
+	{
+		std::vector<std::pair<Uint64, size_t>> order;
+		for (auto &t : G.texs) order.emplace_back(t.second.used, t.first);
+		std::sort(order.begin(), order.end());
+		for (size_t i = 0; i < order.size() / 2; ++i)
+		{
+			auto e = G.texs.find(order[i].second);
+			glDeleteTextures(1, &e->second.id);
+			G.texBytes -= e->second.bytes;
+			G.texs.erase(e);
+		}
+	}
+	const Uint32 *px = make();
+	if (!px)
+		return 0;
+	GlMap::Tex t;
+	t.id = makeTex(w, h, px);
+	t.used = ++G.use;
+	t.bytes = (size_t)w * h * 4;
+	G.texBytes += t.bytes;
+	G.texs[key] = t;
+	return t.id;
+}
+
+void quad(int x0, int y0, int x1, int y1, float s0 = 0, float t0 = 0, float s1 = 1, float t1 = 1)
+{
+	glBegin(GL_QUADS);
+	glTexCoord2f(s0, t0); glVertex2i(x0, y0);
+	glTexCoord2f(s1, t0); glVertex2i(x1, y0);
+	glTexCoord2f(s1, t1); glVertex2i(x1, y1);
+	glTexCoord2f(s0, t1); glVertex2i(x0, y1);
+	glEnd();
+}
+
+/// Draws the map commands of this frame. False = not drawn (the CPU path must compose them).
+bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int left, int right)
+{
+	size_t first = S.frame.size();
+	for (size_t i = 0; i < S.frame.size(); ++i)
+		if (S.frame[i].mapLayer && S.frame[i].kind == HiResCmdKind::Image) { first = i; break; }
+	if (first == S.frame.size())
+		return true; // nothing on the map this frame
+	const Uint32 mapStamp = S.frame[first].stamp;
+	const double sx = dstW / (double)S.baseW, sy = dstH / (double)S.baseH;
+
+	GLint vp[4];
+	glGetIntegerv(GL_VIEWPORT, vp);
+	glPushAttrib(GL_ALL_ATTRIB_BITS);
+	glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); glOrtho(0, dstW, dstH, 0, -1, 1);
+	glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
+	glMatrixMode(GL_TEXTURE); glPushMatrix(); glLoadIdentity();
+
+	if (!G.fbo || G.fboW != dstW || G.fboH != dstH)
+	{
+		if (!G.fbo) G.genFB(1, &G.fbo);
+		if (G.fboTex) glDeleteTextures(1, &G.fboTex);
+		G.fboTex = makeTex(dstW, dstH, nullptr);
+		G.fboW = dstW; G.fboH = dstH;
+		G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
+		G.fbTex(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, G.fboTex, 0);
+		if (G.fbStatus(GL_FRAMEBUFFER_EXT) != GL_FRAMEBUFFER_COMPLETE_EXT)
+		{
+			Log(LOG_WARNING) << "HiResLayer: GL map pass framebuffer incomplete: CPU compositing";
+			G.bindFB(GL_FRAMEBUFFER_EXT, 0);
+			G.ok = false;
+			glMatrixMode(GL_TEXTURE); glPopMatrix();
+			glMatrixMode(GL_MODELVIEW); glPopMatrix();
+			glMatrixMode(GL_PROJECTION); glPopMatrix();
+			glPopAttrib();
+			glViewport(vp[0], vp[1], vp[2], vp[3]);
+			return false;
+		}
+	}
+	G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
+	glViewport(0, 0, dstW, dstH);
+	glDisable(GL_SCISSOR_TEST);
+	glClearColor(0, 0, 0, 0);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glEnable(GL_SCISSOR_TEST);
+	const SDL_Color *bpal = HiResAssets::battlePalette();
+	const int mode = HiResResample::mode();
+	for (size_t i = first; i < S.frame.size(); ++i)
+	{
+		const HiResCmd &c = S.frame[i];
+		if (!c.mapLayer || c.kind != HiResCmdKind::Image)
+			continue;
+		const int x0 = std::max(0, (int)std::floor(c.clipX * sx)), y0 = std::max(0, (int)std::floor(c.clipY * sy));
+		const int x1 = std::min(dstW, (int)std::ceil((c.clipX + c.clipW) * sx));
+		const int y1 = std::min(dstH, (int)std::ceil((c.clipY + c.clipH) * sy));
+		if (x0 >= x1 || y0 >= y1)
+			continue;
+		glScissor(x0, dstH - y1, x1 - x0, y1 - y0);
+		if (c.clearRect)
+		{
+			glDisable(GL_TEXTURE_2D);
+			glColor4ub(c.fill.r, c.fill.g, c.fill.b, 255);
+			quad(x0, y0, x1, y1);
+			continue;
+		}
+		const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
+		const int oW = (int)std::lround((c.x + c.w) * sx) - X0, oH = (int)std::lround((c.y + c.h) * sy) - Y0;
+		if (oW <= 0 || oH <= 0)
+			continue;
+		GLuint tex = 0;
+		float f = 1.0f;
+		if (c.spriteKey)
+		{
+			size_t k = 0x5350524954ull;
+			auto mix = [&](size_t v) { k = (k ^ v) * 1099511628211ull; };
+			mix(c.spriteKey); mix((size_t)oW); mix((size_t)oH); mix(c.nearest ? 1000 : (size_t)mode);
+			tex = cachedTex(k, oW, oH, [&]() { return spriteRendered(c.spriteKey, oW, oH, c.nearest != 0); });
+		}
+		else if (c.assetId)
+		{
+			const bool variant = c.nvColor || c.rcFrom[0] || c.rcFrom[1] || c.rcFrom[2] || c.rcFrom[3];
+			size_t k = 0x4153534554ull;
+			auto mix = [&](size_t v) { k = (k ^ v) * 1099511628211ull; };
+			mix(c.assetId); mix(c.palKey); mix((size_t)c.srcX); mix((size_t)c.srcY); mix((size_t)c.srcW); mix((size_t)c.srcH);
+			mix((size_t)oW); mix((size_t)oH); mix((size_t)mode);
+			if (variant)
+			{
+				mix(c.nvColor);
+				for (int q = 0; q < 4; ++q) { mix(c.rcFrom[q]); mix(c.rcTo[q]); }
+			}
+			tex = cachedTex(k, oW, oH, [&]() -> const Uint32*
+			{
+				const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, oW, oH);
+				if (!px || !variant)
+					return px;
+				const Uint8 *bm = HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, oW, oH);
+				G.scratch.resize((size_t)oW * oH);
+				for (size_t p = 0; p < G.scratch.size(); ++p)
+					G.scratch[p] = battlePixel(c, px[p], bm ? bm[p] : 0, bpal, 256);
+				return G.scratch.data();
+			});
+			f = HiResAssets::shadeFactor(c.shade) / 256.0f;
+		}
+		if (!tex)
+			continue;
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glColor4f(f, f, f, 1.0f);
+		quad(X0, Y0, X0 + oW, Y0 + oH);
+		if (c.shadow)
+		{
+			// unit shadow right after its floor tile: black, alpha = soft ellipse x opacity
+			if (!G.shadowTex)
+			{
+				const int W = 64, H = 32;
+				std::vector<Uint32> e((size_t)W * H);
+				for (int y = 0; y < H; ++y)
+					for (int x = 0; x < W; ++x)
+					{
+						const double ex = (x + 0.5) / W * 2 - 1, ey = (y + 0.5) / H * 2 - 1, d = ex * ex + ey * ey;
+						const double a = d >= 1 ? 0 : (d < 0.5 ? 1.0 : (1.0 - d) * 2.0);
+						e[(size_t)y * W + x] = (Uint32)std::lround(a * 255) << 24;
+					}
+				G.shadowTex = makeTex(W, H, e.data());
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			}
+			const double cxb = c.x + c.w * 0.5, cyb = c.y + c.h * 0.8;
+			glBindTexture(GL_TEXTURE_2D, G.shadowTex);
+			glColor4f(1.0f, 1.0f, 1.0f, c.shadow / 100.0f);
+			quad((int)std::lround((cxb - 11.0) * sx), (int)std::lround((cyb - 5.5) * sy), (int)std::lround((cxb + 11.0) * sx), (int)std::lround((cyb + 5.5) * sy));
+		}
+	}
+	glDisable(GL_SCISSOR_TEST);
+	// visibility: base pixels covered by later screen blits (panels, windows over the map) are cut out
+	if (G.maskW != S.baseW || G.maskH != S.baseH || !G.maskTex)
+	{
+		if (G.maskTex) glDeleteTextures(1, &G.maskTex);
+		G.maskTex = makeTex(S.baseW, S.baseH, nullptr);
+		G.maskW = S.baseW; G.maskH = S.baseH;
+	}
+	G.maskPx.resize((size_t)S.baseW * S.baseH * 4);
+	bool cut = false;
+	for (int y = 0; y < S.baseH; ++y)
+	{
+		const Uint32 *st = &S.stamps[(size_t)y * S.baseW];
+		Uint32 *mp = (Uint32*)&G.maskPx[(size_t)y * S.baseW * 4];
+		for (int x = 0; x < S.baseW; ++x)
+		{
+			const bool vis = st[x] <= mapStamp;
+			mp[x] = vis ? 0xFFFFFFFFu : 0u;
+			cut |= !vis;
+		}
+	}
+	if (cut)
+	{
+		glBindTexture(GL_TEXTURE_2D, G.maskTex);
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, S.baseW, S.baseH, GL_BGRA, GL_UNSIGNED_BYTE, G.maskPx.data());
+		glEnable(GL_TEXTURE_2D);
+		glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+		glColor4f(1, 1, 1, 1);
+		quad(0, 0, dstW, dstH);
+	}
+	G.bindFB(GL_FRAMEBUFFER_EXT, 0);
+	glMatrixMode(GL_TEXTURE); glPopMatrix();
+	glMatrixMode(GL_MODELVIEW); glPopMatrix();
+	glMatrixMode(GL_PROJECTION); glPopMatrix();
+	glPopAttrib();
+	glViewport(vp[0], vp[1], vp[2], vp[3]);
+	// FBO over the screen (OpenGL::refresh's ortho: (0,0) bottom-left of the window)
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, G.fboTex);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glColor4f(1, 1, 1, 1);
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 1); glVertex2i(left, outH - top);
+	glTexCoord2f(1, 1); glVertex2i(outW - right, outH - top);
+	glTexCoord2f(1, 0); glVertex2i(outW - right, bottom);
+	glTexCoord2f(0, 0); glVertex2i(left, bottom);
+	glEnd();
+	glDisable(GL_BLEND);
+	glErrorCheck();
+	return true;
+}
+}
+#endif
+
 void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, int left, int right, const SDL_Color *screenPalette)
 {
 #ifdef __NO_OPENGL
@@ -2126,7 +2445,18 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 	SDL_Rect cleared;
 	bool resized = (S.bufW != dstW || S.bufH != dstH);
 	const double tc0 = prof.on ? profNow() : 0;
+	// layered battlescape on the GPU (option oxceHiResBattleGL), CPU compositing otherwise
+	const bool wantGL = Options::oxceHiResBattleGL && layerSurf && glMapInit();
+	glMapActive = false;
+	double tg = 0;
+	if (wantGL)
+	{
+		const double t0 = prof.on ? profNow() : 0;
+		glMapActive = glMapPass(dstW, dstH, outW, outH, top, bottom, left, right);
+		if (prof.on) { glFinish(); tg = profNow() - t0; }
+	}
 	SDL_Rect dirty = compose(dstW, dstH, cleared);
+	glMapActive = false;
 	const double tc1 = prof.on ? profNow() : 0;
 	SDL_Rect upload = cleared;
 	unionRect(upload, dirty.x, dirty.y, dirty.w, dirty.h);
@@ -2159,12 +2489,12 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 	{
 		glFinish();
 		const double tc2 = profNow();
-		prof.comp += tc1 - tc0; prof.up += tc2 - tc1; prof.cmds += S.frame.size();
+		prof.comp += tc1 - tc0 - tg; prof.up += tc2 - tc1; prof.gl += tg; prof.cmds += S.frame.size();
 		if (++prof.frames == 60)
 		{
 			Log(LOG_INFO) << "HiResLayer prof (ms/frame): record " << prof.rec / 60 << " deliver " << prof.del / 60 << " compose " << prof.comp / 60
-				<< " upload " << prof.up / 60 << " cmds " << prof.cmds / 60;
-			prof.rec = prof.del = prof.comp = prof.up = 0; prof.frames = 0; prof.cmds = 0;
+				<< " upload " << prof.up / 60 << " glmap " << prof.gl / 60 << " cmds " << prof.cmds / 60;
+			prof.rec = prof.del = prof.comp = prof.up = prof.gl = 0; prof.frames = 0; prof.cmds = 0;
 		}
 	}
 

@@ -87,6 +87,7 @@ struct HiResCmd
 	// --- battlescape (stage battle-1): the proxy was drawn shaded/recoloured like the 8bpp map
 	Uint8 battle = 0;                ///< 1 = battle draw: the expected pixel is the transformed proxy pixel
 	Uint8 layered = 0;               ///< battle draw composited by draw order at output resolution (no per-pixel 8bpp match)
+	Uint8 mapLayer = 0;              ///< delivered with the layered map blit (drawn by the GL map pass when active)
 	Uint8 clearRect = 0;             ///< layered map start: fill the clip rect with 'fill' (opaque) before the map's draws
 	Uint8 nearest = 0;               ///< sprite drawn magnified by nearest neighbour (8bpp overlay of the map)
 	Uint32 spriteKey = 0;            ///< 8bpp sprite (as drawn, base px ARGB) kept by HiResLayer::storeSprite, drawn magnified

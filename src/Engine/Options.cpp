@@ -1256,6 +1256,77 @@ static void geoscapeUiFromConfig()
 		geoscapeScale = SCALE_SCREEN_UI;
 }
 
+namespace
+{
+const char *const HIRES_FILE = "hires_option.cfg";
+bool isHiResOption(const std::string &id)
+{
+	return id.compare(0, 9, "oxceHiRes") == 0;
+}
+}
+
+/**
+ * Writes all hi-res options (oxceHiRes*) to hires_option.cfg in the config folder.
+ */
+bool saveHiRes()
+{
+	std::string yaml;
+	try
+	{
+		YAML::YamlRootNodeWriter writer;
+		writer.setAsMap();
+		auto optionsWriter = writer["options"];
+		optionsWriter.setAsMap();
+		auto sortedInfo = _info;
+		std::sort(sortedInfo.begin(), sortedInfo.end(), [](const OptionInfo& a, const OptionInfo& b) { return a.id() < b.id(); });
+		for (const auto& optionInfo : sortedInfo)
+			if (isHiResOption(optionInfo.id()))
+				optionInfo.save(optionsWriter);
+		yaml = writer.emit().yaml;
+	}
+	catch (YAML::Exception &e)
+	{
+		Log(LOG_WARNING) << e.what();
+		return false;
+	}
+	const std::string path = _configFolder + HIRES_FILE;
+	if (!CrossPlatform::writeFile(path, "# OpenXcom hi-res settings (read at game start and battlescape start)\n"
+		"# oxceHiResShadeCurve: brightness % for light levels 1-16 (comma separated)\n" + yaml + "\n"))
+	{
+		Log(LOG_WARNING) << "Failed to save " << path;
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Reads hires_option.cfg (hi-res options override the values from options.cfg, which older
+ * builds wrote); creates it with the current values when missing. Command line options still win.
+ */
+bool loadHiRes()
+{
+	const std::string path = _configFolder + HIRES_FILE;
+	if (!CrossPlatform::fileExists(path))
+		return saveHiRes();
+	try
+	{
+		YAML::YamlRootNodeReader reader(path);
+		for (auto& optionInfo : _info)
+			if (isHiResOption(optionInfo.id()))
+				optionInfo.load(reader["options"]);
+	}
+	catch (YAML::Exception &e)
+	{
+		Log(LOG_WARNING) << path << ": " << e.what();
+		return false;
+	}
+	for (auto& optionInfo : _info)
+		if (isHiResOption(optionInfo.id()))
+			optionInfo.load(_commandLine, true);
+	Log(LOG_INFO) << "Hi-res settings read from " << path;
+	return true;
+}
+
 void updateOptions()
 {
 	// Load existing options
@@ -1328,6 +1399,8 @@ bool load(const std::string &filename)
 		Log(LOG_WARNING) << e.what();
 		return false;
 	}
+	if (filename == "options")
+		loadHiRes();
 	return true;
 }
 
@@ -1371,7 +1444,8 @@ bool save(bool reset, const std::string& filename)
 		std::sort(sortedInfo.begin(), sortedInfo.end(), [](const OptionInfo& a, const OptionInfo& b) { return a.id() < b.id(); });
 		for (const auto& optionInfo : sortedInfo)
 		{
-			optionInfo.save(optionsWriter);
+			if (!isHiResOption(optionInfo.id())) // hi-res settings: hires_option.cfg
+				optionInfo.save(optionsWriter);
 		}
 		if (!reset && CrossPlatform::fileExists(filepath))
 		{
@@ -1380,8 +1454,8 @@ bool save(bool reset, const std::string& filename)
 			const YAML::YamlNodeReader& currentOptions = optionsWriter.toReader();
 			std::string oldKey, oldVal;
 			for (const auto& oldOption : old["options"].children())
-				if (!currentOptions[oldOption.readKey<ryml::csubstr>()])
-					optionsWriter.write(optionsWriter.saveString(oldKey.assign(oldOption.key())), oldVal.assign(oldOption.val()));
+				if (!currentOptions[oldOption.readKey<ryml::csubstr>()] && !isHiResOption(oldKey.assign(oldOption.key())))
+					optionsWriter.write(optionsWriter.saveString(oldKey), oldVal.assign(oldOption.val()));
 		}
 		yaml = writer.emit().yaml;
 	}
@@ -1395,6 +1469,8 @@ bool save(bool reset, const std::string& filename)
 		Log(LOG_WARNING) << "Failed to save " << filepath;
 		return false;
 	}
+	if (filename == "options")
+		saveHiRes();
 	return true;
 }
 

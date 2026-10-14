@@ -112,6 +112,11 @@ namespace Options
 	void setFolders();
 	/// Update game options from config file and command line.
 	void updateOptions();
+	/// Hi-res settings (all oxceHiRes* options incl. the shade curve) live in hires_option.cfg next to
+	/// options.cfg. Read at game start and battlescape start (no live watch); created with the current
+	/// values if missing.
+	bool loadHiRes();
+	bool saveHiRes();
 	/// Backup display options.
 	void backupDisplay();
 	/// Switches display options.

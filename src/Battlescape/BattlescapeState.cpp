@@ -49,6 +49,7 @@
 #include "../Geoscape/SelectMusicTrackState.h"
 #include "../Engine/Game.h"
 #include "../Engine/Options.h"
+#include "../Engine/HiResLayer.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Palette.h"
 #include "../Engine/Surface.h"
@@ -107,6 +108,9 @@ BattlescapeState::BattlescapeState() :
 	_autosave(0),
 	_numberOfDirectlyVisibleUnits(0), _numberOfEnemiesTotal(0), _numberOfEnemiesTotalPlusWounded(0)
 {
+	// hi-res settings (hires_option.cfg) are read again at every battlescape start
+	Options::loadHiRes();
+	HiResLayer::reconfigure();
 	_save = _game->getSavedGame()->getSavedBattle();
 
 	std::fill_n(_visibleUnit, 10, (BattleUnit*)(0));

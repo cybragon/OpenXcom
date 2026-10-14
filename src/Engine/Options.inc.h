@@ -132,7 +132,6 @@ OPT bool oxceGeoscapeUiOptimized;
 // hi-res asset replacements (geoscape/base): size-mismatched extraSprites replacements drawn at output resolution, 32-bit pictures for geoscape/base images
 OPT bool oxceHiResAssets;
 // hi-res asset upscaling: 0 smooth (bilinear), 1 nearest, 2 pixel-art (xBRZ, then area downscale), 3 auto (video filter)
-OPT int oxceHiResUpscale;
 // hi-res text settings (options.cfg)
 OPT int oxceHiResFontSize, oxceHiResTextOutlineScale, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;
 OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap, oxceHiResDigitFont, oxceHiResShadeCurve;

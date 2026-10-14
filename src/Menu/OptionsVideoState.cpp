@@ -191,19 +191,11 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	_btnRootWindowedMode->onMouseOut((ActionHandler)&OptionsVideoState::txtTooltipOut);
 
 	{
-		// one dropdown: hi-res images off, or on with the upscale mode (oxceHiResAssets + oxceHiResUpscale)
+		// hi-res images on/off (oxceHiResAssets); the interpolation follows the screen filter
 		std::vector<std::string> hr;
-		for (const char *id : { "STR_HIRES_MODE_OFF", "STR_HIRES_MODE_SHARP", "STR_HIRES_MODE_SMOOTH", "STR_HIRES_MODE_PIXELART", "STR_HIRES_MODE_AUTO" })
+		for (const char *id : { "STR_HIRES_MODE_OFF", "STR_HIRES_MODE_ON" })
 			hr.push_back(tr(id));
-		static const int upscaleOf[] = { -1, 1, 0, 2, 3 };
-		size_t sel = 0;
-		if (Options::oxceHiResAssets)
-		{
-			sel = 4;
-			for (size_t k = 1; k < 5; ++k)
-				if (upscaleOf[k] == Options::oxceHiResUpscale)
-					sel = k;
-		}
+		const size_t sel = Options::oxceHiResAssets ? 1 : 0;
 		_cbxHiRes->setOptions(hr);
 		_cbxHiRes->setSelected(sel);
 		_cbxHiRes->onChange((ActionHandler)&OptionsVideoState::cbxHiResChange);
@@ -619,11 +611,7 @@ void OptionsVideoState::btnLetterboxClick(Action *)
  */
 void OptionsVideoState::cbxHiResChange(Action *)
 {
-	static const int upscaleOf[] = { -1, 1, 0, 2, 3 };
-	const size_t sel = std::min<size_t>(4, _cbxHiRes->getSelected());
-	const bool on = sel != 0;
-	if (on)
-		Options::oxceHiResUpscale = upscaleOf[sel]; // upscale mode: applies at once (render caches are keyed by mode)
+	const bool on = _cbxHiRes->getSelected() != 0;
 	if (on != Options::oxceHiResAssets)
 	{
 		Options::oxceHiResAssets = on;

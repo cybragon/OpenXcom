@@ -25,14 +25,16 @@ namespace OpenXcom
 
 /**
  * One resampling rule for every hi-res asset (overlay pictures, native inventory canvas incl. 8-bit art):
- * exact size = copy, downscale = area average, upscale = option oxceHiResUpscale
- * (0 smooth/bilinear, 1 nearest, 2 pixel-art: xBRZ ARGB integer pass, then area downscale).
+ * exact size = copy, downscale = area average, upscale = the interpolation of the selected screen
+ * filter (mode(): none = nearest, Scale or any OpenGL output = smooth, HQx = HQX, xBRZ = PIXEL).
+ * Per picture HQX is done as PIXEL (xBRZ is alpha aware, hqx is not); the battlescape scale-mask
+ * pass uses the real hqx on opaque map pixels.
  * Input straight ARGB, output PREMULTIPLIED ARGB.
  */
 namespace HiResResample
 {
-	enum Mode { SMOOTH = 0, NEAREST = 1, PIXEL = 2, AUTO = 3 /* option value only */ };
-	/// Current upscale mode (Options::oxceHiResUpscale; AUTO follows the video filter).
+	enum Mode { SMOOTH = 0, NEAREST = 1, PIXEL = 2, HQX = 3 };
+	/// Current upscale mode, from the screen filter.
 	int mode();
 	/// Source rect (rx, ry, rw, rh; may be fractional) of the w x h straight ARGB picture -> outW x outH premultiplied.
 	void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int mode, std::vector<Uint32> &out);

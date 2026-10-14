@@ -146,24 +146,17 @@ void separable(const Uint32 *src, int w, int h, double rx, double ry, double rw,
 
 int mode()
 {
-	if (Options::oxceHiResUpscale != AUTO)
-		return std::min(2, std::max(0, Options::oxceHiResUpscale));
-	// Auto: follow the video filter
-	if (Options::useOpenGL && !Options::useOpenGLShader.empty())
-	{
-		std::string f = Options::useOpenGLShader;
-		std::transform(f.begin(), f.end(), f.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-		for (const char *k : { "xbr", "scale", "hq", "sabr", "pixel", "nedi", "super-xbr", "omniscale" })
-			if (f.find(k) != std::string::npos)
-				return PIXEL;
-		return SMOOTH; // CRT, bloom, scanline, bilinear... shaders
-	}
-	if (Options::useScaleFilter || Options::useHQXFilter || Options::useXBRZFilter)
+	// one rule (user decision): the interpolation follows the screen filter. OpenGL output = smooth,
+	// whatever the shader / linear setting
+	if (Options::useOpenGL)
+		return SMOOTH;
+	if (Options::useHQXFilter)
+		return HQX;
+	if (Options::useXBRZFilter)
 		return PIXEL;
-	// no filter / Raw shader: Smooth. Sharp (nearest) magnifies a picture smaller than the output in
-	// blocks, outline included (the stair-steps reported on hi-res paperdolls at 1280x800); it stays
-	// available as an explicit choice (oxceHiResUpscale 1)
-	return SMOOTH;
+	if (Options::useScaleFilter)
+		return SMOOTH;
+	return NEAREST;
 }
 
 Uint32 premultiply(Uint32 p)
@@ -219,6 +212,8 @@ void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, 
 		return;
 	}
 	const double scale = std::max(outW / rw, outH / rh);
+	if (m == HQX)
+		m = PIXEL; // per picture: alpha-aware xBRZ
 	if (m == PIXEL && scale > 1.0 + 1e-9)
 	{
 		// pixel art: xBRZ (alpha aware) by the next integer factor on the source rect, then area-average down

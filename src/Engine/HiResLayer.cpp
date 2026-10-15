@@ -1960,6 +1960,14 @@ void planMapFrame(int dstW, int dstH, int backend)
 			open = next;
 		}
 	}
+	// xBRZ: a partial update is not pixel-identical to a full recompose (verified with oxceHiResVerifyReuse: the result near
+	// rect edges depends on the window), so any change recomposes the whole map; only "unchanged" is skipped
+	if (mode == HiResResample::PIXEL && (!rects.empty() || dx || dy))
+	{
+		P.reason = "xBRZ: partial update is not exact";
+		P.dx = P.dy = P.DX = P.DY = 0;
+		commit(); return;
+	}
 	long long area = 0;
 	for (auto &r : rects) area += (long long)r.w * r.h;
 	// cost rule: a partial update costs about its (exact) area plus a fixed share; a full one costs the map.

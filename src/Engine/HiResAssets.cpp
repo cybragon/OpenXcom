@@ -284,7 +284,7 @@ void preparePicture(Picture &p)
 
 namespace
 {
-bool loadedEnabled = false;
+bool loadedEnabled = false, loadedBattle = false;
 std::map<std::string, const SDL_Color*> typePalettes;
 std::set<std::string> attachFitTypes, nativeTypes, nativePrefixes;
 /// native-only pictures (not drawn by the overlay), per proxy surface
@@ -296,9 +296,16 @@ bool enabled()
 	return loadedEnabled;
 }
 
+bool battleEnabled()
+{
+	return loadedEnabled && loadedBattle;
+}
+
 void beginModLoad()
 {
+	Options::normalizeHiResLevel();
 	loadedEnabled = Options::oxceHiResAssets;
+	loadedBattle = Options::oxceHiResLevel >= 2;
 	typePalettes.clear();
 	attachFitTypes.clear();
 	nativeTypes.clear();

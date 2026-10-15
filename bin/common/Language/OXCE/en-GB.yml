@@ -723,6 +723,7 @@ en-GB:
 # ---- 8.7.1-hires fork strings: keep this group at the end of the file (re-append after a Transifex refresh) ----
   STR_GEOSCAPE_SCALE_X1_UI: "x1, UI optimised"
   STR_HIRES_ASSETS: "Hi-res assets"
-  STR_HIRES_ASSETS_DESC: "Draws mod images at screen resolution (32-bit PNG/JPG allowed). Upscaling follows the screen filter: none = sharp, Scale or OpenGL = smooth, HQx/xBRZ = that filter."
+  STR_HIRES_ASSETS_DESC: "Draws mod images at screen resolution (32-bit PNG/JPG allowed). Upscaling follows the screen filter: none = sharp, Scale or OpenGL = smooth, HQx/xBRZ = that filter. Geoscape = menus, geoscape, base, Ufopaedia, inventory and battle UI; All = the battlefield too."
   STR_HIRES_MODE_OFF: "Hi-res off (original)"
-  STR_HIRES_MODE_ON: "Hi-res on"
+  STR_HIRES_MODE_GEOSCAPE: "Hi-res: geoscape"
+  STR_HIRES_MODE_ALL: "Hi-res: all"

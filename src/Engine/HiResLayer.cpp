@@ -2130,7 +2130,7 @@ bool HiResLayer::layered()
 {
 	// hi-res images off: the battlescape is the stock 8-bit blit (+ stock screen filter); the layer
 	// only carries text/UI then
-	return _recording && Options::oxceHiResBattleLayered && Options::oxceHiResAssets && HiResAssets::enabled();
+	return _recording && Options::oxceHiResBattleLayered && HiResAssets::battleEnabled();
 }
 
 void HiResLayer::layerBegin(SDL_Surface *map, Uint8 bg)

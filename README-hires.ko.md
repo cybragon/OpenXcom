@@ -63,7 +63,7 @@
 `maximizeInfoScreens`가 켜져 있으면 기지 화면도 320x200 크기로 키워서 보여 줍니다.
 
 ### 8. 고해상도 모드 이미지
-옵션 > 비디오의 고해상도 목록: **고해상도 끔 (원본)** / **고해상도 켬**.
+옵션 > 비디오의 고해상도 목록: **고해상도 끔 (원본)** / **고해상도: 지오스케이프** / **고해상도: 전체**. 끔 = 기본 OXCE 모습(켜 둔 경우 TTF 글꼴만 남음). 지오스케이프 = 메뉴, 지오스케이프, 기지, 우포피디아, 인벤토리(전투 중 연 것 포함), 전투 UI가 고해상도이고 전장(타일, 유닛, 지도)은 기존 방식. 전체 = 전장도 고해상도. 예전 "켬"은 전체가 됩니다.
 - 모드가 지구 화면, 기지 화면, UFO 사전, 메뉴, 장비 화면, 전투 화면 UI(TAC00/01, ICONS, UNIBORD, 스캐너/동체 감지기/메디킷 테두리, 계급장)와
   공유 세트 BIGOBS, SMOKE, DETBLOB에 더 큰 32비트 PNG나 JPG를 넣을 수 있습니다.
 - `extraSprites`의 `width`/`height`가 논리 크기이고, 더 큰 파일은 그 칸 안에 고해상도로 그립니다. 여러 프레임 시트(`subX`/`subY`)도 같습니다.
@@ -122,7 +122,7 @@ TU, 체력, 탄약 같은 전투 화면 숫자를 굵은 TTF 숫자 글꼴(`BATT
 | `oxceHiResTextAntialias` | `true` | 글자 안티에일리어싱 |
 | `oxceHiResTextLayout` | `1` | 1 = 문자열 단위로 TTF 간격을 써서 배치, 0 = 글자마다 원래 비트맵 글자 칸 가운데에 배치 |
 | `oxceGeoscapeUiOptimized` | `false` | 지구 화면 스케일 "x1, UI 최적화" (비디오 옵션에서 고르면 저장됨) |
-| `oxceHiResAssets` | `false` | 고해상도 모드 이미지 (비디오 목록: 끔/켬) |
+| `oxceHiResLevel` | `-1` | 고해상도 단계 (비디오 목록): 0 끔, 1 지오스케이프, 2 전체; -1 = 예전 `oxceHiResAssets` 값 승계(켬 = 2). `oxceHiResAssets`는 이에 따라 바뀜 |
 | `oxceHiResShadeCurve` | `100,92,…,2` | 전투 조명 단계 1–16별 밝기 % |
 | `oxceHiResDebugScaleMask` | `false` | 전투 디버그: 배율 묶음별 색 표시 |
 | `oxceHiResDigitFont` | `""` (자동 = 굵은 시스템 글꼴) | 전투 화면 숫자 글꼴 |

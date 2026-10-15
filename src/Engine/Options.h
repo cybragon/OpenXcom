@@ -116,6 +116,8 @@ namespace Options
 	/// options.cfg. Read at game start and battlescape start (no live watch); created with the current
 	/// values if missing.
 	bool loadHiRes();
+	/// hi-res level 0 off / 1 geoscape / 2 all; migrates the old On/Off option, keeps oxceHiResAssets (level > 0) in step
+	void normalizeHiResLevel();
 	bool saveHiRes();
 	/// Backup display options.
 	void backupDisplay();

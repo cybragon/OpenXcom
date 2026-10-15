@@ -67,7 +67,7 @@ text off. Without a filter nothing changes. OpenGL shader filters are not suppor
 With `maximizeInfoScreens` on, the base screens are also enlarged to the 320x200 size.
 
 ### 8. Hi-res mod images
-Options > Video, hi-res dropdown: **Hi-res off (original)** / **Hi-res on**.
+Options > Video, hi-res dropdown: **Hi-res off (original)** / **Hi-res: geoscape** / **Hi-res: all**. Off = stock OXCE look (only TTF fonts, if enabled, remain). Geoscape = menus, geoscape, base, Ufopaedia, inventory (also when opened in battle) and the battle UI are hi-res, the battlefield (tiles, units, map) uses the stock path. All = the battlefield is drawn hi-res too. An old "on" setting becomes All.
 - Mods can ship larger 32-bit PNG or JPG images for the geoscape, basescape, Ufopaedia, menus, the
   inventory and the battlescape UI chrome (TAC00/01, ICONS, UNIBORD, scanner/motion/medikit borders,
   rank badges) and the shared sets BIGOBS, SMOKE, DETBLOB.
@@ -133,7 +133,7 @@ Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `user
 | `oxceHiResTextAntialias` | `true` | Anti-aliased text |
 | `oxceHiResTextLayout` | `1` | 1 = lay out strings with TTF spacing; 0 = each glyph centred in its original bitmap glyph cell |
 | `oxceGeoscapeUiOptimized` | `false` | Geoscape scale "x1, UI optimized" (saved when chosen in the video options) |
-| `oxceHiResAssets` | `false` | Hi-res mod images (Video dropdown: off / on) |
+| `oxceHiResLevel` | `-1` | Hi-res level (Video dropdown): 0 off, 1 geoscape, 2 all; -1 = take over the old `oxceHiResAssets` (on = 2). `oxceHiResAssets` follows it |
 | `oxceHiResShadeCurve` | `100,92,…,2` | Battlescape brightness % per light level 1–16 |
 | `oxceHiResDebugScaleMask` | `false` | Battlescape debug: tint pixels by scale group |
 | `oxceHiResDigitFont` | `""` (automatic = bold system font) | Font of the battlescape UI digits |

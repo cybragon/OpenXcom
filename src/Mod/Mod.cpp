@@ -6133,7 +6133,7 @@ void Mod::classifyHiResBattleTypes()
 	{
 		static Mod *hookMod = nullptr;
 		hookMod = this;
-		MapDataSet::hiResTerrainHook = HiResAssets::enabled() ? +[](const std::string &type, SurfaceSet *set)
+		MapDataSet::hiResTerrainHook = HiResAssets::battleEnabled() ? +[](const std::string &type, SurfaceSet *set)
 		{
 			auto it = hookMod->_extraSprites.find(type);
 			if (it == hookMod->_extraSprites.end())
@@ -6142,7 +6142,7 @@ void Mod::classifyHiResBattleTypes()
 				es->loadSurfaceSet(set);
 		} : nullptr;
 	}
-	if (HiResAssets::enabled())
+	if (HiResAssets::battleEnabled())
 	{
 		// battle stage 1: armor sprite sheets and terrain sets may be 32-bit (drawn at output resolution,
 		// shaded/recoloured at draw time; 8-bit sheets keep the palette path)

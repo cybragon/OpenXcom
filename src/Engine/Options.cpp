@@ -376,6 +376,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResOverlay", &oxceHiResOverlay, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceGeoscapeUiOptimized", &oxceGeoscapeUiOptimized, false));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResAssets", &oxceHiResAssets, false));
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResLevel", &oxceHiResLevel, -1)); // 0 off, 1 geoscape, 2 all (battlefield too)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResText", &oxceHiResText, true));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFont", &oxceHiResFont, ""));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontFallback", &oxceHiResFontFallback, ""));
@@ -1304,11 +1305,21 @@ bool saveHiRes()
  * Reads hires_option.cfg (hi-res options override the values from options.cfg, which older
  * builds wrote); creates it with the current values when missing. Command line options still win.
  */
+void normalizeHiResLevel()
+{
+	if (oxceHiResLevel < 0 || oxceHiResLevel > 2) // not saved yet (older build): On = All
+		oxceHiResLevel = oxceHiResAssets ? 2 : 0;
+	oxceHiResAssets = oxceHiResLevel > 0;
+}
+
 bool loadHiRes()
 {
 	const std::string path = _configFolder + HIRES_FILE;
 	if (!CrossPlatform::fileExists(path))
+	{
+		normalizeHiResLevel();
 		return saveHiRes();
+	}
 	try
 	{
 		YAML::YamlRootNodeReader reader(path);
@@ -1324,7 +1335,8 @@ bool loadHiRes()
 	for (auto& optionInfo : _info)
 		if (isHiResOption(optionInfo.id()))
 			optionInfo.load(_commandLine, true);
-	Log(LOG_INFO) << "Hi-res settings read from " << path;
+	normalizeHiResLevel();
+	Log(LOG_INFO) << "Hi-res settings read from " << path << " (level " << oxceHiResLevel << ")";
 	return true;
 }
 

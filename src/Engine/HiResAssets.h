@@ -66,6 +66,8 @@ namespace HiResAssets
 	void allowTrueColor(const std::string &type);
 	/// Battle stage 1: armor sprite sheets / terrain sets may be 32-bit (proxy in the battlescape palette,
 	/// the picture drawn shaded/recoloured at output resolution, see onBattleDraw).
+	/// Level "All" (battlefield tiles/units/map drawn hi-res) as it was when the mods were loaded.
+	bool battleEnabled();
 	void allowBattle(const std::string &type);
 	bool battleType(const std::string &type);
 	/// Loads <file>_mask.<ext> (same size as the picture) as the recolour mask of a battle picture

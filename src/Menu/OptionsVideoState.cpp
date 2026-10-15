@@ -193,9 +193,10 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	{
 		// hi-res images on/off (oxceHiResAssets); the interpolation follows the screen filter
 		std::vector<std::string> hr;
-		for (const char *id : { "STR_HIRES_MODE_OFF", "STR_HIRES_MODE_ON" })
+		for (const char *id : { "STR_HIRES_MODE_OFF", "STR_HIRES_MODE_GEOSCAPE", "STR_HIRES_MODE_ALL" })
 			hr.push_back(tr(id));
-		const size_t sel = Options::oxceHiResAssets ? 1 : 0;
+		Options::normalizeHiResLevel();
+		const size_t sel = (size_t)Options::oxceHiResLevel;
 		_cbxHiRes->setOptions(hr);
 		_cbxHiRes->setSelected(sel);
 		_cbxHiRes->onChange((ActionHandler)&OptionsVideoState::cbxHiResChange);
@@ -611,10 +612,11 @@ void OptionsVideoState::btnLetterboxClick(Action *)
  */
 void OptionsVideoState::cbxHiResChange(Action *)
 {
-	const bool on = _cbxHiRes->getSelected() != 0;
-	if (on != Options::oxceHiResAssets)
+	const int level = (int)_cbxHiRes->getSelected();
+	if (level != Options::oxceHiResLevel)
 	{
-		Options::oxceHiResAssets = on;
+		Options::oxceHiResLevel = level;
+		Options::oxceHiResAssets = level > 0;
 		if (_origin == OPT_MENU)
 		{
 			Options::reload = true; // images are (re)loaded with the mods

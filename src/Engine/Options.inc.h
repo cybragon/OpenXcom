@@ -131,6 +131,8 @@ OPT bool oxceHiResOverlay, oxceHiResText, oxceHiResTextAntialias;
 OPT bool oxceGeoscapeUiOptimized;
 // hi-res asset replacements (geoscape/base): size-mismatched extraSprites replacements drawn at output resolution, 32-bit pictures for geoscape/base images
 OPT bool oxceHiResAssets;
+// hi-res level: 0 off, 1 geoscape (UI, geoscape, base, ufopaedia, inventory; battle map stock), 2 all (battle map too); -1 = not saved yet (migrated from oxceHiResAssets). oxceHiResAssets follows it (level > 0)
+OPT int oxceHiResLevel;
 // hi-res asset upscaling: 0 smooth (bilinear), 1 nearest, 2 pixel-art (xBRZ, then area downscale), 3 auto (video filter)
 // hi-res text settings (options.cfg)
 OPT int oxceHiResFontSize, oxceHiResTextOutlineScale, oxceHiResTextBold, oxceHiResTextHinting, oxceHiResTextLayout;

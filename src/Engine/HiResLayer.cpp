@@ -1534,6 +1534,7 @@ struct MapCacheState
 
 struct MapPlan
 {
+	bool walking = false;             ///< a unit walks in view this frame
 	bool active = false;              ///< a map is drawn this frame
 	bool full = true;                 ///< recompose everything
 	bool unchanged = false;           ///< nothing to draw: the cached result is current
@@ -1552,6 +1553,8 @@ struct FrameStats
 	long long rectCount = 0;
 	std::map<std::string, long long> reasons; ///< why the map was (re)composed: reason -> frames
 } FS;
+
+std::vector<SDL_Rect> walkRegions; ///< walking units of the map being recorded (map-surface px)
 
 inline Uint64 mix64(Uint64 h, Uint64 v) { return (h ^ v) * 1099511628211ull; }
 
@@ -1692,7 +1695,7 @@ int filterMargin(int mode)
 {
 	if (mode == HiResResample::NEAREST) return 2;
 	if (mode == HiResResample::SMOOTH) return 4;
-	return 6; // HQX / xBRZ (pixel art)
+	return 14; // HQX / xBRZ (pixel art)
 }
 
 /// Compares this frame's map draw list with the cached one and decides what to redraw.
@@ -1700,6 +1703,7 @@ int filterMargin(int mode)
 void planMapFrame(int dstW, int dstH, int backend)
 {
 	MapPlan P;
+	P.walking = !walkRegions.empty();
 	const double sx = dstW / (double)S.baseW, sy = dstH / (double)S.baseH;
 	const int mode = HiResResample::mode();
 	const bool debug = Options::oxceHiResDebugScaleMask;
@@ -1733,7 +1737,7 @@ void planMapFrame(int dstW, int dstH, int backend)
 		MC.dstW = dstW; MC.dstH = dstH; MC.baseW = S.baseW; MC.baseH = S.baseH; MC.sx = sx; MC.sy = sy;
 		MC.mode = mode; MC.debug = debug;
 		MC.sigs = cur;
-		++FS.reasons[P.reason[0] ? P.reason : "?"];
+		++FS.reasons[std::string(P.reason[0] ? P.reason : "?") + (P.walking ? " +walking" : "")];
 		MC.mx0 = P.mx0; MC.my0 = P.my0; MC.mx1 = P.mx1; MC.my1 = P.my1;
 		curPlan = P;
 	};
@@ -1899,16 +1903,69 @@ void planMapFrame(int dstW, int dstH, int backend)
 		}
 	}
 	P.dx = dx; P.dy = dy; P.DX = DX; P.DY = DY;
-	mergeRects(rects);
-	if (rects.size() > 200)
+	// a walking / flying unit: its region is recomposed too (the planner already catches what changed; the region adds
+	// the unit's own surroundings as a safety net and switches to the higher threshold below)
+	for (const SDL_Rect &w : walkRegions)
+		addRect(w.x, w.y, w.x + w.w, w.y + w.h);
+	// rasterise the (margin-grown) rects on an 8x8 base-px grid: the union area is exact and the rects stay disjoint
+	// (merging overlapping rects into bounding boxes chained into one huge box for scattered tile changes)
 	{
-		int x0 = 1 << 30, y0 = 1 << 30, x1 = -1, y1 = -1;
-		for (auto &r : rects) { x0 = std::min(x0, (int)r.x); y0 = std::min(y0, (int)r.y); x1 = std::max(x1, r.x + r.w); y1 = std::max(y1, r.y + r.h); }
-		rects.assign(1, SDL_Rect{ (Sint16)x0, (Sint16)y0, (Uint16)(x1 - x0), (Uint16)(y1 - y0) });
+		const int cell = 8;
+		const int gw = (mapW + cell - 1) / cell, gh = (mapH + cell - 1) / cell;
+		std::vector<unsigned char> grid((size_t)gw * gh, 0);
+		for (const SDL_Rect &r : rects)
+		{
+			const int cx0 = std::max(0, (r.x - P.mx0) / cell), cy0 = std::max(0, (r.y - P.my0) / cell);
+			const int cx1 = std::min(gw, (r.x + r.w - P.mx0 + cell - 1) / cell), cy1 = std::min(gh, (r.y + r.h - P.my0 + cell - 1) / cell);
+			for (int cy = cy0; cy < cy1; ++cy)
+				for (int cx = cx0; cx < cx1; ++cx)
+					grid[(size_t)cy * gw + cx] = 1;
+		}
+		rects.clear();
+		// runs per row, merged downwards while the run repeats
+		struct Run { int x0, x1, y0; };
+		std::vector<Run> open;
+		auto emit = [&](const Run &r, int y1)
+		{
+			const int x0 = P.mx0 + r.x0 * cell, y0 = P.my0 + r.y0 * cell;
+			const int x1 = std::min(P.mx1, P.mx0 + r.x1 * cell), yy1 = std::min(P.my1, P.my0 + y1 * cell);
+			rects.push_back(SDL_Rect{ (Sint16)x0, (Sint16)y0, (Uint16)(x1 - x0), (Uint16)(yy1 - y0) });
+		};
+		for (int cy = 0; cy <= gh; ++cy)
+		{
+			std::vector<Run> runs;
+			if (cy < gh)
+				for (int cx = 0; cx < gw;)
+				{
+					if (!grid[(size_t)cy * gw + cx]) { ++cx; continue; }
+					int e = cx;
+					while (e < gw && grid[(size_t)cy * gw + e]) ++e;
+					runs.push_back(Run{ cx, e, cy });
+					cx = e;
+				}
+			std::vector<Run> next;
+			for (Run &r : runs)
+			{
+				bool cont = false;
+				for (size_t i = 0; i < open.size(); ++i)
+					if (open[i].x0 == r.x0 && open[i].x1 == r.x1 && open[i].y0 >= 0)
+					{
+						r.y0 = open[i].y0; open[i].y0 = -1 - open[i].y0; cont = true; break; // continued
+					}
+				(void)cont;
+				next.push_back(r);
+			}
+			for (const Run &o : open)
+				if (o.y0 < 0) continue; else emit(o, cy);
+			open = next;
+		}
 	}
 	long long area = 0;
 	for (auto &r : rects) area += (long long)r.w * r.h;
-	if (area * 100 > (long long)mapW * mapH * 55)
+	// cost rule: a partial update costs about its (exact) area plus a fixed share; a full one costs the map.
+	// Walking frames (lighting / visibility change as the unit crosses tiles) tolerate more.
+	const int limit = P.walking ? 92 : 75;
+	if (rects.size() > 400 || area * 100 > (long long)mapW * mapH * limit)
 	{
 		P.reason = "most of the map changed";
 		P.dx = P.dy = P.DX = P.DY = 0;
@@ -2031,7 +2088,14 @@ SDL_Rect composeMapCPU(size_t groupStart, size_t groupEnd, int dstW, int dstH, d
 		SM.inMap = false;
 		S.stamps.swap(MB.zeroStamps);
 		S.rgba.swap(MB.a);
-		// result = nearest composite, then the interpolation of this rect
+	}
+	// result = nearest composite, then the interpolation, per rect - after ALL rects are composed (neighbouring rects
+	// are sources of each other's filter taps)
+	for (const SDL_Rect &R : rects)
+	{
+		int x0, y0, x1, y1;
+		outRect(R, sx, sy, dstW, dstH, x0, y0, x1, y1);
+		if (x0 >= x1 || y0 >= y1) continue;
 		for (int y = y0; y < y1; ++y)
 			std::memcpy(&MB.res[(size_t)y * dstW + x0], &MB.a[(size_t)y * dstW + x0], (size_t)(x1 - x0) * 4);
 		if (mode != HiResResample::NEAREST || Options::oxceHiResDebugScaleMask)
@@ -2788,6 +2852,12 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 	}
 }
 
+void HiResLayer::noteWalkRegion(int x, int y, int w, int h)
+{
+	if (layerSurf && w > 0 && h > 0)
+		walkRegions.push_back(SDL_Rect{ (Sint16)x, (Sint16)y, (Uint16)w, (Uint16)h });
+}
+
 bool HiResLayer::layered()
 {
 	// hi-res images off: the battlescape is the stock 8-bit blit (+ stock screen filter); the layer
@@ -2811,6 +2881,7 @@ void HiResLayer::layerBegin(SDL_Surface *map, Uint8 bg)
 	}
 	layerSurf = map;
 	layerBg = bg;
+	walkRegions.clear();
 	layerVal.assign((size_t)map->w * map->h, 0);
 	HiResCmd c;
 	c.kind = HiResCmdKind::Image;

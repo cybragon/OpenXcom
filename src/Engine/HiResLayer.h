@@ -194,6 +194,8 @@ public:
 	static void layerSprite8(SDL_Surface *dst, const Uint8 *src, int w, int h, int pitch, int dx, int dy, bool half, int clipX, int clipY, int clipW, int clipH);
 	/// Layered battlescape active (option on, recording)?
 	static bool layered();
+	/// the map drawn this frame has a walking / flying unit: its region (map-surface px) is recomposed together with the changes found by the planner
+	static void noteWalkRegion(int x, int y, int w, int h);
 	static void dropImage(Uint32 id);
 	/// Output px per screen base px of the last composed frame (false before the first frame).
 	static bool outputScale(double &sx, double &sy);

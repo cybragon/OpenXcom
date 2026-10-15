@@ -344,6 +344,22 @@ void Map::draw()
 		{
 			HiResAssets::battleBegin(getSurface());
 			HiResLayer::layerBegin(getSurface(), (Uint8)(Palette::blockOffset(0) + _bgColor));
+			// walking / flying units in view: their surroundings (80x80 base px, larger for big units) are recomposed with the
+			// changes the hi-res planner finds (shade / visibility change while a unit crosses tiles)
+			for (const BattleUnit *u : *_save->getUnits())
+			{
+				if ((u->getStatus() != STATUS_WALKING && u->getStatus() != STATUS_FLYING) || (!u->getVisible() && !_save->getDebugMode()))
+					continue;
+				Position a, b;
+				_camera->convertMapToScreen(u->getPosition(), &a);
+				_camera->convertMapToScreen(u->getDestination(), &b);
+				a += _camera->getMapOffset();
+				b += _camera->getMapOffset();
+				const int big = 32 * (u->getArmor()->getSize() - 1);
+				const int x0 = std::min(a.x, b.x) + 16 - 40 - big / 2, x1 = std::max(a.x, b.x) + 16 + 40 + big / 2;
+				const int y0 = std::min(a.y, b.y) - 40 - big / 2, y1 = std::max(a.y, b.y) + 40 + big / 2;
+				HiResLayer::noteWalkRegion(x0, y0, x1 - x0, y1 - y0);
+			}
 		}
 	}
 	ShaderDrawFunc(

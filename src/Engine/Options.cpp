@@ -387,6 +387,8 @@ void createOptionsOXCE()
 	// hi-res battle: soft shadow under units on the floor, opacity % (0 = off)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleGL", &oxceHiResBattleGL, true)); // layered battlescape drawn by OpenGL (framebuffer objects) when the OpenGL output is used; false / unavailable = CPU
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleLayered", &oxceHiResBattleLayered, true)); // battlescape: every map draw at output resolution in draw order (false = 8-bit pixel match)
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResForceFullRedraw", &oxceHiResForceFullRedraw, false)); // battlescape: recompose the whole map every frame (debug / seam comparison)
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResVerifyReuse", &oxceHiResVerifyReuse, false)); // battlescape: compare each reused frame with a full recompose, log the pixel difference (debug, slow)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDebugScaleMask", &oxceHiResDebugScaleMask, false)); // battlescape: tint pixels by scale class (debug)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontSize", &oxceHiResFontSize, 100));

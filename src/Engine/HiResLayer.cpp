@@ -656,7 +656,11 @@ inline Uint32 battlePixel(const HiResCmd &c, Uint32 p, Uint8 m, const SDL_Color 
 /// of the picture that wrote it last (cls, 0 = exactly 1x or downscaled = final). Afterwards, per
 /// class, the pixels are taken back to their source grid (one sample per block), interpolated up once
 /// (smooth / xBRZ / hqx, from the screen filter) and written back only where that class is.
-struct ScaleClass { double kx, ky, phx, phy; }; ///< source pixels per base pixel + grid phase
+struct ScaleClass
+{
+	double kx, ky, phx, phy; ///< source pixels per base pixel + grid phase
+	int bx0 = INT32_MAX, by0 = INT32_MAX, bx1 = -1, by1 = -1; ///< output px bounding box of the class (GL map pass)
+};
 struct ScaleMaskState
 {
 	bool inMap = false;               ///< drawing the layered map's commands now
@@ -678,6 +682,11 @@ Uint8 scaleClass(double kx, double ky, double phx, double phy)
 	SM.classes.push_back(ScaleClass{ kx, ky, phx, phy });
 	return (Uint8)SM.classes.size();
 }
+
+/// buffers of the pass: read the nearest composite, write the interpolated result (map cache)
+const Uint32 *smSrc = nullptr;
+Uint32 *smDst = nullptr;
+int smMargin = 0; ///< output px read around the region (filter reach)
 
 void scaleMaskBegin(int dstW, int dstH)
 {
@@ -732,7 +741,10 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 		// source grid cell of an output pixel (same rule as the nearest draw: left/top edge of the pixel)
 		auto cellX = [&](int x) { return (int)std::floor(x * isx * sc.kx - sc.phx + 1e-9); };
 		auto cellY = [&](int y) { return (int)std::floor(y * isy * sc.ky - sc.phy + 1e-9); };
-		const int gx0 = cellX(X0), gy0 = cellY(Y0), gx1 = cellX(X1 - 1) + 1, gy1 = cellY(Y1 - 1) + 1;
+		// read window: the region plus the filter reach (neighbours outside the region come from the cache)
+		const int XA = std::max(0, X0 - smMargin), XB = std::min(S.bufW, X1 + smMargin);
+		const int YA = std::max(0, Y0 - smMargin), YB = std::min(S.bufH, Y1 + smMargin);
+		const int gx0 = cellX(XA), gy0 = cellY(YA), gx1 = cellX(XB - 1) + 1, gy1 = cellY(YB - 1) + 1;
 		const int W = gx1 - gx0, H = gy1 - gy0;
 		if (W <= 0 || H <= 0)
 			continue;
@@ -743,11 +755,12 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 			for (int y = Y0; y < Y1; ++y)
 			{
 				const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
-				Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+				Uint32 *dr = &smDst[(size_t)y * S.bufW];
+				const Uint32 *sr0 = &smSrc[(size_t)y * S.bufW];
 				for (int x = X0; x < X1; ++x)
 					if (cr[x] == k)
 					{
-						const Uint32 p = dr[x];
+						const Uint32 p = sr0[x];
 						auto mix = [&](int sh) { return (Uint32)(((((p >> sh) & 0xFF) * 5) + (((t >> sh) & 0xFF) * 3)) / 8) << sh; };
 						dr[x] = (p & 0xFF000000u) | mix(16) | mix(8) | mix(0);
 					}
@@ -756,17 +769,17 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 		}
 		// shrink: one sample per source block (any pixel of the block still showing this class)
 		small.assign((size_t)W * H, 0);
-		std::vector<int> colCell(outW);
-		for (int x = X0; x < X1; ++x) colCell[x - X0] = cellX(x) - gx0;
-		for (int y = Y0; y < Y1; ++y)
+		std::vector<int> colCell(XB - XA);
+		for (int x = XA; x < XB; ++x) colCell[x - XA] = cellX(x) - gx0;
+		for (int y = YA; y < YB; ++y)
 		{
 			const int gy = cellY(y) - gy0;
 			const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
-			const Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+			const Uint32 *dr = &smSrc[(size_t)y * S.bufW];
 			Uint32 *sr = &small[(size_t)gy * W];
-			for (int x = X0; x < X1; ++x)
+			for (int x = XA; x < XB; ++x)
 				if (cr[x] == k && (dr[x] >> 24))
-					sr[colCell[x - X0]] = dr[x] | 0xFF000000u;
+					sr[colCell[x - XA]] = dr[x] | 0xFF000000u;
 		}
 		const double rx = X0 * isx * sc.kx - sc.phx - gx0, ry = Y0 * isy * sc.ky - sc.phy - gy0;
 		const double rw = outW * isx * sc.kx, rh = outH * isy * sc.ky;
@@ -844,7 +857,7 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 				const int wy1 = (int)std::lround((c - j0) * 256), wy0 = 256 - wy1;
 				const int *r0 = hrow(std::min(H - 1, std::max(0, j0)));
 				const int *r1 = hrow(std::min(H - 1, std::max(0, j0 + 1)));
-				Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+				Uint32 *dr = &smDst[(size_t)y * S.bufW];
 				for (int x = X0; x < X1; ++x)
 				{
 					if (cr[x] != k) continue;
@@ -874,7 +887,7 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 		for (int y = Y0; y < Y1; ++y)
 		{
 			const Uint8 *cr = &SM.cls[(size_t)y * S.bufW];
-			Uint32 *dr = &S.rgba[(size_t)y * S.bufW];
+			Uint32 *dr = &smDst[(size_t)y * S.bufW];
 			const Uint32 *orow = &out[(size_t)(y - Y0) * outW - X0];
 			for (int x = X0; x < X1; ++x)
 			{
@@ -1486,6 +1499,642 @@ void placeVertical(const HiResCmd &c, HiResFont *font, double sx, double sy, int
 
 bool glMapActive = false; ///< this frame the layered map commands are drawn by the GL map pass (renderGL)
 
+// ---------------------------------------------------------------------------------------------
+// Map cache (battle-4): the interpolated map of the last frame is kept; a frame only recomposes what
+// changed. The draw list of the map layer is compared with the last one (content signature per
+// command, position apart): commands that moved by one common offset are a scroll (the finished frame
+// is shifted), added / removed / changed commands mark dirty rects (grown by the filter radius), and
+// an identical list draws nothing. Everything else (size, filter, order, class grid phase, ...) is a
+// full recompose.
+Uint64 cacheEpoch = 1; ///< bumped when cached results may be stale (mode, fonts, context, sprite store...)
+
+struct MapSig
+{
+	Uint64 sig = 0;
+	int x = 0, y = 0;                 ///< command position (base px)
+	int vx0 = 0, vy0 = 0, vx1 = 0, vy1 = 0; ///< visible rect: box x clip (base px)
+	bool clear = false, overlay = false;
+	Uint32 spriteKey = 0;
+	bool hasClass = false;
+	double kx = 0, ky = 0, phx = 0, phy = 0;
+};
+
+struct MapCacheState
+{
+	bool valid = false;
+	int backend = 0;                  ///< 1 = CPU buffers, 2 = GL textures
+	Uint64 epoch = 0;
+	int dstW = 0, dstH = 0, baseW = 0, baseH = 0;
+	double sx = 0, sy = 0;
+	int mode = -1;
+	bool debug = false;
+	std::vector<MapSig> sigs;
+	int mx0 = 0, my0 = 0, mx1 = 0, my1 = 0; ///< map rect (base px)
+} MC;
+
+struct MapPlan
+{
+	bool active = false;              ///< a map is drawn this frame
+	bool full = true;                 ///< recompose everything
+	bool unchanged = false;           ///< nothing to draw: the cached result is current
+	int dx = 0, dy = 0, DX = 0, DY = 0; ///< scroll (base px / output px)
+	std::vector<SDL_Rect> rects;      ///< base px, grown by the filter margin; empty when full
+	int mx0 = 0, my0 = 0, mx1 = 0, my1 = 0;
+	const char *reason = "";
+} curPlan;
+
+/// per-run counters for the log summary
+struct FrameStats
+{
+	long long frames = 0, full = 0, scroll = 0, dirty = 0, unchanged = 0, fallback = 0;
+	double mapMs = 0, totalMs = 0, maxMs = 0, wallMs = 0;
+	long long wallFrames = 0;
+	long long rectCount = 0;
+	std::map<std::string, long long> reasons; ///< why the map was (re)composed: reason -> frames
+} FS;
+
+inline Uint64 mix64(Uint64 h, Uint64 v) { return (h ^ v) * 1099511628211ull; }
+
+long long skippedFrames = 0;
+std::string lastMapPath;
+/// Logs (once per change) which path composes the battlefield; cpuReason = null: GPU
+void logMapPath(bool gl, const char *cpuReason)
+{
+	if (!gl && !cpuReason)
+		return;
+	const std::string now = gl ? "GPU (OpenGL framebuffers + GLSL)" : std::string("CPU - ") + cpuReason;
+	if (now == lastMapPath)
+		return;
+	lastMapPath = now;
+	Log(LOG_INFO) << "HiResLayer: battlefield path: " << now;
+}
+
+void logFrameSummary()
+{
+	if (FS.frames <= 0)
+		return;
+	Log(LOG_INFO) << "HiResLayer: " << FS.frames << " battlefield frames, " << (FS.wallFrames ? 1000.0 * FS.wallFrames / FS.wallMs : 0.0) << " fps, hi-res layer " << (FS.totalMs / FS.frames) << " ms avg, " << FS.maxMs
+		<< " ms max; map: " << FS.full << " full, " << FS.scroll << " scroll-reuse, " << FS.dirty << " dirty-rect (" << FS.rectCount << " rects), "
+		<< FS.unchanged << " unchanged, " << FS.fallback << " GL fallbacks, " << skippedFrames << " compose skips";
+	if (!FS.reasons.empty())
+	{
+		std::ostringstream rs;
+		for (const auto &r : FS.reasons) rs << " [" << r.first << ": " << r.second << "]";
+		Log(LOG_INFO) << "HiResLayer: map plans:" << rs.str();
+	}
+	FS = FrameStats();
+	skippedFrames = 0;
+}
+
+/// one battlefield frame of the layer took ms (plan + map + compose + upload)
+void frameDone(double ms)
+{
+	if (!curPlan.active)
+		return;
+	static double lastFrame = 0;
+	const double now = profNow();
+	if (lastFrame > 0 && now - lastFrame < 250.0)
+	{
+		FS.wallMs += now - lastFrame;
+		++FS.wallFrames;
+	}
+	lastFrame = now;
+	++FS.frames;
+	FS.totalMs += ms;
+	FS.maxMs = std::max(FS.maxMs, ms);
+	static const long long period = std::getenv("OXCE_HIRES_SUMMARY") ? std::max(10, std::atoi(std::getenv("OXCE_HIRES_SUMMARY"))) : 600;
+	if (FS.frames >= period)
+		logFrameSummary();
+}
+
+/// source grid of an interpolated hi-res picture (same rule as the draw): false = 8-bit grid / final
+bool cmdScaleGrid(const HiResCmd &c, double sx, double sy, double &kx, double &ky, double &phx, double &phy)
+{
+	if (c.spriteKey)
+	{
+		kx = ky = 1.0; phx = phy = 0.0;
+		return true;
+	}
+	double fx = 0, fy = 0;
+	if (!c.assetId || !HiResAssets::nativeScale(c.assetId, fx, fy) || c.w <= 0 || c.h <= 0)
+		return false;
+	const int nW = std::max(1, (int)std::lround(c.srcW * fx)), nH = std::max(1, (int)std::lround(c.srcH * fy));
+	kx = nW / (double)c.w; ky = nH / (double)c.h;
+	if (!(sx / kx > 1.0 + 1e-6 && sy / ky > 1.0 + 1e-6))
+		return false;
+	phx = c.x * kx - std::floor(c.x * kx);
+	phy = c.y * ky - std::floor(c.y * ky);
+	return true;
+}
+
+MapSig makeSig(const HiResCmd &c, double sx, double sy)
+{
+	MapSig m;
+	m.x = c.x; m.y = c.y;
+	m.clear = c.clearRect != 0;
+	m.overlay = !c.clearRect && c.nearest && c.spriteKey && !c.battle;
+	m.spriteKey = c.spriteKey;
+	int x0 = c.clipX, y0 = c.clipY, x1 = c.clipX + c.clipW, y1 = c.clipY + c.clipH;
+	if (!m.clear)
+	{
+		x0 = std::max(x0, (int)c.x); y0 = std::max(y0, (int)c.y);
+		x1 = std::min(x1, c.x + c.w); y1 = std::min(y1, c.y + c.h);
+	}
+	if (x1 < x0) x1 = x0;
+	if (y1 < y0) y1 = y0;
+	m.vx0 = x0; m.vy0 = y0; m.vx1 = x1; m.vy1 = y1;
+	Uint64 h = 1469598103934665603ull;
+	h = mix64(h, (Uint64)c.kind); h = mix64(h, (Uint64)(Uint16)c.w); h = mix64(h, (Uint64)(Uint16)c.h);
+	h = mix64(h, (Uint64)(Sint64)(x0 - c.x)); h = mix64(h, (Uint64)(Sint64)(y0 - c.y));
+	h = mix64(h, (Uint64)(x1 - x0)); h = mix64(h, (Uint64)(y1 - y0));
+	if (m.clear)
+	{
+		h = mix64(h, 0xC1EA4ull); h = mix64(h, c.fill.r); h = mix64(h, c.fill.g); h = mix64(h, c.fill.b);
+		h = mix64(h, (Uint64)(Sint64)c.x); h = mix64(h, (Uint64)(Sint64)c.y);
+	}
+	h = mix64(h, c.assetId); h = mix64(h, c.palKey);
+	h = mix64(h, (Uint64)(Uint16)c.srcX); h = mix64(h, (Uint64)(Uint16)c.srcY); h = mix64(h, (Uint64)(Uint16)c.srcW); h = mix64(h, (Uint64)(Uint16)c.srcH);
+	h = mix64(h, c.battle); h = mix64(h, c.layered); h = mix64(h, c.nearest); h = mix64(h, c.spriteKey);
+	h = mix64(h, c.shade); h = mix64(h, c.nvColor); h = mix64(h, c.tint);
+	for (int i = 0; i < 4; ++i) { h = mix64(h, c.rcFrom[i]); h = mix64(h, c.rcTo[i]); }
+	m.sig = h;
+	if (!m.clear && !m.overlay)
+		m.hasClass = cmdScaleGrid(c, sx, sy, m.kx, m.ky, m.phx, m.phy);
+	return m;
+}
+
+inline bool rectOverlap(const SDL_Rect &a, const SDL_Rect &b, int pad = 0)
+{
+	return a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
+}
+
+void mergeRects(std::vector<SDL_Rect> &r)
+{
+	bool again = true;
+	while (again)
+	{
+		again = false;
+		for (size_t i = 0; i < r.size() && !again; ++i)
+			for (size_t j = i + 1; j < r.size() && !again; ++j)
+				if (rectOverlap(r[i], r[j]))
+				{
+					const int x0 = std::min(r[i].x, r[j].x), y0 = std::min(r[i].y, r[j].y);
+					const int x1 = std::max(r[i].x + r[i].w, r[j].x + r[j].w), y1 = std::max(r[i].y + r[i].h, r[j].y + r[j].h);
+					r[i] = SDL_Rect{ (Sint16)x0, (Sint16)y0, (Uint16)(x1 - x0), (Uint16)(y1 - y0) };
+					r.erase(r.begin() + j);
+					again = true;
+				}
+	}
+}
+
+/// Filter reach (base px) of the active interpolation: source taps + grid block + safety.
+int filterMargin(int mode)
+{
+	if (mode == HiResResample::NEAREST) return 2;
+	if (mode == HiResResample::SMOOTH) return 4;
+	return 6; // HQX / xBRZ (pixel art)
+}
+
+/// Compares this frame's map draw list with the cached one and decides what to redraw.
+/// backend: 1 = CPU buffers, 2 = GL textures (a cache built by the other backend is not reused).
+void planMapFrame(int dstW, int dstH, int backend)
+{
+	MapPlan P;
+	const double sx = dstW / (double)S.baseW, sy = dstH / (double)S.baseH;
+	const int mode = HiResResample::mode();
+	const bool debug = Options::oxceHiResDebugScaleMask;
+	std::vector<MapSig> cur;
+	std::vector<size_t> curIdx;
+	bool haveClear = false;
+	for (size_t i = 0; i < S.frame.size(); ++i)
+	{
+		const HiResCmd &c = S.frame[i];
+		if (!c.mapLayer || c.kind != HiResCmdKind::Image)
+			continue;
+		cur.push_back(makeSig(c, sx, sy));
+		curIdx.push_back(i);
+		if (c.clearRect && !haveClear)
+		{
+			haveClear = true;
+			P.mx0 = cur.back().vx0; P.my0 = cur.back().vy0; P.mx1 = cur.back().vx1; P.my1 = cur.back().vy1;
+		}
+	}
+	P.active = !cur.empty();
+	if (!P.active)
+	{
+		MC.valid = false;
+		MC.sigs.clear();
+		curPlan = P;
+		return;
+	}
+	auto commit = [&]()
+	{
+		MC.valid = true; MC.backend = backend; MC.epoch = cacheEpoch;
+		MC.dstW = dstW; MC.dstH = dstH; MC.baseW = S.baseW; MC.baseH = S.baseH; MC.sx = sx; MC.sy = sy;
+		MC.mode = mode; MC.debug = debug;
+		MC.sigs = cur;
+		++FS.reasons[P.reason[0] ? P.reason : "?"];
+		MC.mx0 = P.mx0; MC.my0 = P.my0; MC.mx1 = P.mx1; MC.my1 = P.my1;
+		curPlan = P;
+	};
+	P.full = true;
+	if (!haveClear) { P.reason = "no clear command"; commit(); return; }
+	if (Options::oxceHiResForceFullRedraw) { P.reason = "forced (oxceHiResForceFullRedraw)"; commit(); return; }
+	if (!MC.valid) { P.reason = "no cache"; commit(); return; }
+	if (MC.backend != backend || MC.epoch != cacheEpoch || MC.dstW != dstW || MC.dstH != dstH || MC.baseW != S.baseW || MC.baseH != S.baseH
+		|| MC.mode != mode || MC.debug != debug || std::fabs(MC.sx - sx) > 1e-9 || std::fabs(MC.sy - sy) > 1e-9)
+	{ P.reason = "mode / size changed"; commit(); return; }
+	if (MC.mx0 != P.mx0 || MC.my0 != P.my0 || MC.mx1 != P.mx1 || MC.my1 != P.my1) { P.reason = "map rect changed"; commit(); return; }
+
+	const std::vector<MapSig> &prev = MC.sigs;
+	// clear command and overlay (whole-map sprite of unrecorded 8-bit draws) are handled apart
+	const MapSig *prevClear = nullptr, *prevOv = nullptr, *curClear = nullptr, *curOv = nullptr;
+	for (const MapSig &m : prev) { if (m.clear && !prevClear) prevClear = &m; if (m.overlay) prevOv = &m; }
+	for (const MapSig &m : cur) { if (m.clear && !curClear) curClear = &m; if (m.overlay) curOv = &m; }
+	if (!prevClear || !curClear || prevClear->sig != curClear->sig) { P.reason = "map background changed"; commit(); return; }
+
+	// same list as last frame (content and positions): nothing to do
+	if (cur.size() == prev.size())
+	{
+		bool same = true;
+		for (size_t i = 0; i < cur.size() && same; ++i)
+			same = cur[i].sig == prev[i].sig && cur[i].x == prev[i].x && cur[i].y == prev[i].y;
+		if (same)
+		{
+			P.full = false; P.unchanged = true; P.reason = "unchanged";
+			commit(); return;
+		}
+	}
+	// scroll: the offset most commands moved by
+	std::unordered_multimap<Uint64, int> bySig;
+	size_t nShift = 0, voters = 0;
+	for (size_t i = 0; i < prev.size(); ++i)
+		if (!prev[i].clear && !prev[i].overlay) bySig.emplace(prev[i].sig, (int)i);
+	std::map<std::pair<int, int>, int> votes;
+	const int mapW = P.mx1 - P.mx0, mapH = P.my1 - P.my0;
+	// votes of the commands whose content is rare in the last frame (unique sprites: units, objects, walls);
+	// the very common ones (plain floor tiles) only if the rare ones decide nothing
+	for (int pass = 0; pass < 2; ++pass)
+	{
+		const size_t maxGroup = pass == 0 ? 4 : 24;
+		if (pass == 1 && !votes.empty())
+		{
+			voters = 0; // second pass decides alone
+			int top = 0;
+			for (auto &v : votes) top = std::max(top, v.second);
+			if (top >= 8) break;
+		}
+		for (const MapSig &m : cur)
+		{
+			if (m.clear || m.overlay) continue;
+			if (pass == 0) ++nShift;
+			if (bySig.count(m.sig) > maxGroup || (pass == 1 && bySig.count(m.sig) <= 4)) continue;
+			auto range = bySig.equal_range(m.sig);
+			++voters;
+			for (auto it = range.first; it != range.second; ++it)
+			{
+				const MapSig &o = prev[it->second];
+				const int ddx = m.x - o.x, ddy = m.y - o.y;
+				if (std::abs(ddx) <= mapW && std::abs(ddy) <= mapH)
+					++votes[{ddx, ddy}];
+			}
+		}
+	}
+	int dx = 0, dy = 0, best = votes.count({0, 0}) ? votes[{0, 0}] : 0;
+	for (auto &v : votes)
+		if (v.second > best) { best = v.second; dx = v.first.first; dy = v.first.second; }
+	if ((dx || dy) && best < (int)std::max<size_t>(8, voters / 3)) { dx = dy = 0; }
+	int DX = 0, DY = 0;
+	if (dx || dy)
+	{
+		DX = (int)std::lround(dx * sx); DY = (int)std::lround(dy * sy);
+		if (std::fabs(DX - dx * sx) > 1e-3 || std::fabs(DY - dy * sy) > 1e-3)
+		{
+			P.reason = "scroll not on the output pixel grid";
+			commit(); return;
+		}
+	}
+
+	// match: same content signature at the position + (dx, dy); same class grid (phase)
+	std::unordered_map<Uint64, std::vector<int>> byKey;
+	auto keyOf = [](Uint64 sig, int x, int y) { return mix64(mix64(sig, (Uint64)(Sint64)x), (Uint64)(Sint64)y); };
+	for (size_t i = 0; i < prev.size(); ++i)
+		if (!prev[i].clear && !prev[i].overlay) byKey[keyOf(prev[i].sig, prev[i].x + dx, prev[i].y + dy)].push_back((int)i);
+	std::vector<char> prevUsed(prev.size(), 0);
+	std::vector<SDL_Rect> rects;
+	const int M = filterMargin(mode);
+	auto addRect = [&](int x0, int y0, int x1, int y1)
+	{
+		x0 = std::max(x0 - M, P.mx0); y0 = std::max(y0 - M, P.my0);
+		x1 = std::min(x1 + M, P.mx1); y1 = std::min(y1 + M, P.my1);
+		if (x1 > x0 && y1 > y0)
+			rects.push_back(SDL_Rect{ (Sint16)x0, (Sint16)y0, (Uint16)(x1 - x0), (Uint16)(y1 - y0) });
+	};
+	int lastPrev = -1;
+	for (const MapSig &m : cur)
+	{
+		if (m.clear || m.overlay) continue;
+		bool matched = false;
+		auto it = byKey.find(keyOf(m.sig, m.x, m.y));
+		if (it != byKey.end())
+		{
+			for (int pi : it->second)
+			{
+				if (prevUsed[pi]) continue;
+				const MapSig &o = prev[pi];
+				const bool sameGrid = (o.hasClass == m.hasClass)
+					&& (!m.hasClass || (std::fabs(o.kx - m.kx) < 1e-6 && std::fabs(o.ky - m.ky) < 1e-6 && std::fabs(o.phx - m.phx) < 1e-6 && std::fabs(o.phy - m.phy) < 1e-6));
+				if (!sameGrid) continue;
+				if (pi < lastPrev) { P.reason = "draw order changed"; commit(); return; }
+				lastPrev = pi;
+				prevUsed[pi] = 1;
+				matched = true;
+				break;
+			}
+		}
+		if (!matched)
+		{
+			addRect(m.vx0, m.vy0, m.vx1, m.vy1);
+		}
+	}
+	for (size_t i = 0; i < prev.size(); ++i)
+		if (!prev[i].clear && !prev[i].overlay && !prevUsed[i])
+			addRect(prev[i].vx0 + dx, prev[i].vy0 + dy, prev[i].vx1 + dx, prev[i].vy1 + dy);
+
+	// exposed strips of a scroll
+	if (dx > 0) addRect(P.mx0, P.my0, P.mx0 + dx, P.my1);
+	if (dx < 0) addRect(P.mx1 + dx, P.my0, P.mx1, P.my1);
+	if (dy > 0) addRect(P.mx0, P.my0, P.mx1, P.my0 + dy);
+	if (dy < 0) addRect(P.mx0, P.my1 + dy, P.mx1, P.my1);
+
+	// overlay (unrecorded 8-bit draws as one map-sized sprite): compare the pixels, 8x8 base tiles
+	if (prevOv || curOv)
+	{
+		const bool same = prevOv && curOv && prevOv->spriteKey == curOv->spriteKey && prevOv->x == curOv->x && prevOv->y == curOv->y;
+		if (!(same && !dx && !dy))
+		{
+			const Sprite8 *ps = nullptr, *cs = nullptr;
+			if (prevOv) { auto i = sprites.find(prevOv->spriteKey); if (i == sprites.end()) { P.reason = "overlay sprite gone"; commit(); return; } ps = &i->second; }
+			if (curOv) { auto i = sprites.find(curOv->spriteKey); if (i == sprites.end()) { P.reason = "overlay sprite gone"; commit(); return; } cs = &i->second; }
+			// compare over the map rect, in map-surface coordinates of the current frame
+			const int ox = curOv ? curOv->x : prevOv->x + dx, oy = curOv ? curOv->y : prevOv->y + dy;
+			const int pox = prevOv ? prevOv->x + dx : 0, poy = prevOv ? prevOv->y + dy : 0;
+			for (int ty = P.my0; ty < P.my1; ty += 8)
+			{
+				for (int tx = P.mx0; tx < P.mx1; tx += 8)
+				{
+					bool diff = false;
+					const int ex = std::min(tx + 8, P.mx1), ey = std::min(ty + 8, P.my1);
+					for (int yy = ty; yy < ey && !diff; ++yy)
+						for (int xx = tx; xx < ex; ++xx)
+						{
+							Uint32 a = 0, b = 0;
+							if (cs) { const int u = xx - ox, v = yy - oy; if (u >= 0 && v >= 0 && u < cs->w && v < cs->h) a = cs->px[(size_t)v * cs->w + u]; }
+							if (ps) { const int u = xx - pox, v = yy - poy; if (u >= 0 && v >= 0 && u < ps->w && v < ps->h) b = ps->px[(size_t)v * ps->w + u]; }
+							if (a != b) { diff = true; break; }
+						}
+					if (diff) addRect(tx, ty, ex, ey);
+				}
+			}
+		}
+	}
+	P.dx = dx; P.dy = dy; P.DX = DX; P.DY = DY;
+	mergeRects(rects);
+	if (rects.size() > 200)
+	{
+		int x0 = 1 << 30, y0 = 1 << 30, x1 = -1, y1 = -1;
+		for (auto &r : rects) { x0 = std::min(x0, (int)r.x); y0 = std::min(y0, (int)r.y); x1 = std::max(x1, r.x + r.w); y1 = std::max(y1, r.y + r.h); }
+		rects.assign(1, SDL_Rect{ (Sint16)x0, (Sint16)y0, (Uint16)(x1 - x0), (Uint16)(y1 - y0) });
+	}
+	long long area = 0;
+	for (auto &r : rects) area += (long long)r.w * r.h;
+	if (area * 100 > (long long)mapW * mapH * 55)
+	{
+		P.reason = "most of the map changed";
+		P.dx = P.dy = P.DX = P.DY = 0;
+		commit(); return;
+	}
+	P.full = false;
+	P.rects = rects;
+	P.unchanged = rects.empty() && !dx && !dy;
+	P.reason = P.unchanged ? "unchanged" : (dx || dy) ? "scroll" : "dirty";
+	commit();
+}
+
+
+/// output-pixel rect of a base-px rect (same floor/ceil rule as the draw's clip rect)
+inline void outRect(const SDL_Rect &r, double sx, double sy, int dstW, int dstH, int &x0, int &y0, int &x1, int &y1)
+{
+	x0 = std::max(0, (int)std::floor(r.x * sx)); y0 = std::max(0, (int)std::floor(r.y * sy));
+	x1 = std::min(dstW, (int)std::ceil((r.x + r.w) * sx)); y1 = std::min(dstH, (int)std::ceil((r.y + r.h) * sy));
+}
+
+/// CPU map cache: A = nearest composite (no visibility cut), cls = scale class per pixel (SM.cls),
+/// res = A interpolated; the visible part of res is copied into the frame buffer each frame.
+struct MapBuf
+{
+	std::vector<Uint32> a, res;
+	int w = 0, h = 0;
+	std::vector<Uint32> zeroStamps;
+} MB;
+
+void shiftBuf(Uint32 *p, int w, int x0, int y0, int x1, int y1, int DX, int DY)
+{
+	// move the rect (x0..x1, y0..y1) of a w-wide buffer by (DX, DY) inside itself
+	const int cw = (x1 - x0) - std::abs(DX), ch = (y1 - y0) - std::abs(DY);
+	if (cw <= 0 || ch <= 0) return;
+	const int sx0 = DX >= 0 ? x0 : x0 - DX, sy0 = DY >= 0 ? y0 : y0 - DY;
+	const int dx0 = sx0 + DX, dy0 = sy0 + DY;
+	if (DY > 0)
+		for (int r = ch - 1; r >= 0; --r) std::memmove(&p[(size_t)(dy0 + r) * w + dx0], &p[(size_t)(sy0 + r) * w + sx0], (size_t)cw * 4);
+	else
+		for (int r = 0; r < ch; ++r) std::memmove(&p[(size_t)(dy0 + r) * w + dx0], &p[(size_t)(sy0 + r) * w + sx0], (size_t)cw * 4);
+}
+void shiftBuf8(Uint8 *p, int w, int x0, int y0, int x1, int y1, int DX, int DY)
+{
+	const int cw = (x1 - x0) - std::abs(DX), ch = (y1 - y0) - std::abs(DY);
+	if (cw <= 0 || ch <= 0) return;
+	const int sx0 = DX >= 0 ? x0 : x0 - DX, sy0 = DY >= 0 ? y0 : y0 - DY;
+	const int dx0 = sx0 + DX, dy0 = sy0 + DY;
+	if (DY > 0)
+		for (int r = ch - 1; r >= 0; --r) std::memmove(&p[(size_t)(dy0 + r) * w + dx0], &p[(size_t)(sy0 + r) * w + sx0], (size_t)cw);
+	else
+		for (int r = 0; r < ch; ++r) std::memmove(&p[(size_t)(dy0 + r) * w + dx0], &p[(size_t)(sy0 + r) * w + sx0], (size_t)cw);
+}
+
+/// Composes the layered map (commands S.frame[groupStart..groupEnd)) per the plan into the cache and
+/// copies its visible part into S.rgba. Returns the output rect of the map.
+SDL_Rect composeMapCPU(size_t groupStart, size_t groupEnd, int dstW, int dstH, double sx, double sy, bool forceFull = false)
+{
+	const MapPlan &P = curPlan;
+	const size_t n = (size_t)dstW * dstH;
+	bool full = P.full || forceFull || MB.w != dstW || MB.h != dstH || MB.a.size() != n || SM.cls.size() != n;
+	SDL_Rect mapBase = { (Sint16)P.mx0, (Sint16)P.my0, (Uint16)(P.mx1 - P.mx0), (Uint16)(P.my1 - P.my0) };
+	int mx0, my0, mx1, my1;
+	outRect(mapBase, sx, sy, dstW, dstH, mx0, my0, mx1, my1);
+	std::vector<SDL_Rect> rects;
+	if (full)
+	{
+		MB.w = dstW; MB.h = dstH;
+		MB.a.assign(n, 0); MB.res.assign(n, 0);
+		SM.cls.assign(n, 0);
+		SM.classes.clear();
+		scaleClass(1.0, 1.0, 0.0, 0.0);
+		rects.push_back(mapBase);
+		if (!forceFull) ++FS.full;
+	}
+	else
+	{
+		if (P.unchanged) ++FS.unchanged;
+		else if (P.DX || P.DY) ++FS.scroll; else ++FS.dirty;
+		if (P.DX || P.DY)
+		{
+			shiftBuf(MB.a.data(), dstW, mx0, my0, mx1, my1, P.DX, P.DY);
+			shiftBuf(MB.res.data(), dstW, mx0, my0, mx1, my1, P.DX, P.DY);
+			shiftBuf8(SM.cls.data(), dstW, mx0, my0, mx1, my1, P.DX, P.DY);
+		}
+		rects = P.rects;
+	}
+	const Uint32 mapStamp = S.frame[groupStart].stamp;
+	const int mode = HiResResample::mode();
+	if (MB.zeroStamps.size() != S.stamps.size())
+		MB.zeroStamps.assign(S.stamps.size(), 0);
+	for (const SDL_Rect &R : rects)
+	{
+		++FS.rectCount;
+		int x0, y0, x1, y1;
+		outRect(R, sx, sy, dstW, dstH, x0, y0, x1, y1);
+		if (x0 >= x1 || y0 >= y1) continue;
+		for (int y = y0; y < y1; ++y)
+		{
+			std::fill_n(&MB.a[(size_t)y * dstW + x0], x1 - x0, 0u);
+			std::fill_n(&SM.cls[(size_t)y * dstW + x0], x1 - x0, (Uint8)0);
+		}
+		// the map's commands, nearest on their grids, clipped to the rect, no visibility cut (applied at the copy)
+		S.rgba.swap(MB.a);
+		S.stamps.swap(MB.zeroStamps);
+		SM.inMap = true;
+		SDL_Rect unused = {0, 0, 0, 0};
+		for (size_t i = groupStart; i < groupEnd; ++i)
+		{
+			const HiResCmd &c = S.frame[i];
+			if (c.kind != HiResCmdKind::Image || !c.mapLayer)
+				continue;
+			HiResCmd cc = c;
+			int cx = cc.clipX, cy = cc.clipY, cw = cc.clipW, ch = cc.clipH;
+			const int rx0 = std::max(cx, (int)R.x), ry0 = std::max(cy, (int)R.y);
+			const int rx1 = std::min(cx + cw, R.x + R.w), ry1 = std::min(cy + ch, R.y + R.h);
+			if (rx1 <= rx0 || ry1 <= ry0) continue;
+			cc.clipX = (Sint16)rx0; cc.clipY = (Sint16)ry0; cc.clipW = (Sint16)(rx1 - rx0); cc.clipH = (Sint16)(ry1 - ry0);
+			drawImage(cc, dstW, dstH, sx, sy, unused);
+		}
+		SM.inMap = false;
+		S.stamps.swap(MB.zeroStamps);
+		S.rgba.swap(MB.a);
+		// result = nearest composite, then the interpolation of this rect
+		for (int y = y0; y < y1; ++y)
+			std::memcpy(&MB.res[(size_t)y * dstW + x0], &MB.a[(size_t)y * dstW + x0], (size_t)(x1 - x0) * 4);
+		if (mode != HiResResample::NEAREST || Options::oxceHiResDebugScaleMask)
+		{
+			smSrc = MB.a.data(); smDst = MB.res.data();
+			smMargin = (int)std::ceil(filterMargin(mode) * std::max(sx, sy));
+			scaleMaskPass(SDL_Rect{ (Sint16)x0, (Sint16)y0, (Uint16)(x1 - x0), (Uint16)(y1 - y0) }, sx, sy);
+			smSrc = smDst = nullptr;
+		}
+	}
+	if (SM.classes.size() > 200)
+		++cacheEpoch; // class table nearly full: next frame starts over
+	if (!full && !forceFull && Options::oxceHiResVerifyReuse)
+	{
+		// debug: the same frame recomposed in full must give the same pixels
+		const std::vector<Uint32> reused = MB.res;
+		const SDL_Rect r = composeMapCPU(groupStart, groupEnd, dstW, dstH, sx, sy, true);
+		long long bad = 0; int bx0 = dstW, by0 = dstH, bx1 = -1, by1 = -1;
+		for (int y = my0; y < my1; ++y)
+			for (int x = mx0; x < mx1; ++x)
+				if (reused[(size_t)y * dstW + x] != MB.res[(size_t)y * dstW + x])
+				{
+					++bad; bx0 = std::min(bx0, x); by0 = std::min(by0, y); bx1 = std::max(bx1, x); by1 = std::max(by1, y);
+				}
+		Log(LOG_INFO) << "HiResLayer verify (CPU): " << P.reason << " dx " << P.dx << " dy " << P.dy << " rects " << P.rects.size()
+			<< ": " << bad << " pixels differ" << (bad ? " in (" + std::to_string(bx0) + "," + std::to_string(by0) + ")-(" + std::to_string(bx1) + "," + std::to_string(by1) + ")" : std::string());
+		return r;
+	}
+	// visible part of the result into the frame buffer
+	const double isx = 1.0 / sx, isy = 1.0 / sy;
+	std::vector<int> colBase(mx1 - mx0);
+	for (int x = mx0; x < mx1; ++x) colBase[x - mx0] = std::min(S.baseW - 1, (int)(x * isx));
+	for (int y = my0; y < my1; ++y)
+	{
+		const Uint32 *stampRow = &S.stamps[std::min(S.baseH - 1, (int)(y * isy)) * S.baseW];
+		const Uint32 *src = &MB.res[(size_t)y * dstW];
+		Uint32 *dst = &S.rgba[(size_t)y * S.bufW];
+		for (int x = mx0; x < mx1; ++x)
+		{
+			if (stampRow[colBase[x - mx0]] > mapStamp) continue;
+			const Uint32 p = src[x];
+			const unsigned a = p >> 24;
+			if (a == 255) dst[x] = p;
+			else if (a) HiResResample::blendOver(dst[x], p);
+		}
+	}
+	return SDL_Rect{ (Sint16)mx0, (Sint16)my0, (Uint16)(mx1 - mx0), (Uint16)(my1 - my0) };
+}
+
+
+
+/// Compose cache: the frame buffer of the last composition and the hash of everything it was made from
+/// (all non-map commands with their stamps, the screen stamps, snapshot masks, pictures, mode). An identical
+/// hash means the buffer is current: no layout, no drawing, no upload.
+struct ComposeCache
+{
+	bool valid = false;
+	Uint64 hash = 0;
+	int w = 0, h = 0;
+	bool skipped = false; ///< set by compose(): the last call reused the buffer
+} CC;
+Uint64 imageEpoch = 1;
+
+inline Uint64 hashBytes(Uint64 h, const void *p, size_t n)
+{
+	const Uint8 *b = (const Uint8*)p;
+	size_t i = 0;
+	for (; i + 8 <= n; i += 8) { Uint64 v; std::memcpy(&v, b + i, 8); h = (h ^ v) * 1099511628211ull; h ^= h >> 29; }
+	for (; i < n; ++i) h = (h ^ b[i]) * 1099511628211ull;
+	return h;
+}
+
+Uint64 frameHash(int dstW, int dstH, bool mapInBuffer)
+{
+	Uint64 h = 1469598103934665603ull;
+	h = mix64(h, cacheEpoch); h = mix64(h, imageEpoch); h = mix64(h, (Uint64)dstW); h = mix64(h, (Uint64)dstH);
+	h = mix64(h, mapInBuffer ? 1 : 2); h = mix64(h, (Uint64)HiResResample::mode());
+	h = mix64(h, (Uint64)S.layout);
+	for (const HiResCmd &c : S.frame)
+	{
+		if (c.mapLayer) continue;
+		h = mix64(h, (Uint64)c.kind);
+		h = mix64(h, (Uint64)(Uint16)c.x | ((Uint64)(Uint16)c.y << 16) | ((Uint64)(Uint16)c.w << 32) | ((Uint64)(Uint16)c.h << 48));
+		h = mix64(h, (Uint64)(Uint16)c.clipX | ((Uint64)(Uint16)c.clipY << 16) | ((Uint64)(Uint16)c.clipW << 32) | ((Uint64)(Uint16)c.clipH << 48));
+		h = mix64(h, c.code); h = mix64(h, c.run); h = mix64(h, c.lineId);
+		h = mix64(h, (Uint64)(Uint16)c.boxW | ((Uint64)(Uint16)c.boxDy << 16) | ((Uint64)(Uint16)c.boxH << 32));
+		h = mix64(h, (Uint64)c.cellH | ((Uint64)c.lineH << 8) | ((Uint64)c.refW << 16) | ((Uint64)c.fillIdx << 24) | ((Uint64)c.lineIdx << 32) | ((Uint64)c.slot << 40) | ((Uint64)c.flags << 48) | ((Uint64)c.scale << 56));
+		h = mix64(h, (Uint64)(Uint8)c.inkTopL | ((Uint64)(Uint8)c.inkBotL << 8) | ((Uint64)(Uint8)c.inkTopK << 16) | ((Uint64)(Uint8)c.inkBotK << 24));
+		h = mix64(h, c.imageId); h = mix64(h, c.assetId);
+		h = mix64(h, (Uint64)(Uint16)c.srcX | ((Uint64)(Uint16)c.srcY << 16) | ((Uint64)(Uint16)c.srcW << 32) | ((Uint64)(Uint16)c.srcH << 48));
+		h = mix64(h, c.palKey); h = mix64(h, c.maskIdx); h = mix64(h, c.underId);
+		h = mix64(h, (Uint64)c.battle | ((Uint64)c.layered << 8) | ((Uint64)c.clearRect << 16) | ((Uint64)c.nearest << 24) | ((Uint64)c.shade << 32) | ((Uint64)c.nvColor << 40));
+		h = mix64(h, c.spriteKey); h = mix64(h, c.battleId); h = mix64(h, c.tint); h = mix64(h, c.stamp);
+		h = hashBytes(h, c.rcFrom, 4); h = hashBytes(h, c.rcTo, 4);
+		h = mix64(h, (Uint64)c.fill.r | ((Uint64)c.fill.g << 8) | ((Uint64)c.fill.b << 16) | ((Uint64)c.line.r << 24) | ((Uint64)c.line.g << 32) | ((Uint64)c.line.b << 40));
+	}
+	h = mix64(h, S.frame.size());
+	if (!S.stamps.empty()) h = hashBytes(h, S.stamps.data(), S.stamps.size() * 4);
+	for (const auto &m : S.masks) { h = mix64(h, m.size()); if (!m.empty()) h = hashBytes(h, m.data(), m.size()); }
+	for (const auto &b : S.backs) { h = mix64(h, b.size()); if (!b.empty()) h = hashBytes(h, b.data(), b.size() * 4); }
+	return h;
+}
+
 /// Composes the current frame into S.rgba (dstW x dstH). Returns the dirty rect of this frame;
 /// 'clearRect' receives the rect cleared from the previous frame.
 SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
@@ -1498,7 +2147,20 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 		S.prevDirty = {0, 0, (Uint16)dstW, (Uint16)dstH};
 		S.sizeCache.clear();
 	slotSizeCache.clear();
+		CC.valid = false;
 	}
+	// nothing it is made from changed: the buffer is current
+	const bool mapCPU = !glMapActive && curPlan.active;
+	const Uint64 fh = frameHash(dstW, dstH, mapCPU);
+	if (CC.valid && CC.hash == fh && CC.w == dstW && CC.h == dstH && (!mapCPU || curPlan.unchanged) && !Options::oxceHiResForceFullRedraw)
+	{
+		CC.skipped = true;
+		++skippedFrames;
+		clearRect = SDL_Rect{0, 0, 0, 0};
+		return S.prevDirty;
+	}
+	CC.skipped = false;
+	CC.valid = true; CC.hash = fh; CC.w = dstW; CC.h = dstH;
 	clearRect = S.prevDirty;
 	for (int y = S.prevDirty.y; y < S.prevDirty.y + S.prevDirty.h; ++y)
 		std::fill_n(&S.rgba[y * S.bufW + S.prevDirty.x], S.prevDirty.w, 0u);
@@ -1522,18 +2184,14 @@ SDL_Rect compose(int dstW, int dstH, SDL_Rect &clearRect)
 		if (!glMapActive)
 			for (size_t i = groupStart; i < groupEnd && !mapGroup; ++i)
 				mapGroup = S.frame[i].mapLayer && S.frame[i].kind == HiResCmdKind::Image;
-		if (mapGroup)
-			scaleMaskBegin(dstW, dstH);
-		SDL_Rect mapDirty = {0, 0, 0, 0};
-		for (size_t i = groupStart; i < groupEnd; ++i)
-			if (S.frame[i].kind == HiResCmdKind::Image && !(glMapActive && S.frame[i].mapLayer))
-				drawImage(S.frame[i], dstW, dstH, sx, sy, mapGroup ? mapDirty : dirty);
-		if (mapGroup)
+		if (mapGroup && curPlan.active)
 		{
-			scaleMaskPass(mapDirty, sx, sy);
-			if (mapDirty.w > 0)
-				unionRect(dirty, mapDirty.x, mapDirty.y, mapDirty.w, mapDirty.h);
+			const SDL_Rect md = composeMapCPU(groupStart, groupEnd, dstW, dstH, sx, sy);
+			unionRect(dirty, md.x, md.y, md.w, md.h);
 		}
+		for (size_t i = groupStart; i < groupEnd; ++i)
+			if (S.frame[i].kind == HiResCmdKind::Image && !S.frame[i].mapLayer)
+				drawImage(S.frame[i], dstW, dstH, sx, sy, dirty);
 		// layout, run by run (natural width first)
 		struct RunInfo { size_t start, end; long long width64; int hs; };
 		std::vector<RunInfo> runs;
@@ -1738,6 +2396,7 @@ void HiResLayer::init()
 
 void HiResLayer::reconfigure()
 {
+	++cacheEpoch;
 	const bool wasRecording = _recording;
 	S.sizePct = std::max(10, Options::oxceHiResFontSize);
 	S.outlinePct = std::min(400, std::max(0, Options::oxceHiResTextOutlineScale));
@@ -1796,6 +2455,7 @@ bool HiResLayer::wantsTrueColor()
 
 void HiResLayer::shutdown()
 {
+	++cacheEpoch;
 	_recording = false;
 	_textConfigured = false;
 	S.slots.clear();
@@ -1807,6 +2467,7 @@ void HiResLayer::shutdown()
 
 void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 {
+	++cacheEpoch;
 	S.screen = screenBuffer;
 	S.baseW = screenBuffer ? screenBuffer->w : 0;
 	S.baseH = screenBuffer ? screenBuffer->h : 0;
@@ -1835,6 +2496,7 @@ namespace { void glMapReset(); }
 #endif
 void HiResLayer::onContextLost()
 {
+	++cacheEpoch;
 #ifndef __NO_OPENGL
 	glMapReset();
 	S.tex = 0; // the old context and its textures are gone
@@ -2145,6 +2807,7 @@ void HiResLayer::layerBegin(SDL_Surface *map, Uint8 bg)
 		// bounded store (commands of the previous frame are gone: the map list was just cleared)
 		sprites.clear();
 		spriteByHash.clear();
+		++cacheEpoch;
 	}
 	layerSurf = map;
 	layerBg = bg;
@@ -2334,11 +2997,13 @@ Uint32 HiResLayer::newImageId()
 
 void HiResLayer::setImage(Uint32 id, const Uint32 *argb, int w, int h)
 {
+	++imageEpoch;
 	images[id] = ImageRef{ argb, w, h };
 }
 
 void HiResLayer::dropImage(Uint32 id)
 {
+	++imageEpoch;
 	images.erase(id);
 }
 
@@ -2397,9 +3062,19 @@ void HiResLayer::renderSoftware(SDL_Surface *out, int top, int bottom, int left,
 	if (S.frame.empty() && S.prevDirty.w == 0)
 		return;
 	SDL_Rect cleared;
+	const double tf0 = profNow();
+	if (S.baseW > 0)
+	{
+		glMapActive = false;
+		planMapFrame(dstW, dstH, 1);
+		logMapPath(false, curPlan.active ? "software output (no OpenGL)" : nullptr);
+	}
 	SDL_Rect dirty = compose(dstW, dstH, cleared);
 	if (dirty.w <= 0 || dirty.h <= 0)
+	{
+		frameDone(profNow() - tf0);
 		return;
+	}
 	if (SDL_MUSTLOCK(out))
 		SDL_LockSurface(out);
 	const SDL_PixelFormat *fmt = out->format;
@@ -2424,6 +3099,7 @@ void HiResLayer::renderSoftware(SDL_Surface *out, int top, int bottom, int left,
 	}
 	if (SDL_MUSTLOCK(out))
 		SDL_UnlockSurface(out);
+	frameDone(profNow() - tf0);
 }
 
 #ifndef __NO_OPENGL
@@ -2457,8 +3133,16 @@ struct GlMap
 	GLuint clsTex = 0, fboB = 0, outTex = 0, fboS = 0, sTex = 0;
 	int bW = 0, bH = 0, sW = 0, sH = 0;
 	GLuint progDraw = 0, progShrink = 0, progUp = 0;
+	// map cache (battle-4): spare targets for the scroll shift, the visibility-cut result C
+	GLuint fboT = 0, spA = 0, spCls = 0, spOut = 0, fboC = 0, cTex = 0;
+	int spW = 0, spH = 0, cW = 0, cH = 0;
+	bool cValid = false;
+	Uint64 cutHash = 0;
+	double stage[4] = {0, 0, 0, 0};
+	int stageFrames = 0;
 };
 GlMap G;
+GLuint glMapResult = 0; ///< texture holding the interpolated map (before the visibility cut) after glMapPass
 
 typedef GLuint (APIENTRY *HR_CreateShader)(GLenum);
 typedef void (APIENTRY *HR_ShaderSource)(GLuint, GLsizei, const char *const*, const GLint*);
@@ -2518,6 +3202,9 @@ void glMapReset()
 	G.clsTex = G.fboB = G.outTex = G.fboS = G.sTex = 0;
 	G.bW = G.bH = G.sW = G.sH = 0;
 	G.progDraw = G.progShrink = G.progUp = 0;
+	G.fboT = G.spA = G.spCls = G.spOut = G.fboC = G.cTex = 0;
+	G.spW = G.spH = G.cW = G.cH = 0; G.cValid = false;
+	++cacheEpoch;
 }
 
 GLuint makeTex(int w, int h, const void *bgra);
@@ -2732,8 +3419,8 @@ void quad(int x0, int y0, int x1, int y1, float s0 = 0, float t0 = 0, float s1 =
 	glEnd();
 }
 
-/// Draws the map commands of this frame. False = not drawn (the CPU path must compose them).
-bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int left, int right)
+/// Draws the map commands of this frame (or only what changed, per the plan). False = not drawn (the CPU path must compose them).
+bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int left, int right, bool forceFull = false)
 {
 	size_t first = S.frame.size();
 	for (size_t i = 0; i < S.frame.size(); ++i)
@@ -2742,6 +3429,8 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 		return true; // nothing on the map this frame
 	const Uint32 mapStamp = S.frame[first].stamp;
 	const double sx = dstW / (double)S.baseW, sy = dstH / (double)S.baseH;
+	const MapPlan P = curPlan;
+	bool full = P.full || forceFull;
 
 	GLint vp[4];
 	glGetIntegerv(GL_VIEWPORT, vp);
@@ -2749,9 +3438,21 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 	glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); glOrtho(0, dstW, dstH, 0, -1, 1);
 	glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
 	glMatrixMode(GL_TEXTURE); glPushMatrix(); glLoadIdentity();
+	auto popState = [&]()
+	{
+		G.bindFB(GL_FRAMEBUFFER_EXT, 0);
+		glMatrixMode(GL_TEXTURE); glPopMatrix();
+		glMatrixMode(GL_MODELVIEW); glPopMatrix();
+		glMatrixMode(GL_PROJECTION); glPopMatrix();
+		glPopAttrib();
+		glViewport(vp[0], vp[1], vp[2], vp[3]);
+	};
 
 	if (!G.fbo || G.fboW != dstW || G.fboH != dstH)
 	{
+		full = true;
+		G.cValid = false;
+		G.spW = 0;
 		if (!G.fbo) G.genFB(1, &G.fbo);
 		if (G.fboTex) glDeleteTextures(1, &G.fboTex);
 		G.fboTex = makeTex(dstW, dstH, nullptr);
@@ -2773,25 +3474,15 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 				G.smOk = false;
 				G.fbTex(GL_FRAMEBUFFER_EXT, HR_COLOR_ATTACHMENT1, GL_TEXTURE_2D, 0, 0);
 				G.fboW = 0; // rebuild next frame
-				G.bindFB(GL_FRAMEBUFFER_EXT, 0);
-				glMatrixMode(GL_TEXTURE); glPopMatrix();
-				glMatrixMode(GL_MODELVIEW); glPopMatrix();
-				glMatrixMode(GL_PROJECTION); glPopMatrix();
-				glPopAttrib();
-				glViewport(vp[0], vp[1], vp[2], vp[3]);
+				popState();
 				return false;
 			}
 		}
 		if (G.fbStatus(GL_FRAMEBUFFER_EXT) != GL_FRAMEBUFFER_COMPLETE_EXT)
 		{
 			Log(LOG_WARNING) << "HiResLayer: GL map pass framebuffer incomplete: CPU compositing";
-			G.bindFB(GL_FRAMEBUFFER_EXT, 0);
 			G.ok = false;
-			glMatrixMode(GL_TEXTURE); glPopMatrix();
-			glMatrixMode(GL_MODELVIEW); glPopMatrix();
-			glMatrixMode(GL_PROJECTION); glPopMatrix();
-			glPopAttrib();
-			glViewport(vp[0], vp[1], vp[2], vp[3]);
+			popState();
 			return false;
 		}
 	}
@@ -2803,191 +3494,328 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 	const bool interp = HiResResample::mode() != HiResResample::NEAREST;
 	if (interp && (!G.smOk || !G.clsTex))
 	{
-		G.bindFB(GL_FRAMEBUFFER_EXT, 0);
-		glMatrixMode(GL_TEXTURE); glPopMatrix();
-		glMatrixMode(GL_MODELVIEW); glPopMatrix();
-		glMatrixMode(GL_PROJECTION); glPopMatrix();
-		glPopAttrib();
-		glViewport(vp[0], vp[1], vp[2], vp[3]);
+		popState();
 		return false;
 	}
 	const GLenum bufs2[2] = { GL_COLOR_ATTACHMENT0_EXT, HR_COLOR_ATTACHMENT1 };
-	if (interp)
+	auto ortho = [](int w, int h)
 	{
-		GF.drawBuffers(2, bufs2);
-		GF.useProgram(G.progDraw);
-		GF.uni1i(GF.uniLoc(G.progDraw, "tex"), 0);
-		SM.classes.clear();
-		scaleClass(1.0, 1.0, 0.0, 0.0);
-	}
-	const GLint locUseTex = interp ? GF.uniLoc(G.progDraw, "useTex") : -1, locCls = interp ? GF.uniLoc(G.progDraw, "cls") : -1;
-	auto setCls = [&](bool useTex, int k)
-	{
-		if (!interp) return;
-		GF.uni1f(locUseTex, useTex ? 1.0f : 0.0f);
-		GF.uni1f(locCls, k / 255.0f);
+		glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, w, h, 0, -1, 1);
+		glMatrixMode(GL_MODELVIEW);
 	};
-	glClear(GL_COLOR_BUFFER_BIT);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-	glEnable(GL_SCISSOR_TEST);
-	const SDL_Color *bpal = HiResAssets::battlePalette();
-	const int mode = HiResResample::mode();
-	for (size_t i = first; i < S.frame.size(); ++i)
+	int mx0, my0, mx1, my1;
+	outRect(SDL_Rect{ (Sint16)P.mx0, (Sint16)P.my0, (Uint16)(P.mx1 - P.mx0), (Uint16)(P.my1 - P.my0) }, sx, sy, dstW, dstH, mx0, my0, mx1, my1);
+	double tShift = 0, tDraw = 0, tInterp = 0, tCut = 0;
+	const double tStart = profNow();
+
+	// --- scroll: move the finished frame (colour, class, result) by the scroll amount
+	if (!full && (P.DX || P.DY))
 	{
-		const HiResCmd &c = S.frame[i];
-		if (!c.mapLayer || c.kind != HiResCmdKind::Image)
-			continue;
-		const int x0 = std::max(0, (int)std::floor(c.clipX * sx)), y0 = std::max(0, (int)std::floor(c.clipY * sy));
-		const int x1 = std::min(dstW, (int)std::ceil((c.clipX + c.clipW) * sx));
-		const int y1 = std::min(dstH, (int)std::ceil((c.clipY + c.clipH) * sy));
-		if (x0 >= x1 || y0 >= y1)
-			continue;
-		glScissor(x0, dstH - y1, x1 - x0, y1 - y0);
-		if (c.clearRect)
+		bool okShift = true;
+		if (G.spW != dstW || G.spH != dstH || !G.fboT || !G.spA || !G.spCls || (interp && !G.spOut))
 		{
-			glDisable(GL_TEXTURE_2D);
-			setCls(false, 1);
-			glColor4ub(c.fill.r, c.fill.g, c.fill.b, 255);
-			quad(x0, y0, x1, y1);
-			continue;
+			if (G.spA) glDeleteTextures(1, &G.spA);
+			if (G.spCls) glDeleteTextures(1, &G.spCls);
+			if (G.spOut) glDeleteTextures(1, &G.spOut);
+			if (!G.fboT) G.genFB(1, &G.fboT);
+			G.spA = makeTex(dstW, dstH, nullptr);
+			G.spCls = makeTex(dstW, dstH, nullptr);
+			G.spOut = makeTex(dstW, dstH, nullptr);
+			G.spW = dstW; G.spH = dstH;
 		}
-		const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
-		const int oW = (int)std::lround((c.x + c.w) * sx) - X0, oH = (int)std::lround((c.y + c.h) * sy) - Y0;
-		if (oW <= 0 || oH <= 0)
-			continue;
-		GLuint tex = 0;
-		float f = 1.0f;
+		auto shiftOne = [&](GLuint &tex, GLuint &spare)
+		{
+			if (!okShift) return;
+			G.bindFB(GL_FRAMEBUFFER_EXT, G.fboT);
+			G.fbTex(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, spare, 0);
+			if (G.fbStatus(GL_FRAMEBUFFER_EXT) != GL_FRAMEBUFFER_COMPLETE_EXT) { okShift = false; return; }
+			glViewport(0, 0, dstW, dstH);
+			glDisable(GL_SCISSOR_TEST);
+			glDisable(GL_BLEND);
+			glClear(GL_COLOR_BUFFER_BIT);
+			const int dx0 = std::max(mx0, mx0 + P.DX), dx1 = std::min(mx1, mx1 + P.DX);
+			const int dy0 = std::max(my0, my0 + P.DY), dy1 = std::min(my1, my1 + P.DY);
+			if (dx0 < dx1 && dy0 < dy1)
+			{
+				glEnable(GL_TEXTURE_2D);
+				glBindTexture(GL_TEXTURE_2D, tex);
+				glColor4f(1, 1, 1, 1);
+				quad(dx0, dy0, dx1, dy1, (dx0 - P.DX) / (float)dstW, 1.0f - (dy0 - P.DY) / (float)dstH, (dx1 - P.DX) / (float)dstW, 1.0f - (dy1 - P.DY) / (float)dstH);
+			}
+			std::swap(tex, spare);
+		};
+		if (GF.useProgram) GF.useProgram(0);
+		shiftOne(G.fboTex, G.spA);
+		if (interp) { shiftOne(G.clsTex, G.spCls); shiftOne(G.outTex, G.spOut); }
+		// re-attach the swapped textures
+		G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
+		G.fbTex(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, G.fboTex, 0);
+		if (interp) G.fbTex(GL_FRAMEBUFFER_EXT, HR_COLOR_ATTACHMENT1, GL_TEXTURE_2D, G.clsTex, 0);
 		if (interp)
 		{
-			// nearest on the source grid: quad at exact (fractional) output coordinates, class id
-			int k = 0, tw = 0, th = 0;
+			G.bindFB(GL_FRAMEBUFFER_EXT, G.fboB);
+			G.fbTex(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, G.outTex, 0);
+		}
+		G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
+		if (!okShift)
+			full = true;
+		else
+			for (ScaleClass &sc : SM.classes)
+			{
+				if (sc.bx1 < 0) continue;
+				sc.bx0 = std::max(mx0, sc.bx0 + P.DX); sc.bx1 = std::min(mx1, sc.bx1 + P.DX);
+				sc.by0 = std::max(my0, sc.by0 + P.DY); sc.by1 = std::min(my1, sc.by1 + P.DY);
+				if (sc.bx0 >= sc.bx1 || sc.by0 >= sc.by1) { sc.bx0 = sc.by0 = INT32_MAX; sc.bx1 = sc.by1 = -1; }
+			}
+		glViewport(0, 0, dstW, dstH);
+		ortho(dstW, dstH);
+		if (prof.on) glFinish();
+		tShift = profNow() - tStart;
+	}
+	if (full)
+	{
+		G.cValid = false;
+		SM.classes.clear();
+	}
+
+	// --- rects to redraw (output px); the whole frame when full
+	std::vector<SDL_Rect> rects;
+	if (full)
+		rects.push_back(SDL_Rect{ 0, 0, (Uint16)dstW, (Uint16)dstH });
+	else
+		for (const SDL_Rect &r : P.rects)
+		{
+			int x0, y0, x1, y1;
+			outRect(r, sx, sy, dstW, dstH, x0, y0, x1, y1);
+			if (x0 < x1 && y0 < y1)
+				rects.push_back(SDL_Rect{ (Sint16)x0, (Sint16)y0, (Uint16)(x1 - x0), (Uint16)(y1 - y0) });
+		}
+	const bool render = full || !P.unchanged;
+	if (!forceFull)
+	{
+		if (full) ++FS.full;
+		else if (P.unchanged) ++FS.unchanged;
+		else if (P.DX || P.DY) ++FS.scroll;
+		else ++FS.dirty;
+		FS.rectCount += (long long)rects.size();
+	}
+
+	if (render)
+	{
+		G.cValid = false;
+		G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
+		glViewport(0, 0, dstW, dstH);
+		ortho(dstW, dstH);
+		if (interp)
+		{
+			GF.drawBuffers(2, bufs2);
+			GF.useProgram(G.progDraw);
+			GF.uni1i(GF.uniLoc(G.progDraw, "tex"), 0);
+			if (SM.classes.empty())
+				scaleClass(1.0, 1.0, 0.0, 0.0);
+		}
+		const GLint locUseTex = interp ? GF.uniLoc(G.progDraw, "useTex") : -1, locCls = interp ? GF.uniLoc(G.progDraw, "cls") : -1;
+		auto setCls = [&](bool useTex, int k)
+		{
+			if (!interp) return;
+			GF.uni1f(locUseTex, useTex ? 1.0f : 0.0f);
+			GF.uni1f(locCls, k / 255.0f);
+		};
+		const SDL_Color *bpal = HiResAssets::battlePalette();
+		const int mode = HiResResample::mode();
+		int bbx0 = 0, bby0 = 0, bbx1 = 0, bby1 = 0;
+		auto noteBB = [&](int k)
+		{
+			if (k < 1 || k > (int)SM.classes.size()) return;
+			ScaleClass &sc = SM.classes[k - 1];
+			sc.bx0 = std::min(sc.bx0, bbx0); sc.by0 = std::min(sc.by0, bby0);
+			sc.bx1 = std::max(sc.bx1, bbx1); sc.by1 = std::max(sc.by1, bby1);
+		};
+		auto drawCmd = [&](const HiResCmd &c, int rx0, int ry0, int rx1, int ry1)
+		{
+			if (!c.mapLayer || c.kind != HiResCmdKind::Image)
+				return;
+			int x0 = std::max(0, (int)std::floor(c.clipX * sx)), y0 = std::max(0, (int)std::floor(c.clipY * sy));
+			int x1 = std::min(dstW, (int)std::ceil((c.clipX + c.clipW) * sx));
+			int y1 = std::min(dstH, (int)std::ceil((c.clipY + c.clipH) * sy));
+			if (x0 >= x1 || y0 >= y1)
+				return;
+			// extent of the command (class bounding box), before the rect is applied
+			bbx0 = x0; bby0 = y0; bbx1 = x1; bby1 = y1;
+			if (!c.clearRect)
+			{
+				bbx0 = std::max(bbx0, (int)std::floor(c.x * sx)); bby0 = std::max(bby0, (int)std::floor(c.y * sy));
+				bbx1 = std::min(bbx1, (int)std::ceil((c.x + c.w) * sx)); bby1 = std::min(bby1, (int)std::ceil((c.y + c.h) * sy));
+			}
+			x0 = std::max(x0, rx0); y0 = std::max(y0, ry0); x1 = std::min(x1, rx1); y1 = std::min(y1, ry1);
+			if (x0 >= x1 || y0 >= y1)
+				return;
+			glScissor(x0, dstH - y1, x1 - x0, y1 - y0);
+			if (c.clearRect)
+			{
+				glDisable(GL_TEXTURE_2D);
+				setCls(false, 1);
+				glColor4ub(c.fill.r, c.fill.g, c.fill.b, 255);
+				quad(x0, y0, x1, y1);
+				noteBB(1);
+				return;
+			}
+			const int X0 = (int)std::lround(c.x * sx), Y0 = (int)std::lround(c.y * sy);
+			const int oW = (int)std::lround((c.x + c.w) * sx) - X0, oH = (int)std::lround((c.y + c.h) * sy) - Y0;
+			if (oW <= 0 || oH <= 0)
+				return;
+			GLuint tex = 0;
+			float f = 1.0f;
+			if (interp)
+			{
+				// nearest on the source grid: quad at exact (fractional) output coordinates, class id
+				int k = 0, tw = 0, th = 0;
+				if (c.spriteKey)
+				{
+					auto si = sprites.find(c.spriteKey);
+					if (si == sprites.end())
+						return;
+					tw = si->second.w; th = si->second.h;
+					size_t key = 0x5350384241ull;
+					auto mix = [&](size_t v) { key = (key ^ v) * 1099511628211ull; };
+					mix(c.spriteKey); mix((size_t)tw); mix((size_t)th);
+					const Sprite8 &sp = si->second;
+					tex = cachedTex(key, tw, th, [&]() { return sp.px.data(); });
+					k = 1;
+				}
+				else if (c.assetId)
+				{
+					double fx = 0, fy = 0;
+					if (HiResAssets::nativeScale(c.assetId, fx, fy))
+					{
+						const int nW = std::max(1, (int)std::lround(c.srcW * fx)), nH = std::max(1, (int)std::lround(c.srcH * fy));
+						const double kx = nW / (double)c.w, ky = nH / (double)c.h;
+						if (sx / kx > 1.0 + 1e-6 && sy / ky > 1.0 + 1e-6)
+							k = scaleClass(kx, ky, fracOf(c.x * kx), fracOf(c.y * ky));
+						if (k)
+						{
+							const bool variant = c.nvColor || c.rcFrom[0] || c.rcFrom[1] || c.rcFrom[2] || c.rcFrom[3];
+							size_t key = 0x4E41544956ull;
+							auto mix = [&](size_t v) { key = (key ^ v) * 1099511628211ull; };
+							mix(c.assetId); mix(c.palKey); mix((size_t)c.srcX); mix((size_t)c.srcY); mix((size_t)c.srcW); mix((size_t)c.srcH);
+							mix((size_t)nW); mix((size_t)nH);
+							if (variant)
+							{
+								mix(c.nvColor);
+								for (int q = 0; q < 4; ++q) { mix(c.rcFrom[q]); mix(c.rcTo[q]); }
+							}
+							tex = cachedTex(key, nW, nH, [&]() -> const Uint32*
+							{
+								const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH);
+								if (!px || !variant)
+									return px;
+								const Uint8 *bm = HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH);
+								G.scratch.resize((size_t)nW * nH);
+								for (size_t q = 0; q < G.scratch.size(); ++q)
+									G.scratch[q] = battlePixel(c, px[q], bm ? bm[q] : 0, bpal, 256);
+								return G.scratch.data();
+							});
+							f = HiResAssets::shadeFactor(c.shade) / 256.0f;
+						}
+					}
+				}
+				if (k)
+				{
+					if (!tex)
+						return;
+					(void)tw; (void)th;
+					glEnable(GL_TEXTURE_2D);
+					glBindTexture(GL_TEXTURE_2D, tex);
+					setCls(true, k);
+					glColor4f(f, f, f, 1.0f);
+					quadF(c.x * sx, c.y * sy, (c.x + c.w) * sx, (c.y + c.h) * sy);
+					noteBB(k);
+					return;
+				}
+				setCls(true, 0); // 1x / downscaled hi-res picture: final (drawn as before)
+			}
 			if (c.spriteKey)
 			{
-				auto si = sprites.find(c.spriteKey);
-				if (si == sprites.end())
-					continue;
-				tw = si->second.w; th = si->second.h;
-				size_t key = 0x5350384241ull;
-				auto mix = [&](size_t v) { key = (key ^ v) * 1099511628211ull; };
-				mix(c.spriteKey); mix((size_t)tw); mix((size_t)th);
-				const Sprite8 &sp = si->second;
-				tex = cachedTex(key, tw, th, [&]() { return sp.px.data(); });
-				k = 1;
+				size_t k = 0x5350524954ull;
+				auto mix = [&](size_t v) { k = (k ^ v) * 1099511628211ull; };
+				mix(c.spriteKey); mix((size_t)oW); mix((size_t)oH); mix(c.nearest ? 1000 : (size_t)mode);
+				tex = cachedTex(k, oW, oH, [&]() { return spriteRendered(c.spriteKey, oW, oH, c.nearest != 0); });
 			}
 			else if (c.assetId)
 			{
-				double fx = 0, fy = 0;
-				if (HiResAssets::nativeScale(c.assetId, fx, fy))
+				const bool variant = c.nvColor || c.rcFrom[0] || c.rcFrom[1] || c.rcFrom[2] || c.rcFrom[3];
+				size_t k = 0x4153534554ull;
+				auto mix = [&](size_t v) { k = (k ^ v) * 1099511628211ull; };
+				mix(c.assetId); mix(c.palKey); mix((size_t)c.srcX); mix((size_t)c.srcY); mix((size_t)c.srcW); mix((size_t)c.srcH);
+				mix((size_t)oW); mix((size_t)oH); mix((size_t)mode);
+				if (variant)
 				{
-					const int nW = std::max(1, (int)std::lround(c.srcW * fx)), nH = std::max(1, (int)std::lround(c.srcH * fy));
-					const double kx = nW / (double)c.w, ky = nH / (double)c.h;
-					if (sx / kx > 1.0 + 1e-6 && sy / ky > 1.0 + 1e-6)
-						k = scaleClass(kx, ky, fracOf(c.x * kx), fracOf(c.y * ky));
-					if (k)
-					{
-						const bool variant = c.nvColor || c.rcFrom[0] || c.rcFrom[1] || c.rcFrom[2] || c.rcFrom[3];
-						size_t key = 0x4E41544956ull;
-						auto mix = [&](size_t v) { key = (key ^ v) * 1099511628211ull; };
-						mix(c.assetId); mix(c.palKey); mix((size_t)c.srcX); mix((size_t)c.srcY); mix((size_t)c.srcW); mix((size_t)c.srcH);
-						mix((size_t)nW); mix((size_t)nH);
-						if (variant)
-						{
-							mix(c.nvColor);
-							for (int q = 0; q < 4; ++q) { mix(c.rcFrom[q]); mix(c.rcTo[q]); }
-						}
-						tex = cachedTex(key, nW, nH, [&]() -> const Uint32*
-						{
-							const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH);
-							if (!px || !variant)
-								return px;
-							const Uint8 *bm = HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, nW, nH);
-							G.scratch.resize((size_t)nW * nH);
-							for (size_t q = 0; q < G.scratch.size(); ++q)
-								G.scratch[q] = battlePixel(c, px[q], bm ? bm[q] : 0, bpal, 256);
-							return G.scratch.data();
-						});
-						f = HiResAssets::shadeFactor(c.shade) / 256.0f;
-					}
+					mix(c.nvColor);
+					for (int q = 0; q < 4; ++q) { mix(c.rcFrom[q]); mix(c.rcTo[q]); }
 				}
+				tex = cachedTex(k, oW, oH, [&]() -> const Uint32*
+				{
+					const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, oW, oH);
+					if (!px || !variant)
+						return px;
+					const Uint8 *bm = HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, oW, oH);
+					G.scratch.resize((size_t)oW * oH);
+					for (size_t p = 0; p < G.scratch.size(); ++p)
+						G.scratch[p] = battlePixel(c, px[p], bm ? bm[p] : 0, bpal, 256);
+					return G.scratch.data();
+				});
+				f = HiResAssets::shadeFactor(c.shade) / 256.0f;
 			}
-			if (k)
-			{
-				if (!tex)
-					continue;
-				(void)tw; (void)th;
-				glEnable(GL_TEXTURE_2D);
-				glBindTexture(GL_TEXTURE_2D, tex);
-				setCls(true, k);
-				glColor4f(f, f, f, 1.0f);
-				quadF(c.x * sx, c.y * sy, (c.x + c.w) * sx, (c.y + c.h) * sy);
-				continue;
-			}
-			setCls(true, 0); // 1x / downscaled hi-res picture: final (drawn as before)
-		}
-		if (c.spriteKey)
+			if (!tex)
+				return;
+			glEnable(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, tex);
+			glColor4f(f, f, f, 1.0f);
+			quad(X0, Y0, X0 + oW, Y0 + oH);
+	
+		};
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		for (const SDL_Rect &R : rects)
 		{
-			size_t k = 0x5350524954ull;
-			auto mix = [&](size_t v) { k = (k ^ v) * 1099511628211ull; };
-			mix(c.spriteKey); mix((size_t)oW); mix((size_t)oH); mix(c.nearest ? 1000 : (size_t)mode);
-			tex = cachedTex(k, oW, oH, [&]() { return spriteRendered(c.spriteKey, oW, oH, c.nearest != 0); });
+			glEnable(GL_SCISSOR_TEST);
+			glScissor(R.x, dstH - (R.y + R.h), R.w, R.h);
+			glClear(GL_COLOR_BUFFER_BIT);
+			for (size_t i = first; i < S.frame.size(); ++i)
+				drawCmd(S.frame[i], R.x, R.y, R.x + R.w, R.y + R.h);
 		}
-		else if (c.assetId)
-		{
-			const bool variant = c.nvColor || c.rcFrom[0] || c.rcFrom[1] || c.rcFrom[2] || c.rcFrom[3];
-			size_t k = 0x4153534554ull;
-			auto mix = [&](size_t v) { k = (k ^ v) * 1099511628211ull; };
-			mix(c.assetId); mix(c.palKey); mix((size_t)c.srcX); mix((size_t)c.srcY); mix((size_t)c.srcW); mix((size_t)c.srcH);
-			mix((size_t)oW); mix((size_t)oH); mix((size_t)mode);
-			if (variant)
-			{
-				mix(c.nvColor);
-				for (int q = 0; q < 4; ++q) { mix(c.rcFrom[q]); mix(c.rcTo[q]); }
-			}
-			tex = cachedTex(k, oW, oH, [&]() -> const Uint32*
-			{
-				const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, oW, oH);
-				if (!px || !variant)
-					return px;
-				const Uint8 *bm = HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, oW, oH);
-				G.scratch.resize((size_t)oW * oH);
-				for (size_t p = 0; p < G.scratch.size(); ++p)
-					G.scratch[p] = battlePixel(c, px[p], bm ? bm[p] : 0, bpal, 256);
-				return G.scratch.data();
-			});
-			f = HiResAssets::shadeFactor(c.shade) / 256.0f;
-		}
-		if (!tex)
-			continue;
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, tex);
-		glColor4f(f, f, f, 1.0f);
-		quad(X0, Y0, X0 + oW, Y0 + oH);
+		glDisable(GL_SCISSOR_TEST);
+		if (prof.on) glFinish();
+		tDraw = profNow() - tStart - tShift;
+		if (SM.classes.size() > 200)
+			++cacheEpoch; // class table nearly full: next frame starts over
 	}
-	glDisable(GL_SCISSOR_TEST);
-	GLuint presentTex = G.fboTex;
-	if (interp)
+	GLuint presentTex = interp ? G.outTex : G.fboTex;
+	if (render && interp)
 	{
-		// B = A's colour; then per class: shrink A to its source grid (S), interpolate up into B
+		// B = A's colour in the rects; then per class: shrink A to its source grid (S), interpolate up into B (rects x class box)
 		GF.drawBuffers(1, bufs2);
 		GF.useProgram(0);
 		glDisable(GL_BLEND);
-		auto ortho = [](int w, int h)
-		{
-			glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, w, h, 0, -1, 1);
-			glMatrixMode(GL_MODELVIEW);
-		};
 		G.bindFB(GL_FRAMEBUFFER_EXT, G.fboB);
 		glViewport(0, 0, dstW, dstH);
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, G.fboTex);
 		glColor4f(1, 1, 1, 1);
-		quad(0, 0, dstW, dstH, 0, 1, 1, 0);
+		glEnable(GL_SCISSOR_TEST);
+		for (const SDL_Rect &R : rects)
+		{
+			glScissor(R.x, dstH - (R.y + R.h), R.w, R.h);
+			quad(R.x, R.y, R.x + R.w, R.y + R.h, R.x / (float)dstW, 1.0f - R.y / (float)dstH, (R.x + R.w) / (float)dstW, 1.0f - (R.y + R.h) / (float)dstH);
+		}
+		glDisable(GL_SCISSOR_TEST);
 		const bool debug = Options::oxceHiResDebugScaleMask;
 		for (size_t ci = 0; ci < SM.classes.size(); ++ci)
 		{
 			const ScaleClass &sc = SM.classes[ci];
+			if (sc.bx1 < 0)
+				continue; // nothing of this class on the map
 			const float cls = (ci + 1) / 255.0f;
 			const float kpx = (float)(sc.kx / sx), kpy = (float)(sc.ky / sy);
 			const int W = (int)std::ceil(S.baseW * sc.kx) + 3, H = (int)std::ceil(S.baseH * sc.ky) + 3;
@@ -3029,23 +3857,33 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 			GF.uni2f(GF.uniLoc(G.progUp, "ph"), (float)sc.phx, (float)sc.phy);
 			GF.uni1f(GF.uniLoc(G.progUp, "cls"), cls);
 			GF.uni1f(GF.uniLoc(G.progUp, "debug"), debug ? 1.0f : 0.0f);
-			quad(0, 0, dstW, dstH);
+			glEnable(GL_SCISSOR_TEST);
+			for (const SDL_Rect &R : rects)
+			{
+				// only where the class can be: its bounding box
+				const int qx0 = std::max((int)R.x, sc.bx0), qy0 = std::max((int)R.y, sc.by0);
+				const int qx1 = std::min(R.x + R.w, sc.bx1), qy1 = std::min(R.y + R.h, sc.by1);
+				if (qx0 >= qx1 || qy0 >= qy1) continue;
+				glScissor(qx0, dstH - qy1, qx1 - qx0, qy1 - qy0);
+				quad(qx0, qy0, qx1, qy1);
+			}
+			glDisable(GL_SCISSOR_TEST);
 		}
 		GF.useProgram(0);
 		GF.activeTex(HR_TEX0);
-		presentTex = G.outTex;
-		// B is the target of the visibility cut below
-		G.bindFB(GL_FRAMEBUFFER_EXT, G.fboB);
-		glViewport(0, 0, dstW, dstH);
-		ortho(dstW, dstH);
-		glEnable(GL_BLEND);
+		if (prof.on) glFinish();
+		tInterp = profNow() - tStart - tShift - tDraw;
 	}
+	if (render && !interp)
+		G.bindFB(GL_FRAMEBUFFER_EXT, G.fbo);
+	const double tCut0 = profNow();
 	// visibility: base pixels covered by later screen blits (panels, windows over the map) are cut out
 	if (G.maskW != S.baseW || G.maskH != S.baseH || !G.maskTex)
 	{
 		if (G.maskTex) glDeleteTextures(1, &G.maskTex);
 		G.maskTex = makeTex(S.baseW, S.baseH, nullptr);
 		G.maskW = S.baseW; G.maskH = S.baseH;
+		G.cValid = false;
 	}
 	G.maskPx.resize((size_t)S.baseW * S.baseH * 4);
 	bool cut = false;
@@ -3060,22 +3898,51 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 			cut |= !vis;
 		}
 	}
+	Uint64 cutHash = 1469598103934665603ull;
+	{
+		const Uint64 *w = (const Uint64*)G.maskPx.data();
+		const size_t nw = G.maskPx.size() / 8;
+		for (size_t i = 0; i < nw; ++i) cutHash = (cutHash ^ w[i]) * 1099511628211ull;
+	}
 	if (cut)
 	{
-		glBindTexture(GL_TEXTURE_2D, G.maskTex);
-		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, S.baseW, S.baseH, GL_BGRA, GL_UNSIGNED_BYTE, G.maskPx.data());
-		glEnable(GL_TEXTURE_2D);
-		glBlendFunc(GL_ZERO, GL_SRC_COLOR);
-		glColor4f(1, 1, 1, 1);
-		quad(0, 0, dstW, dstH);
+		if (render || !G.cValid || G.cutHash != cutHash || G.cW != dstW || G.cH != dstH)
+		{
+			if (G.cW != dstW || G.cH != dstH || !G.cTex || !G.fboC)
+			{
+				if (!smTarget(G.fboC, G.cTex, dstW, dstH))
+				{
+					Log(LOG_WARNING) << "HiResLayer: GL cut target incomplete: CPU compositing";
+					G.ok = false;
+					popState();
+					return false;
+				}
+				G.cW = dstW; G.cH = dstH;
+			}
+			G.bindFB(GL_FRAMEBUFFER_EXT, G.fboC);
+			glViewport(0, 0, dstW, dstH);
+			ortho(dstW, dstH);
+			glDisable(GL_SCISSOR_TEST);
+			glDisable(GL_BLEND);
+			glEnable(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, G.maskTex);
+			glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, S.baseW, S.baseH, GL_BGRA, GL_UNSIGNED_BYTE, G.maskPx.data());
+			glColor4f(1, 1, 1, 1);
+			quad(0, 0, dstW, dstH);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_DST_COLOR, GL_ZERO);
+			glBindTexture(GL_TEXTURE_2D, presentTex);
+			quad(0, 0, dstW, dstH, 0, 1, 1, 0);
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+			G.cValid = true;
+			G.cutHash = cutHash;
+		}
+		presentTex = G.cTex;
 	}
-	G.bindFB(GL_FRAMEBUFFER_EXT, 0);
-	glMatrixMode(GL_TEXTURE); glPopMatrix();
-	glMatrixMode(GL_MODELVIEW); glPopMatrix();
-	glMatrixMode(GL_PROJECTION); glPopMatrix();
-	glPopAttrib();
-	glViewport(vp[0], vp[1], vp[2], vp[3]);
+	if (prof.on) glFinish();
+	tCut = profNow() - tCut0;
+	popState();
 	// FBO over the screen (OpenGL::refresh's ortho: (0,0) bottom-left of the window)
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, presentTex);
@@ -3090,6 +3957,17 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 	glEnd();
 	glDisable(GL_BLEND);
 	glErrorCheck();
+	glMapResult = interp ? G.outTex : G.fboTex;
+	if (prof.on && render)
+	{
+		G.stage[0] += tShift; G.stage[1] += tDraw; G.stage[2] += tInterp; G.stage[3] += tCut;
+		if (++G.stageFrames == 60)
+		{
+			Log(LOG_INFO) << "HiResLayer map pass (ms/frame, rendered frames): shift " << G.stage[0] / 60 << " draw " << G.stage[1] / 60
+				<< " interpolate " << G.stage[2] / 60 << " cut " << G.stage[3] / 60;
+			G.stage[0] = G.stage[1] = G.stage[2] = G.stage[3] = 0; G.stageFrames = 0;
+		}
+	}
 	return true;
 }
 }
@@ -3114,20 +3992,56 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 	// layered battlescape on the GPU (option oxceHiResBattleGL), CPU compositing otherwise
 	// with interpolation the GL map pass runs the scale mask on the GPU (GLSL + 2 draw buffers);
 	// without those features the map is composed (and scale-masked) on the CPU and uploaded
-	const bool wantGL = Options::oxceHiResBattleGL && layerSurf && glMapInit() && (HiResResample::mode() == HiResResample::NEAREST || glScaleMaskInit());
+	const bool optGL = Options::oxceHiResBattleGL && layerSurf;
+	const bool fbo = optGL && glMapInit();
+	const bool interpMode = HiResResample::mode() != HiResResample::NEAREST;
+	const bool wantGL = fbo && (!interpMode || glScaleMaskInit());
+	const char *cpuReason = !Options::oxceHiResBattleGL ? "option oxceHiResBattleGL is off"
+		: !fbo ? "no OpenGL framebuffer objects" : !wantGL ? "no GLSL / multiple draw buffers (scale-mask on the CPU)" : nullptr;
 	glMapActive = false;
 	double tg = 0;
+	const double tf0 = profNow();
+	planMapFrame(dstW, dstH, wantGL ? 2 : 1);
 	if (wantGL)
 	{
 		const double t0 = prof.on ? profNow() : 0;
 		glMapActive = glMapPass(dstW, dstH, outW, outH, top, bottom, left, right);
+		if (!glMapActive)
+		{
+			// GL map pass failed (framebuffer incomplete...): this frame and the next ones on the CPU
+			++FS.fallback;
+			planMapFrame(dstW, dstH, 1);
+			cpuReason = "GL map pass failed (framebuffer incomplete or unsupported), fell back";
+		}
+		else if (Options::oxceHiResVerifyReuse && !curPlan.full && curPlan.active)
+		{
+			// debug: compare the reused result with a full recompose, log the difference
+			std::vector<Uint8> a((size_t)dstW * dstH * 4), b(a.size());
+			glBindTexture(GL_TEXTURE_2D, glMapResult);
+			glGetTexImage(GL_TEXTURE_2D, 0, GL_BGRA, GL_UNSIGNED_BYTE, a.data());
+			const MapPlan keep = curPlan;
+			glMapPass(dstW, dstH, outW, outH, top, bottom, left, right, true);
+			glBindTexture(GL_TEXTURE_2D, glMapResult);
+			glGetTexImage(GL_TEXTURE_2D, 0, GL_BGRA, GL_UNSIGNED_BYTE, b.data());
+			long long bad = 0; int bx0 = dstW, by0 = dstH, bx1 = -1, by1 = -1;
+			for (int y = 0; y < dstH; ++y)
+				for (int x = 0; x < dstW; ++x)
+					if (std::memcmp(&a[((size_t)y * dstW + x) * 4], &b[((size_t)y * dstW + x) * 4], 4))
+					{
+						++bad; bx0 = std::min(bx0, x); by0 = std::min(by0, y); bx1 = std::max(bx1, x); by1 = std::max(by1, y);
+					}
+			Log(LOG_INFO) << "HiResLayer verify (GL): " << keep.reason << " dx " << keep.dx << " dy " << keep.dy << " rects " << keep.rects.size()
+				<< ": " << bad << " pixels differ" << (bad ? " in (" + std::to_string(bx0) + "," + std::to_string(by0) + ")-(" + std::to_string(bx1) + "," + std::to_string(by1) + ")" : std::string());
+		}
 		if (prof.on) { glFinish(); tg = profNow() - t0; }
 	}
+	logMapPath(glMapActive, glMapActive ? nullptr : (curPlan.active ? cpuReason : nullptr));
 	SDL_Rect dirty = compose(dstW, dstH, cleared);
 	glMapActive = false;
 	const double tc1 = prof.on ? profNow() : 0;
 	SDL_Rect upload = cleared;
-	unionRect(upload, dirty.x, dirty.y, dirty.w, dirty.h);
+	if (!CC.skipped)
+		unionRect(upload, dirty.x, dirty.y, dirty.w, dirty.h);
 	(void)resized;
 
 	if (S.tex == 0)
@@ -3186,6 +4100,7 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 		glDisable(GL_BLEND);
 		glErrorCheck();
 	}
+	frameDone(profNow() - tf0);
 	// restore the state OpenGL::refresh() relies on
 	glBindTexture(GL_TEXTURE_2D, gl->gltexture);
 #endif

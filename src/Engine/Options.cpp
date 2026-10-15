@@ -388,6 +388,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleGL", &oxceHiResBattleGL, true)); // layered battlescape drawn by OpenGL (framebuffer objects) when the OpenGL output is used; false / unavailable = CPU
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleLayered", &oxceHiResBattleLayered, true)); // battlescape: every map draw at output resolution in draw order (false = 8-bit pixel match)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResForceFullRedraw", &oxceHiResForceFullRedraw, false)); // battlescape: recompose the whole map every frame (debug / seam comparison)
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleFilter", &oxceHiResBattleFilter, 1)); // hi-res interpolation filter with OpenGL output: 0 none (sharp), 1 Scale (smooth), 2 HQx, 3 xBRZ; software output follows the screen filter
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResVerifyReuse", &oxceHiResVerifyReuse, false)); // battlescape: compare each reused frame with a full recompose, log the pixel difference (debug, slow)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDebugScaleMask", &oxceHiResDebugScaleMask, false)); // battlescape: tint pixels by scale class (debug)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
@@ -1295,7 +1296,10 @@ bool saveHiRes()
 	}
 	const std::string path = _configFolder + HIRES_FILE;
 	if (!CrossPlatform::writeFile(path, "# OpenXcom hi-res settings (read at game start and battlescape start)\n"
-		"# oxceHiResShadeCurve: brightness % for light levels 1-16 (comma separated)\n" + yaml + "\n"))
+		"# oxceHiResShadeCurve: brightness % for light levels 1-16 (comma separated)\n"
+		"# oxceHiResBattleFilter: interpolation filter of hi-res images and the battlescape map when the OpenGL output is on:\n"
+		"#   0 = none (sharp / nearest), 1 = Scale (smooth, default), 2 = HQx, 3 = xBRZ. 2 and 3 run on the CPU (not ported to the GPU).\n"
+		"#   With the software output the screen filter (none / Scale / HQx / xBRZ) decides and this setting is ignored.\n" + yaml + "\n"))
 	{
 		Log(LOG_WARNING) << "Failed to save " << path;
 		return false;

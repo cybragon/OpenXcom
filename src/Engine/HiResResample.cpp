@@ -149,7 +149,16 @@ int mode()
 	// one rule (user decision): the interpolation follows the screen filter. OpenGL output = smooth,
 	// whatever the shader / linear setting
 	if (Options::useOpenGL)
-		return SMOOTH;
+	{
+		// oxceHiResBattleFilter: 0 none, 1 Scale (smooth), 2 HQx, 3 xBRZ (default 1)
+		switch (Options::oxceHiResBattleFilter)
+		{
+		case 0: return NEAREST;
+		case 2: return HQX;
+		case 3: return PIXEL;
+		default: return SMOOTH;
+		}
+	}
 	if (Options::useHQXFilter)
 		return HQX;
 	if (Options::useXBRZFilter)

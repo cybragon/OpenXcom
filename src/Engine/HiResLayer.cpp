@@ -3995,9 +3995,10 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 	const bool optGL = Options::oxceHiResBattleGL && layerSurf;
 	const bool fbo = optGL && glMapInit();
 	const bool interpMode = HiResResample::mode() != HiResResample::NEAREST;
-	const bool wantGL = fbo && (!interpMode || glScaleMaskInit());
+	const bool cpuFilter = HiResResample::mode() == HiResResample::HQX || HiResResample::mode() == HiResResample::PIXEL;
+	const bool wantGL = fbo && !cpuFilter && (!interpMode || glScaleMaskInit());
 	const char *cpuReason = !Options::oxceHiResBattleGL ? "option oxceHiResBattleGL is off"
-		: !fbo ? "no OpenGL framebuffer objects" : !wantGL ? "no GLSL / multiple draw buffers (scale-mask on the CPU)" : nullptr;
+		: !fbo ? "no OpenGL framebuffer objects" : cpuFilter ? "HQx / xBRZ interpolation runs on the CPU resampler (not ported to the GPU)" : !wantGL ? "no GLSL / multiple draw buffers (scale-mask on the CPU)" : nullptr;
 	glMapActive = false;
 	double tg = 0;
 	const double tf0 = profNow();

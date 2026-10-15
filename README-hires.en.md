@@ -135,6 +135,7 @@ Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `user
 | `oxceGeoscapeUiOptimized` | `false` | Geoscape scale "x1, UI optimized" (saved when chosen in the video options) |
 | `oxceHiResLevel` | `-1` | Hi-res level (Video dropdown): 0 off, 1 geoscape, 2 all; -1 = take over the old `oxceHiResAssets` (on = 2). `oxceHiResAssets` follows it |
 | `oxceHiResShadeCurve` | `100,92,…,2` | Battlescape brightness % per light level 1–16 |
+| `oxceHiResBattleFilter` | `1` | Interpolation filter with the OpenGL output (not in the UI): 0 none (sharp), 1 Scale (smooth), 2 HQx, 3 xBRZ. Applies to hi-res images and the battlescape map. 2 and 3 run on the CPU resampler (the GPU path implements smooth only; the log says so). With the software output the screen filter decides and this is ignored |
 | `oxceHiResDebugScaleMask` | `false` | Battlescape debug: tint pixels by scale group |
 | `oxceHiResDigitFont` | `""` (automatic = bold system font) | Font of the battlescape UI digits |
 

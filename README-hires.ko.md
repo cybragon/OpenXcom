@@ -124,6 +124,7 @@ TU, 체력, 탄약 같은 전투 화면 숫자를 굵은 TTF 숫자 글꼴(`BATT
 | `oxceGeoscapeUiOptimized` | `false` | 지구 화면 스케일 "x1, UI 최적화" (비디오 옵션에서 고르면 저장됨) |
 | `oxceHiResLevel` | `-1` | 고해상도 단계 (비디오 목록): 0 끔, 1 지오스케이프, 2 전체; -1 = 예전 `oxceHiResAssets` 값 승계(켬 = 2). `oxceHiResAssets`는 이에 따라 바뀜 |
 | `oxceHiResShadeCurve` | `100,92,…,2` | 전투 조명 단계 1–16별 밝기 % |
+| `oxceHiResBattleFilter` | `1` | OpenGL 출력일 때 보간 필터 (UI 없음): 0 없음(선명), 1 Scale(부드럽게), 2 HQx, 3 xBRZ. 고해상도 이미지와 전장 지도에 적용. 2, 3은 CPU 리샘플러로 처리(GPU 경로는 부드럽게만 지원, 로그에 표시). 소프트웨어 출력에서는 화면 필터를 따르며 이 값은 무시 |
 | `oxceHiResDebugScaleMask` | `false` | 전투 디버그: 배율 묶음별 색 표시 |
 | `oxceHiResDigitFont` | `""` (자동 = 굵은 시스템 글꼴) | 전투 화면 숫자 글꼴 |
 

@@ -140,6 +140,7 @@ OPT std::string oxceHiResFont, oxceHiResFontFallback, oxceHiResFontMap, oxceHiRe
 OPT bool oxceHiResBattleLayered, oxceHiResDebugScaleMask;
 OPT bool oxceHiResBattleGL;
 OPT bool oxceHiResForceFullRedraw, oxceHiResVerifyReuse;
+OPT int oxceHiResBattleFilter;
 OPT bool oxceRecommendedOptionsWereSet;
 OPT std::string password;
 

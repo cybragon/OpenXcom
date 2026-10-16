@@ -1299,7 +1299,8 @@ bool saveHiRes()
 	if (!CrossPlatform::writeFile(path, "# OpenXcom hi-res settings (read at game start and battlescape start)\n"
 		"# oxceHiResShadeCurve: brightness % for light levels 1-16 (comma separated)\n"
 		"# oxceHiResBattleFilter: interpolation filter of hi-res images and the battlescape map when the OpenGL output is on:\n"
-		"#   0 = none (sharp / nearest), 1 = Scale (smooth, default), 2 = HQx, 3 = xBRZ. 2 and 3 run on the CPU (not ported to the GPU).\n"
+		"#   0 = none (sharp / nearest), 1 = Scale (smooth, default), 2 = HQx, 3 = xBRZ.\n"
+		"#   The GPU (GLSL, needs OpenGL 3.0) is used automatically when it works, else the CPU resampler; see openxcom.log.\n"
 		"#   With the software output the screen filter (none / Scale / HQx / xBRZ) decides and this setting is ignored.\n" + yaml + "\n"))
 	{
 		Log(LOG_WARNING) << "Failed to save " << path;

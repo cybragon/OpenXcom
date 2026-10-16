@@ -2,7 +2,7 @@
 
 Options > Video, hi-res dropdown: **Hi-res off (original)** / **Hi-res on** (`oxceHiResAssets`, in
 user/hires_option.cfg). Upscaling follows the screen filter: none -> nearest, Scale -> smooth, HQx / xBRZ -> that filter;
-with the OpenGL output `oxceHiResBattleFilter` in hires_option.cfg decides (0 none, 1 Scale/smooth = default, 2 HQx, 3 xBRZ). Images larger than their box are always area-averaged down.
+with the OpenGL output `oxceHiResBattleFilter` in hires_option.cfg decides (0 none, 1 Scale/smooth = default, 2 HQx, 3 xBRZ; GPU shader when OpenGL 3.0+, CPU resampler otherwise - same filter). Images larger than their box are always area-averaged down.
 Switching hi-res on/off reloads the mods from the main menu (in a game: after a restart). The Video tooltip is short on purpose; this file has the details.
 
 ## width / height = logical size

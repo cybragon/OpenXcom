@@ -135,7 +135,8 @@ Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `user
 | `oxceGeoscapeUiOptimized` | `false` | Geoscape scale "x1, UI optimized" (saved when chosen in the video options) |
 | `oxceHiResLevel` | `-1` | Hi-res level (Video dropdown): 0 off, 1 geoscape, 2 all; -1 = take over the old `oxceHiResAssets` (on = 2). `oxceHiResAssets` follows it |
 | `oxceHiResShadeCurve` | `100,92,…,2` | Battlescape brightness % per light level 1–16 |
-| `oxceHiResBattleFilter` | `1` | Interpolation filter with the OpenGL output (not in the UI): 0 none (sharp), 1 Scale (smooth), 2 HQx, 3 xBRZ. Applies to hi-res images and the battlescape map. 2 and 3 run on the CPU resampler (the GPU path implements smooth only; the log says so). With the software output the screen filter decides and this is ignored |
+| `oxceHiResBattleFilter` | `1` | Interpolation filter with the OpenGL output (not in the UI): 0 none (sharp), 1 Scale (smooth), 2 HQx, 3 xBRZ. Applies to hi-res images and the battlescape map. The GPU is used automatically for all of 1, 2 and 3 when OpenGL is 3.0 or newer and the shaders build (HQx and xBRZ are GLSL ports of the CPU code); otherwise the CPU resampler does the same filter. openxcom.log says which path runs and why (`battlefield path: ...`). With the software output the screen filter decides and this is ignored |
+| `oxceHiResVerifyGPU` | `false` | Debug (not in the UI, slow): compares every OpenGL battlefield frame with the CPU resampler's full recompose of the same frame and logs the number of differing pixels (`HiResLayer verify (GPU vs CPU ...)`) |
 | `oxceHiResDebugScaleMask` | `false` | Battlescape debug: tint pixels by scale group |
 | `oxceHiResDigitFont` | `""` (automatic = bold system font) | Font of the battlescape UI digits |
 

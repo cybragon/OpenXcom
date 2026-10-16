@@ -124,7 +124,8 @@ TU, 체력, 탄약 같은 전투 화면 숫자를 굵은 TTF 숫자 글꼴(`BATT
 | `oxceGeoscapeUiOptimized` | `false` | 지구 화면 스케일 "x1, UI 최적화" (비디오 옵션에서 고르면 저장됨) |
 | `oxceHiResLevel` | `-1` | 고해상도 단계 (비디오 목록): 0 끔, 1 지오스케이프, 2 전체; -1 = 예전 `oxceHiResAssets` 값 승계(켬 = 2). `oxceHiResAssets`는 이에 따라 바뀜 |
 | `oxceHiResShadeCurve` | `100,92,…,2` | 전투 조명 단계 1–16별 밝기 % |
-| `oxceHiResBattleFilter` | `1` | OpenGL 출력일 때 보간 필터 (UI 없음): 0 없음(선명), 1 Scale(부드럽게), 2 HQx, 3 xBRZ. 고해상도 이미지와 전장 지도에 적용. 2, 3은 CPU 리샘플러로 처리(GPU 경로는 부드럽게만 지원, 로그에 표시). 소프트웨어 출력에서는 화면 필터를 따르며 이 값은 무시 |
+| `oxceHiResBattleFilter` | `1` | OpenGL 출력일 때 보간 필터 (UI 없음): 0 없음(선명), 1 Scale(부드럽게), 2 HQx, 3 xBRZ. 고해상도 이미지와 전장 지도에 적용. OpenGL 3.0 이상이고 셰이더가 빌드되면 1, 2, 3 모두 GPU로 자동 처리(HQx, xBRZ는 CPU 코드의 GLSL 포팅), 아니면 CPU 리샘플러가 같은 필터를 처리. 어느 경로인지와 이유는 openxcom.log (`battlefield path: ...`)에 기록. 소프트웨어 출력에서는 화면 필터를 따르며 이 값은 무시 |
+| `oxceHiResVerifyGPU` | `false` | 디버그 (UI 없음, 느림): OpenGL 전장 프레임마다 같은 프레임의 CPU 리샘플러 전체 재합성과 비교해 다른 픽셀 수를 로그에 기록 (`HiResLayer verify (GPU vs CPU ...)`) |
 | `oxceHiResDebugScaleMask` | `false` | 전투 디버그: 배율 묶음별 색 표시 |
 | `oxceHiResDigitFont` | `""` (자동 = 굵은 시스템 글꼴) | 전투 화면 숫자 글꼴 |
 

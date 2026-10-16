@@ -774,7 +774,9 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 		// centre, else one at its corners, that still shows this class - so the CPU and the GPU see the same source grid
 		small.assign((size_t)W * H, 0);
 		{
-			const double kpsx = sc.kx * isx, kpsy = sc.ky * isy;
+			// single precision, same operations as the shader (uniforms are floats): a pixel on the border between two cells
+			// goes to the same cell on both paths
+			const float kpsx = (float)(sc.kx / sx), kpsy = (float)(sc.ky / sy), phxf = (float)sc.phx, phyf = (float)sc.phy;
 			auto pick = [&](int ox, int oy) -> Uint32
 			{
 				if (ox < 0 || oy < 0 || ox >= S.bufW || oy >= S.bufH || SM.cls[(size_t)oy * S.bufW + ox] != k)
@@ -785,10 +787,10 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 			for (int gy = 0; gy < H; ++gy)
 				for (int gx = 0; gx < W; ++gx)
 				{
-					const double ax = gx0 + gx + sc.phx, ay = gy0 + gy + sc.phy;
-					const int ocx = (int)std::floor((ax + 0.5) / kpsx), ocy = (int)std::floor((ay + 0.5) / kpsy);
-					const int o0x = (int)std::ceil(ax / kpsx - 0.0001), o0y = (int)std::ceil(ay / kpsy - 0.0001);
-					const int o1x = (int)std::ceil((ax + 1.0) / kpsx - 0.0001) - 1, o1y = (int)std::ceil((ay + 1.0) / kpsy - 0.0001) - 1;
+					const float fx = (float)(gx0 + gx), fy = (float)(gy0 + gy);
+					const int ocx = (int)std::floor((fx + 0.5f + phxf) / kpsx), ocy = (int)std::floor((fy + 0.5f + phyf) / kpsy);
+					const int o0x = (int)std::ceil((fx + phxf) / kpsx - 0.0001f), o0y = (int)std::ceil((fy + phyf) / kpsy - 0.0001f);
+					const int o1x = (int)std::ceil((fx + 1.0f + phxf) / kpsx - 0.0001f) - 1, o1y = (int)std::ceil((fy + 1.0f + phyf) / kpsy - 0.0001f) - 1;
 					Uint32 r = pick(ocx, ocy);
 					if (!r) r = pick(o0x, o0y);
 					if (!r) r = pick(o1x, o1y);

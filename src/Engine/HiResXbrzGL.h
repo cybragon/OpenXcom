@@ -176,6 +176,9 @@ const int ROTP[36] = int[36](0,1,2,3,4,5,6,7,8, 6,3,0,7,4,1,8,5,2, 8,7,6,5,4,3,2
 ivec4 Wn[25];   // 5x5 window of source pixels (r,g,b,a 0..255), index (y+2)*5 + x+2
 int bI;         // blend info of the centre pixel (4 x 2 bit)
 ivec4 fetchPx(ivec2 g) {
+	// like the CPU window: the grid ends (edge pixels repeat) at the cells of the first and last output pixel
+	ivec2 gmin = ivec2(floor(-ph + 1e-6)), gmax = ivec2(floor((outSize - 1.0) * kps - ph + 1e-6));
+	g = clamp(g, gmin, gmax);
 	vec4 v = texelFetch(sTex, clamp(g + 1, ivec2(0), ivec2(sSize) - 1), 0);
 	return ivec4(v * 255.0 + 0.5);
 }
@@ -261,31 +264,47 @@ ivec4 xbrzPixel(int i, int j) {
 	}
 	return val;
 }
+// Weights of one axis (as HiResResample::makeTaps): output cell o covers [B0, B1) of the F-times virtual image. A step >= 1
+// averages the covered virtual pixels by overlap, a smaller step interpolates linearly (centre aligned).
+int axisTaps(float o, float kpsA, float phA, float F, out int idx[4], out float wt[4]) {
+	float B0 = (o * kpsA - phA) * F, step = kpsA * F, B1 = B0 + step;
+	int n = 0;
+	if (step >= 1.0 - 1e-6) {
+		int i0 = int(floor(B0)), i1 = int(ceil(B1 - 1e-6));
+		float sum = 0.0;
+		for (int i = i0; i < i1 && n < 4; ++i) {
+			float ov = min(B1, float(i + 1)) - max(B0, float(i));
+			if (ov > 1e-6) { idx[n] = i; wt[n] = ov; sum += ov; ++n; }
+		}
+		for (int q = 0; q < n; ++q) wt[q] /= sum;
+	} else {
+		float c = B0 + 0.5 * step - 0.5;
+		int i0 = int(floor(c));
+		float fr = c - float(i0);
+		idx[0] = i0; wt[0] = 1.0 - fr; idx[1] = i0 + 1; wt[1] = fr; n = 2;
+	}
+	return n;
+}
 int fdiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
+
 void main() {
 	vec2 o = vec2(floor(gl_FragCoord.x), outSize.y - 1.0 - floor(gl_FragCoord.y));
 	vec2 t = vec2((o.x + 0.5) / outSize.x, 1.0 - (o.y + 0.5) / outSize.y);
 	if (abs(texture(clsTex, t).r - cls) > 0.5 / 255.0) discard;
 	float k = float(K);
-	vec2 B0 = (o * kps - ph) * k, B1 = ((o + 1.0) * kps - ph) * k;
-	vec2 sum = B1 - B0;
-	ivec2 b0 = ivec2(floor(B0)), b1 = ivec2(ceil(B1 - 1e-6));
+	int ix[4], iy[4]; float wx[4], wy[4];
+	int nx = axisTaps(o.x, kps.x, ph.x, k, ix, wx), ny = axisTaps(o.y, kps.y, ph.y, k, iy, wy);
 	float tr = 0.0, tg = 0.0, tb = 0.0, ta = 0.0;
 	ivec2 cur = ivec2(-1000000);
-	for (int by = b0.y; by < b1.y; ++by) {
-		float oy = min(B1.y, float(by + 1)) - max(B0.y, float(by));
-		if (oy <= 1e-6) continue;
-		for (int bx = b0.x; bx < b1.x; ++bx) {
-			float ox = min(B1.x, float(bx + 1)) - max(B0.x, float(bx));
-			if (ox <= 1e-6) continue;
-			float w = (ox / sum.x) * (oy / sum.y);
-			ivec2 g = ivec2(fdiv(bx, K), fdiv(by, K));
+	for (int a = 0; a < ny; ++a)
+		for (int b = 0; b < nx; ++b) {
+			float w = wx[b] * wy[a];
+			ivec2 g = ivec2(fdiv(ix[b], K), fdiv(iy[a], K));
 			if (g != cur) { prepare(g); cur = g; }
-			ivec4 p = xbrzPixel(by - g.y * K, bx - g.x * K);
+			ivec4 p = xbrzPixel(iy[a] - g.y * K, ix[b] - g.x * K);
 			float pa = float(p.a) / 255.0 * w;
 			ta += pa; tr += float(p.r) * pa; tg += float(p.g) * pa; tb += float(p.b) * pa;
 		}
-	}
 	int A = min(255, int(floor(ta * 255.0 + 0.5)));
 	if (A <= 0) discard;
 	ivec3 q = ivec3(min(vec3(A), max(vec3(0.0), floor(vec3(tr, tg, tb) + 0.5))));

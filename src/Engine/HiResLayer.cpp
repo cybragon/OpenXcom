@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "HiResLayer.h"
+#include "HiResXbrzGL.h"
 #include "HiResFont.h"
 #include "HiResAssets.h"
 #include "HiResResample.h"
@@ -28,6 +29,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <sstream>
 #include <map>
 #include <cstdlib>
@@ -1565,7 +1567,8 @@ void logMapPath(bool gl, const char *cpuReason)
 {
 	if (!gl && !cpuReason)
 		return;
-	const std::string now = gl ? "GPU (OpenGL framebuffers + GLSL)" : std::string("CPU - ") + cpuReason;
+	const int fm = HiResResample::mode();
+	const std::string now = gl ? std::string("GPU (OpenGL framebuffers + GLSL") + (fm == HiResResample::PIXEL ? ", xBRZ shader)" : fm == HiResResample::HQX ? ", HQx shader)" : ")") : std::string("CPU - ") + cpuReason;
 	if (now == lastMapPath)
 		return;
 	lastMapPath = now;
@@ -1691,11 +1694,12 @@ void mergeRects(std::vector<SDL_Rect> &r)
 }
 
 /// Filter reach (base px) of the active interpolation: source taps + grid block + safety.
-int filterMargin(int mode)
+int filterMargin(int mode, int backend = 1)
 {
 	if (mode == HiResResample::NEAREST) return 2;
 	if (mode == HiResResample::SMOOTH) return 4;
-	return 14; // HQX / xBRZ (pixel art)
+	if (backend == 2) return 8; // GPU xBRZ / HQx: exact, reach = 2 source cells + the output pixel footprint
+	return 14; // HQX / xBRZ (pixel art) on the CPU
 }
 
 /// Compares this frame's map draw list with the cached one and decides what to redraw.
@@ -1826,7 +1830,7 @@ void planMapFrame(int dstW, int dstH, int backend)
 		if (!prev[i].clear && !prev[i].overlay) byKey[keyOf(prev[i].sig, prev[i].x + dx, prev[i].y + dy)].push_back((int)i);
 	std::vector<char> prevUsed(prev.size(), 0);
 	std::vector<SDL_Rect> rects;
-	const int M = filterMargin(mode);
+	const int M = filterMargin(mode, backend);
 	auto addRect = [&](int x0, int y0, int x1, int y1)
 	{
 		x0 = std::max(x0 - M, P.mx0); y0 = std::max(y0 - M, P.my0);
@@ -1962,7 +1966,7 @@ void planMapFrame(int dstW, int dstH, int backend)
 	}
 	// xBRZ: a partial update is not pixel-identical to a full recompose (verified with oxceHiResVerifyReuse: the result near
 	// rect edges depends on the window), so any change recomposes the whole map; only "unchanged" is skipped
-	if (mode == HiResResample::PIXEL && (!rects.empty() || dx || dy))
+	if (mode == HiResResample::PIXEL && backend != 2 && (!rects.empty() || dx || dy))
 	{
 		P.reason = "xBRZ: partial update is not exact";
 		P.dx = P.dy = P.DX = P.DY = 0;
@@ -3212,6 +3216,7 @@ struct GlMap
 	GLuint clsTex = 0, fboB = 0, outTex = 0, fboS = 0, sTex = 0;
 	int bW = 0, bH = 0, sW = 0, sH = 0;
 	GLuint progDraw = 0, progShrink = 0, progUp = 0;
+	bool xbrzTried = false; GLuint progXbrz = 0; std::string xbrzWhy; ///< GLSL xBRZ upscale program (GL >= 3.0)
 	// map cache (battle-4): spare targets for the scroll shift, the visibility-cut result C
 	GLuint fboT = 0, spA = 0, spCls = 0, spOut = 0, fboC = 0, cTex = 0;
 	int spW = 0, spH = 0, cW = 0, cH = 0;
@@ -3281,6 +3286,7 @@ void glMapReset()
 	G.clsTex = G.fboB = G.outTex = G.fboS = G.sTex = 0;
 	G.bW = G.bH = G.sW = G.sH = 0;
 	G.progDraw = G.progShrink = G.progUp = 0;
+	G.xbrzTried = false; G.progXbrz = 0; G.xbrzWhy.clear();
 	G.fboT = G.spA = G.spCls = G.spOut = G.fboC = G.cTex = 0;
 	G.spW = G.spH = G.cW = G.cH = 0; G.cValid = false;
 	++cacheEpoch;
@@ -3341,7 +3347,11 @@ const char *const SM_FS_UP =
 	"  gl_FragColor = vec4((a.rgb * wa + b.rgb * wb + d.rgb * wd + e.rgb * we) / w, texture2D(colTex, t).a);\n"
 	"}\n";
 
-GLuint smProgram(const char *fs)
+const char *const SM_VS130 =
+	"#version 130\n"
+	"void main() { gl_Position = ftransform(); gl_TexCoord[0] = gl_MultiTexCoord0; gl_FrontColor = gl_Color; }\n";
+
+GLuint smProgram(const char *fs, const char *vs = SM_VS)
 {
 	auto compile = [](GLenum type, const char *src) -> GLuint
 	{
@@ -3359,7 +3369,7 @@ GLuint smProgram(const char *fs)
 		}
 		return sh;
 	};
-	const GLuint v = compile(0x8B31 /* GL_VERTEX_SHADER */, SM_VS), f = compile(0x8B30 /* GL_FRAGMENT_SHADER */, fs);
+	const GLuint v = compile(0x8B31 /* GL_VERTEX_SHADER */, vs), f = compile(0x8B30 /* GL_FRAGMENT_SHADER */, fs);
 	if (!v || !f)
 		return 0;
 	const GLuint p = GF.createProgram();
@@ -3376,6 +3386,31 @@ GLuint smProgram(const char *fs)
 		return 0;
 	}
 	return p;
+}
+
+/// GLSL xBRZ upscale program: needs OpenGL >= 3.0 (GLSL 1.30) and a clean compile + link; the answer (and the
+/// reason when it is no) is kept per context. Needs glScaleMaskInit() first.
+bool glXbrzInit(std::string &why)
+{
+	if (!G.xbrzTried)
+	{
+		G.xbrzTried = true;
+		const char *ver = (const char *)glGetString(GL_VERSION);
+		int major = 0, minor = 0;
+		if (ver && std::sscanf(ver, "%d.%d", &major, &minor) < 2) major = minor = 0;
+		if (major < 3)
+			G.xbrzWhy = std::string("OpenGL ") + (ver ? ver : "unknown") + " is older than 3.0";
+		else
+		{
+			G.progXbrz = smProgram(SM_FS_UP_XBRZ, SM_VS130);
+			if (!G.progXbrz)
+				G.xbrzWhy = "the xBRZ shader does not compile / link on this driver (OpenGL " + std::string(ver) + ")";
+			if (G.progXbrz) GF.useProgram(0);
+		}
+		Log(LOG_INFO) << "HiResLayer: GPU xBRZ " << (G.progXbrz ? "available (GLSL 1.30, OpenGL " + std::string(ver ? ver : "?") + ")" : "unavailable: " + G.xbrzWhy);
+	}
+	why = G.xbrzWhy;
+	return G.progXbrz != 0;
 }
 
 /// GLSL + glDrawBuffers available and the three programs built (once per context)
@@ -3923,19 +3958,24 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 			G.bindFB(GL_FRAMEBUFFER_EXT, G.fboB);
 			glViewport(0, 0, dstW, dstH);
 			ortho(dstW, dstH);
-			GF.useProgram(G.progUp);
+			// xBRZ: GLSL port by the next integer factor (virtual pixels), bilinear when not enlarging
+			const double clsScale = std::max(sx / sc.kx, sy / sc.ky);
+			const bool useX = !debug && HiResResample::mode() == HiResResample::PIXEL && G.progXbrz && clsScale > 1.0 + 1e-9;
+			const GLuint progU = useX ? G.progXbrz : G.progUp;
+			GF.useProgram(progU);
 			GF.activeTex(HR_TEX0 + 2); glBindTexture(GL_TEXTURE_2D, G.fboTex);
 			GF.activeTex(HR_TEX0 + 1); glBindTexture(GL_TEXTURE_2D, G.clsTex);
 			GF.activeTex(HR_TEX0); glBindTexture(GL_TEXTURE_2D, G.sTex);
-			GF.uni1i(GF.uniLoc(G.progUp, "sTex"), 0);
-			GF.uni1i(GF.uniLoc(G.progUp, "clsTex"), 1);
-			GF.uni1i(GF.uniLoc(G.progUp, "colTex"), 2);
-			GF.uni2f(GF.uniLoc(G.progUp, "outSize"), (float)dstW, (float)dstH);
-			GF.uni2f(GF.uniLoc(G.progUp, "sSize"), (float)std::max(1, G.sW), (float)std::max(1, G.sH));
-			GF.uni2f(GF.uniLoc(G.progUp, "kps"), kpx, kpy);
-			GF.uni2f(GF.uniLoc(G.progUp, "ph"), (float)sc.phx, (float)sc.phy);
-			GF.uni1f(GF.uniLoc(G.progUp, "cls"), cls);
-			GF.uni1f(GF.uniLoc(G.progUp, "debug"), debug ? 1.0f : 0.0f);
+			GF.uni1i(GF.uniLoc(progU, "sTex"), 0);
+			GF.uni1i(GF.uniLoc(progU, "clsTex"), 1);
+			GF.uni1i(GF.uniLoc(progU, "colTex"), 2);
+			GF.uni2f(GF.uniLoc(progU, "outSize"), (float)dstW, (float)dstH);
+			GF.uni2f(GF.uniLoc(progU, "sSize"), (float)std::max(1, G.sW), (float)std::max(1, G.sH));
+			GF.uni2f(GF.uniLoc(progU, "kps"), kpx, kpy);
+			GF.uni2f(GF.uniLoc(progU, "ph"), (float)sc.phx, (float)sc.phy);
+			GF.uni1f(GF.uniLoc(progU, "cls"), cls);
+			if (useX) GF.uni1i(GF.uniLoc(progU, "K"), std::min(6, std::max(2, (int)std::ceil(clsScale - 1e-9))));
+			else GF.uni1f(GF.uniLoc(progU, "debug"), debug ? 1.0f : 0.0f);
 			glEnable(GL_SCISSOR_TEST);
 			for (const SDL_Rect &R : rects)
 			{
@@ -4049,6 +4089,56 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 	}
 	return true;
 }
+
+/// Debug (oxceHiResVerifyGPU): the map the GPU just produced against the CPU resampler's full recompose of the same frame.
+/// Logs the number of differing pixels over the map (exact and by size of the channel error). The CPU buffers are used
+/// only as scratch: the class table, the class map and the frame buffer are restored afterwards.
+void verifyGpuVsCpu(int dstW, int dstH)
+{
+	if (curPlan.mx1 <= curPlan.mx0 || curPlan.my1 <= curPlan.my0) return;
+	size_t gs = 0;
+	bool found = false;
+	for (size_t i = 0; i < S.frame.size() && !found; ++i)
+		if (S.frame[i].mapLayer && S.frame[i].kind == HiResCmdKind::Image) { gs = i; found = true; }
+	if (!found) return;
+	while (gs > 0 && S.frame[gs - 1].stamp == S.frame[gs].stamp) --gs;
+	size_t ge = gs;
+	while (ge < S.frame.size() && S.frame[ge].stamp == S.frame[gs].stamp) ++ge;
+	std::vector<Uint8> a((size_t)dstW * dstH * 4);
+	glBindTexture(GL_TEXTURE_2D, glMapResult);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_BGRA, GL_UNSIGNED_BYTE, a.data());
+	const MapPlan keep = curPlan;
+	const std::vector<ScaleClass> classes = SM.classes;
+	const std::vector<Uint8> cls = SM.cls;
+	const std::vector<Uint32> rgba = S.rgba;
+	const double sx = dstW / (double)S.baseW, sy = dstH / (double)S.baseH;
+	composeMapCPU(gs, ge, dstW, dstH, sx, sy, true);
+	SDL_Rect mapBase = { (Sint16)keep.mx0, (Sint16)keep.my0, (Uint16)(keep.mx1 - keep.mx0), (Uint16)(keep.my1 - keep.my0) };
+	int mx0, my0, mx1, my1;
+	outRect(mapBase, sx, sy, dstW, dstH, mx0, my0, mx1, my1);
+	long long total = 0, exact = 0, big1 = 0, big8 = 0, alphaBad = 0; int maxd = 0;
+	int bx0 = dstW, by0 = dstH, bx1 = -1, by1 = -1;
+	for (int y = my0; y < my1; ++y)
+		for (int x = mx0; x < mx1; ++x)
+		{
+			const Uint32 c = MB.res[(size_t)y * dstW + x];
+			const Uint8 *g = &a[((size_t)(dstH - 1 - y) * dstW + x) * 4]; // GL rows run bottom-up; B G R A
+			const int ca = c >> 24, ga = g[3];
+			++total;
+			if ((ca == 0) != (ga == 0)) { ++alphaBad; continue; }
+			if (!ca) continue;
+			const int d = std::max(std::abs((int)((c >> 16) & 0xFF) - g[2]), std::max(std::abs((int)((c >> 8) & 0xFF) - g[1]), std::abs((int)(c & 0xFF) - g[0])));
+			if (!d) continue;
+			++exact; maxd = std::max(maxd, d);
+			if (d > 1) ++big1;
+			if (d > 8) ++big8;
+			bx0 = std::min(bx0, x); by0 = std::min(by0, y); bx1 = std::max(bx1, x); by1 = std::max(by1, y);
+		}
+	SM.classes = classes; SM.cls = cls; S.rgba = rgba;
+	Log(LOG_INFO) << "HiResLayer verify (GPU vs CPU, " << (HiResResample::mode() == HiResResample::PIXEL ? "xBRZ" : HiResResample::mode() == HiResResample::HQX ? "HQx" : "smooth")
+		<< "): " << keep.reason << " rects " << keep.rects.size() << ": " << total << " px, " << exact << " differ (" << big1 << " by >1, " << big8 << " by >8, max "
+		<< maxd << "), " << alphaBad << " alpha mismatches" << (exact ? " in (" + std::to_string(bx0) + "," + std::to_string(by0) + ")-(" + std::to_string(bx1) + "," + std::to_string(by1) + ")" : std::string());
+}
 }
 #endif
 
@@ -4074,10 +4164,24 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 	const bool optGL = Options::oxceHiResBattleGL && layerSurf;
 	const bool fbo = optGL && glMapInit();
 	const bool interpMode = HiResResample::mode() != HiResResample::NEAREST;
-	const bool cpuFilter = HiResResample::mode() == HiResResample::HQX || HiResResample::mode() == HiResResample::PIXEL;
-	const bool wantGL = fbo && !cpuFilter && (!interpMode || glScaleMaskInit());
+	// automatic GPU / CPU choice for the filter: GPU when OpenGL >= 3.0 (for the pixel-art filters) and the shaders build
+	const bool smOk = fbo && interpMode && glScaleMaskInit();
+	static std::string filterWhy;
+	bool filterGpu = true;
+	filterWhy.clear();
+	if (smOk && HiResResample::mode() == HiResResample::PIXEL)
+		filterGpu = glXbrzInit(filterWhy);
+	else if (smOk && HiResResample::mode() == HiResResample::HQX)
+	{
+		filterGpu = false;
+		filterWhy = "HQx is not ported to the GPU yet";
+	}
+	const bool wantGL = fbo && (!interpMode || (smOk && filterGpu));
+	static std::string cpuReasonBuf;
+	if (smOk && !filterGpu)
+		cpuReasonBuf = std::string(HiResResample::mode() == HiResResample::PIXEL ? "xBRZ" : "HQx") + " on the CPU resampler: " + filterWhy;
 	const char *cpuReason = !Options::oxceHiResBattleGL ? "option oxceHiResBattleGL is off"
-		: !fbo ? "no OpenGL framebuffer objects" : cpuFilter ? "HQx / xBRZ interpolation runs on the CPU resampler (not ported to the GPU)" : !wantGL ? "no GLSL / multiple draw buffers (scale-mask on the CPU)" : nullptr;
+		: !fbo ? "no OpenGL framebuffer objects" : (smOk && !filterGpu) ? cpuReasonBuf.c_str() : !wantGL ? "no GLSL / multiple draw buffers (scale-mask on the CPU)" : nullptr;
 	glMapActive = false;
 	double tg = 0;
 	const double tf0 = profNow();
@@ -4092,6 +4196,12 @@ void HiResLayer::renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, i
 			++FS.fallback;
 			planMapFrame(dstW, dstH, 1);
 			cpuReason = "GL map pass failed (framebuffer incomplete or unsupported), fell back";
+		}
+		else if (Options::oxceHiResVerifyGPU && curPlan.active && HiResResample::mode() != HiResResample::NEAREST)
+		{
+			verifyGpuVsCpu(dstW, dstH);
+			if (Options::oxceHiResVerifyReuse && !curPlan.full)
+				Log(LOG_INFO) << "HiResLayer: oxceHiResVerifyReuse skipped in this frame (oxceHiResVerifyGPU active)";
 		}
 		else if (Options::oxceHiResVerifyReuse && !curPlan.full && curPlan.active)
 		{

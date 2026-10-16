@@ -390,6 +390,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResForceFullRedraw", &oxceHiResForceFullRedraw, false)); // battlescape: recompose the whole map every frame (debug / seam comparison)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleFilter", &oxceHiResBattleFilter, 1)); // hi-res interpolation filter with OpenGL output: 0 none (sharp), 1 Scale (smooth), 2 HQx, 3 xBRZ; software output follows the screen filter
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResVerifyReuse", &oxceHiResVerifyReuse, false)); // battlescape: compare each reused frame with a full recompose, log the pixel difference (debug, slow)
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResVerifyGPU", &oxceHiResVerifyGPU, false)); // battlescape, OpenGL map pass: compare every frame with the CPU resampler (full recompose), log the pixel difference (debug, slow)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDebugScaleMask", &oxceHiResDebugScaleMask, false)); // battlescape: tint pixels by scale class (debug)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResTextLayout", &oxceHiResTextLayout, 1));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResFontSize", &oxceHiResFontSize, 100));

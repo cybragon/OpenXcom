@@ -27,6 +27,8 @@ namespace OpenXcom
 {
 
 class Surface;
+class HiResCanvas;
+class Soldier;
 class Map;
 class ImageButton;
 class BattlescapeButton;
@@ -48,6 +50,10 @@ class BattlescapeState : public State
 {
 private:
 	Surface *_rank, *_rankTiny;
+	HiResCanvas *_avatarCanvas = nullptr;
+	Uint64 _avatarKey = 0;
+	Soldier *_avatarSoldier = nullptr;
+	bool _avatarPending = false; ///< image command still to be recorded (output scale unknown right after a display reset)
 	InteractiveSurface *_icons;
 	Map *_map;
 	BattlescapeButton *_btnUnitUp, *_btnUnitDown, *_btnMapUp, *_btnMapDown, *_btnShowMap, *_btnKneel;
@@ -125,6 +131,8 @@ public:
 	void init() override;
 	/// Runs the timers and handles popups.
 	void think() override;
+	/// Hi-res avatar on _rank (see the .cpp).
+	void updateAvatarNative(bool force);
 	/// Handler for moving mouse over the map.
 	void mapOver(Action *action);
 	/// Handler for pressing the map.

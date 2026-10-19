@@ -78,6 +78,9 @@ public:
 	/// Shows the canvas: records its Image command at the front of 'holder' (coordinates relative
 	/// to it), i.e. under every other command the holder carries (texts on top).
 	void present(SDL_Surface *holder);
+	/// Same, shown over the logical rect (x, y, w, h) of the holder instead of the begun rect (a canvas drawn
+	/// in another logical space, e.g. a scaled-down avatar).
+	void present(SDL_Surface *holder, int x, int y, int w, int h);
 	/// Raw pixels (debug / tests).
 	const std::vector<Uint32> &pixels() const { return _px; }
 };

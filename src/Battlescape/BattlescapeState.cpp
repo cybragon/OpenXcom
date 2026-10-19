@@ -50,6 +50,8 @@
 #include "../Engine/Game.h"
 #include "../Engine/Options.h"
 #include "../Engine/HiResLayer.h"
+#include "../Engine/HiResCanvas.h"
+#include "AvatarDraw.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Palette.h"
 #include "../Engine/Surface.h"
@@ -738,6 +740,7 @@ BattlescapeState::BattlescapeState() :
  */
 BattlescapeState::~BattlescapeState()
 {
+	delete _avatarCanvas;
 	delete _animTimer;
 	delete _gameTimer;
 	delete _battleGame;
@@ -865,6 +868,8 @@ void BattlescapeState::init()
 void BattlescapeState::think()
 {
 	static bool popped = false;
+
+	updateAvatarNative(false); // output scale known / changed after the first frames
 
 	if (_gameTimer->isRunning())
 	{
@@ -2122,6 +2127,27 @@ void BattlescapeState::drawHandsItems()
 /**
  * Updates a soldier's name/rank/tu/energy/health/morale.
  */
+/**
+ * Hi-res avatar: background and paperdoll pieces drawn once at output resolution on a canvas
+ * (like the native inventory), shown as one image command on _rank (no edge mask rules).
+ * Regenerated only when the content key (soldier, armor, look, variant, output scale) changes.
+ * The command lives in _rank's list until _rank->clear() or the next present.
+ * @param force Present again even if the key is unchanged (the 8bpp _rank was just redrawn).
+ */
+void BattlescapeState::updateAvatarNative(bool force)
+{
+	if (!_avatarSoldier || !AvatarDraw::enabled(_game->getMod()))
+		return;
+	Mod *mod = _game->getMod();
+	Soldier *soldier = _avatarSoldier;
+	if (force)
+		_avatarPending = true;
+	if (AvatarDraw::presentNative(_game->getScreen(), _avatarCanvas, _avatarKey, AvatarDraw::contentKey(mod, soldier), _rank,
+		AvatarDraw::WIDTH, AvatarDraw::HEIGHT, _avatarPending,
+		[&](HiResCanvas &c) { AvatarDraw::drawNative(mod, soldier, c, 0, 0); }))
+		_avatarPending = false;
+}
+
 void BattlescapeState::updateSoldierInfo(bool checkFOV)
 {
 	BattleUnit *battleUnit = _save->getSelectedUnit();
@@ -2134,6 +2160,7 @@ void BattlescapeState::updateSoldierInfo(bool checkFOV)
 	}
 
 	bool playableUnit = _battleGame->playableUnitSelected();
+	_avatarSoldier = nullptr;
 	_rank->setVisible(playableUnit);
 	_rankTiny->setVisible(playableUnit);
 	_numTimeUnits->setVisible(playableUnit);
@@ -2195,81 +2222,16 @@ void BattlescapeState::updateSoldierInfo(bool checkFOV)
 				spr->blitNShade(_rankTiny, 0, 0);
 			}
 
-			// use custom background (modded)
-			// a larger (hi-res) background is fitted into the 26x23 slot
-			HiResAssets::fit(customBg, _rank->getWidth(), _rank->getHeight())->blitNShade(_rank, 0, 0);
-
-			// show avatar
-			Armor *customArmor = soldier->getArmor();
-			if (!soldier->getRules()->getArmorForAvatar().empty())
-			{
-				customArmor = _game->getMod()->getArmor(soldier->getRules()->getArmorForAvatar());
-			}
-			if (customArmor->hasLayersDefinition())
-			{
-				for (const auto& layer : soldier->getArmorLayers(customArmor))
-				{
-					Surface* surf = _game->getMod()->getSurface(layer, true);
-
-					SurfaceCrop crop = surf->getCrop();
-					crop.getCrop()->x = soldier->getRules()->getAvatarOffsetX();
-					crop.getCrop()->y = soldier->getRules()->getAvatarOffsetY();
-					crop.getCrop()->w = 26;
-					crop.getCrop()->h = 23;
-
-					crop.blit(_rank);
-				}
-			}
-			else
-			{
-				std::string look = soldier->getArmor()->getSpriteInventory();
-				if (!soldier->getRules()->getArmorForAvatar().empty())
-				{
-					look = _game->getMod()->getArmor(soldier->getRules()->getArmorForAvatar())->getSpriteInventory();
-				}
-				const std::string gender = soldier->getGender() == GENDER_MALE ? "M" : "F";
-				std::stringstream ss;
-				Surface *surf = 0;
-
-				for (int i = 0; i <= RuleSoldier::LookVariantBits; ++i)
-				{
-					ss.str("");
-					ss << look;
-					ss << gender;
-					ss << (int)soldier->getLook() + (soldier->getLookVariant() & (RuleSoldier::LookVariantMask >> i)) * 4;
-					ss << ".SPK";
-					surf = _game->getMod()->getSurface(ss.str(), false);
-					if (surf)
-					{
-						break;
-					}
-				}
-				if (!surf)
-				{
-					ss.str("");
-					ss << look;
-					ss << ".SPK";
-					surf = _game->getMod()->getSurface(ss.str(), false);
-				}
-				if (!surf)
-				{
-					surf = _game->getMod()->getSurface(look, true);
-				}
-
-				// crop
-				SurfaceCrop crop = surf->getCrop();
-				crop.getCrop()->x = soldier->getRules()->getAvatarOffsetX();
-				crop.getCrop()->y = soldier->getRules()->getAvatarOffsetY();
-				crop.getCrop()->w = 26;
-				crop.getCrop()->h = 23;
-
-				crop.blit(_rank);
-			}
+			// use custom background (modded) + avatar (shared with the unit info / soldier info screens)
+			AvatarDraw::draw8(_game->getMod(), soldier, _rank, 0, 0);
+			// hi-res: the avatar once at output resolution (background at the back of the same canvas)
+			_avatarSoldier = soldier;
+			updateAvatarNative(true);
 		}
 	}
 	else
 	{
-		_rank->clear();
+		_rank->clear(); // also drops the hi-res avatar image command recorded on it
 		_rankTiny->clear();
 	}
 	_numTimeUnits->setValue(battleUnit->getTimeUnits());

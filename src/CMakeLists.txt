@@ -122,6 +122,7 @@ set ( battlescape_src
   Battlescape/PromotionsState.cpp
   Battlescape/PsiAttackBState.cpp
   Battlescape/ScannerState.cpp
+  Battlescape/AvatarDraw.cpp
   Battlescape/ScannerView.cpp
   Battlescape/SkillMenuState.cpp
   Battlescape/TileEngine.cpp

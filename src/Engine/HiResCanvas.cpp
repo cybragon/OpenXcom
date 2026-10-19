@@ -223,6 +223,11 @@ bool HiResCanvas::drawSurface(const Surface *surface, int lx, int ly)
 
 void HiResCanvas::present(SDL_Surface *holder)
 {
+	present(holder, _lx, _ly, _lw, _lh);
+}
+
+void HiResCanvas::present(SDL_Surface *holder, int x, int y, int w, int h)
+{
 	if (!holder || _px.empty() || !HiResLayer::recording())
 		return;
 	if (!_imageId)
@@ -231,7 +236,7 @@ void HiResCanvas::present(SDL_Surface *holder)
 	HiResCmd c;
 	c.kind = HiResCmdKind::Image;
 	c.imageId = _imageId;
-	c.x = (Sint16)_lx; c.y = (Sint16)_ly; c.w = (Sint16)_lw; c.h = (Sint16)_lh;
+	c.x = (Sint16)x; c.y = (Sint16)y; c.w = (Sint16)w; c.h = (Sint16)h;
 	c.clipX = c.x; c.clipY = c.y; c.clipW = c.w; c.clipH = c.h;
 	HiResLayer::record(holder, c, true);
 }

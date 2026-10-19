@@ -86,7 +86,7 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId, bool forceLimit
 	// Create objects
 	_bg = new Surface(320, 200, 0, 0);
 	_rank = new InteractiveSurface(26, 23, 4, 4);
-	_avatar = new Surface(26, 23, 34, 4); // the rank slot (y 4..26), as the battlescape avatar
+	_avatar = new Surface(26, 23, 35, 4); // the rank slot rows (y 4..26), 1 px from the panel edge (x 34)
 	// flag: stock 40x20 at (275, 6) (rank slot rows y 4..26: 2 above, 1 below), right edge x 314; 60 wide
 	// so wide hi-res flags keep their aspect
 	_flag = new InteractiveSurface(60, 20, 255, 6);

@@ -6154,6 +6154,10 @@ void Mod::classifyHiResBattleTypes()
 		for (const auto &t : _terrains)
 			for (auto *mds : *t.second->getMapDataSets())
 				HiResAssets::allowBattle(mds->getName() + ".PCK");
+		// map smoke / fire / small explosions (SMOKE.PCK, also ranks and unit fire) and big explosions
+		// (X1.PCK): 32-bit sheets are drawn with their alpha (translucent) in the hi-res battle map
+		HiResAssets::allowBattle("SMOKE.PCK");
+		HiResAssets::allowBattle("X1.PCK");
 	}
 	for (const char *name : { "battlescape", "inventory", "medikit", "minimap", "stats" })
 	{

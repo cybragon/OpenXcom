@@ -20,6 +20,11 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
   flags keep their own aspect at the slot height (base: stock 40x20 slot rule; battle: bar height, right edge 1 px in);
   battle unit info avatar 20x18 and flag 18 px (bar height), base soldier info avatar 26x23 and flag 20 px (stock slot).
 
+- battle-11 (2026-10-20): 32-bit `SMOKE.PCK` and `X1.PCK` sheets are allowed on the hi-res battle map (Hi-res: all) and drawn
+  translucent with their alpha in the layered battle path (smoke, tile/unit fire, small hits, big explosions); spec in MODDING-hires.md.
+  Faster hi-res UI delivery (no SDL_GetRGB per pixel; pre-blit snapshots only for pictures with transparency).
+  Options > Video: the hi-res dropdown no longer covers the open filter list; with automatic OpenGL (xBRZ) the filter shows xBRZ.
+
 ## 8.7.1-hires-2 (2026-10-13)
 
 Changes since 8.7.1-hires-1 (test builds 2test–10test).

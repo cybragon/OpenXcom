@@ -84,6 +84,9 @@ Options > Video, hi-res dropdown: **Hi-res off (original)** / **Hi-res: geoscape
 - **Hi-res off still loads hi-res mods:** 32-bit/JPG images are downscaled to the rule size and
   quantized to the palette with a log warning instead of failing. Files that cannot be decoded
   disable the mod as before.
+- Battle map smoke, fire and explosions (Hi-res: all, layered battle on): 32-bit `SMOKE.PCK` / `X1.PCK`
+  sheets are drawn translucent with their own alpha (no dither). Frame sizes 32x40 / 128x64 logical,
+  vanilla frame order, one uniform scale per sheet; spec in `MODDING-hires.md` ("Battle map smoke").
 - Details for modders: `MODDING-hires.md`.
 
 ### 9. Native 32-bit inventory

@@ -1097,6 +1097,21 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 		unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
 }
 
+/// SDL_GetRGB without the call: palette lookup (8bpp) or shifts (lossless 32bpp formats).
+inline Uint32 fastRGB(Uint32 pv, const SDL_PixelFormat *f)
+{
+	if (f->BytesPerPixel == 1 && f->palette)
+	{
+		const SDL_Color &col = f->palette->colors[pv & 0xFF];
+		return ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
+	}
+	if (f->Rloss == 0 && f->Gloss == 0 && f->Bloss == 0)
+		return (((pv & f->Rmask) >> f->Rshift) << 16) | (((pv & f->Gmask) >> f->Gshift) << 8) | ((pv & f->Bmask) >> f->Bshift);
+	Uint8 r, g, b;
+	SDL_GetRGB(pv, f, &r, &g, &b);
+	return ((Uint32)r << 16) | ((Uint32)g << 8) | b;
+}
+
 /// A hi-res asset command reaches the screen through 'src' (8bpp, blitted at x, y): resolves its
 /// palette and the snapshot mask (base pixels showing the proxy pixel it expects). False = drop it.
 bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState::PreBlit *carrier = nullptr)
@@ -1221,16 +1236,16 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 		const std::vector<Uint8> orig = m;
 		static const int nb[4][2] = { {-1, 0}, {1, 0}, {0, -1}, {0, 1} };
 		SDL_LockSurface(S.screen);
+		const SDL_PixelFormat *sfmt = S.screen->format;
+		const bool scr4 = sfmt->BytesPerPixel == 4;
 		// screen colour (8bpp palette or 32bpp buffer), -1 = outside
 		auto screenAt = [&](int sx, int sy) -> long
 		{
 			if (sx < 0 || sy < 0 || sx >= S.screen->w || sy >= S.screen->h)
 				return -1;
 			const Uint8 *row = (const Uint8*)S.screen->pixels + sy * S.screen->pitch;
-			const Uint32 pv = S.screen->format->BytesPerPixel == 4 ? ((const Uint32*)row)[sx] : row[sx];
-			Uint8 r, g, b;
-			SDL_GetRGB(pv, S.screen->format, &r, &g, &b);
-			return ((long)r << 16) | ((long)g << 8) | b;
+			const Uint32 pv = scr4 ? ((const Uint32*)row)[sx] : row[sx];
+			return (long)fastRGB(pv, sfmt);
 		};
 		auto origAt = [&](int xx, int yy) -> Uint8
 		{
@@ -1284,7 +1299,7 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 		}
 		SDL_UnlockSurface(S.screen);
 	}
-	if ((fullUnder || carrier) && spal && !c.tint && !c.battle)
+	if ((fullUnder || carrier) && spal && !c.tint && !c.battle && HiResAssets::hasTransparency(c.assetId))
 	{
 		// every proxy pixel on the screen has its own background (the destination before the blit):
 		// the picture is composited over it, so soft or semi-transparent pixels anywhere (diagonal
@@ -1315,9 +1330,7 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 					const size_t ci = (size_t)py * carrier->w + px;
 					if (!carrier->px32.empty())
 					{
-						Uint8 r, g, b;
-						SDL_GetRGB(carrier->px32[ci], carrier->dst->format, &r, &g, &b);
-						rgb = ((Uint32)r << 16) | ((Uint32)g << 8) | b;
+						rgb = fastRGB(carrier->px32[ci], carrier->dst->format);
 					}
 					else
 					{
@@ -1375,8 +1388,9 @@ Uint32 snapshotUnder(const HiResCmd &c, const SDL_Surface *dst)
 		return 0;
 	// the destination before this blit (preBlit), when it covers the drawn rect: a full snapshot
 	const LayerState::PreBlit &pre = S.pre;
-	const bool full = pre.src == c.origin && pre.dst == dst && c.origin && !pre.px.empty() && vx >= pre.x && vy >= pre.y
+	const bool fullSnap = pre.src == c.origin && pre.dst == dst && c.origin && !pre.px.empty() && vx >= pre.x && vy >= pre.y
 		&& vx + vw <= pre.x + pre.w && vy + vh <= pre.y + pre.h;
+	const bool full = fullSnap && HiResAssets::hasTransparency(c.assetId); // opaque picture: no full snapshot
 	if (!full && !he->second)
 		return 0;
 	std::vector<Uint8> u((size_t)c.srcW * c.srcH, 0);
@@ -1400,7 +1414,18 @@ Uint32 snapshotUnder(const HiResCmd &c, const SDL_Surface *dst)
 /// Shares an under snapshot by content (full = taken before the blit, every proxy pixel).
 Uint32 storeUnder(const HiResCmd &c, std::vector<Uint8> &&u, bool full)
 {
-	size_t h = std::hash<std::string>()(std::string((const char*)u.data(), u.size()));
+	// FNV-1a over 8 bytes at a time (no string copy)
+	size_t h = 0xcbf29ce484222325ull ^ u.size();
+	size_t i = 0;
+	for (; i + 8 <= u.size(); i += 8)
+	{
+		Uint64 w;
+		std::memcpy(&w, &u[i], 8);
+		h = (h ^ w) * 0x100000001b3ull;
+		h ^= h >> 29;
+	}
+	for (; i < u.size(); ++i)
+		h = (h ^ u[i]) * 0x100000001b3ull;
 	if (full)
 		h ^= 0x2545F4914F6CDD1Dull;
 	h ^= (size_t)c.assetId * 0x9E3779B97F4A7C15ull ^ ((size_t)c.srcX << 1) ^ ((size_t)c.srcY << 17) ^ ((size_t)c.srcW << 33) ^ ((size_t)c.srcH << 49);

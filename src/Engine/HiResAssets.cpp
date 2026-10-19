@@ -60,6 +60,7 @@ struct Picture
 	bool ownPalette = false;      ///< 8bpp file whose colours match no game palette: displayed from argb (own palette)
 	std::string file;
 	std::vector<Uint8> mask;      ///< battle unit/terrain sheets: recolour mask (<file>_mask.png), channel 1 face, 2 hair, 3 utile, 4 rank; empty = none
+	int transparent = -1;         ///< cached: any pixel not fully opaque (-1 = not checked yet)
 };
 
 namespace
@@ -1043,7 +1044,32 @@ void preDraw(const SDL_Surface *src, const SDL_Surface *dst, int dx, int dy)
 	Entry *e = find(it->second);
 	if (!e || e->pixels != src->pixels || e->w != src->w || e->h != src->h)
 		return;
+	if (!hasTransparency(e->id))
+		return; // fully opaque picture: nothing of the destination shows through, no snapshot needed
 	HiResLayer::preBlit(src, dst, dx, dy);
+}
+
+bool hasTransparency(Uint32 assetId)
+{
+	Entry *e = find(assetId);
+	if (!e || !e->pic)
+		return true; // unknown: keep the full path
+	Picture &p = *e->pic;
+	if (p.transparent < 0)
+	{
+		bool t = false;
+		if (p.trueColor || !p.argb.empty())
+		{
+			for (Uint32 v : p.argb)
+				if ((v >> 24) != 0xFF) { t = true; break; }
+			if (p.argb.empty())
+				t = true;
+		}
+		else
+			t = p.idx.empty() || std::find(p.idx.begin(), p.idx.end(), (Uint8)0) != p.idx.end();
+		p.transparent = t ? 1 : 0;
+	}
+	return p.transparent != 0;
 }
 
 const Uint8 *expected(Uint32 assetId, int &w, int &h)

@@ -177,6 +177,9 @@ namespace HiResAssets
 	// --- used by HiResLayer
 	/// Expected (proxy) pixels of an asset, null if it is gone.
 	const Uint8 *expected(Uint32 assetId, int &w, int &h);
+	/// The asset's picture has a pixel that is not fully opaque (alpha < 255 or index 0): only then the
+	/// destination under it can show through (F2 pre-blit/carrier snapshots and the self background pass).
+	bool hasTransparency(Uint32 assetId);
 	/// Key of the palette an 8bpp picture is resolved with (0 for 32bpp pictures).
 	Uint32 paletteKey(Uint32 assetId, const SDL_Palette *palette);
 	/// The proxy rect (sx, sy, sw, sh) of an asset resampled to outW x outH output pixels (PREMULTIPLIED ARGB, HiResResample rule).

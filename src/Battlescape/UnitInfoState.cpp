@@ -65,8 +65,8 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
 	_exit = new InteractiveSurface(320, 180, 0, 20);
 	_txtName = new Text(288, 17, 16, 4);
 	// avatar mode: avatar (26x23) and flag (40x20) scaled down to the 17 px name row
-	_avatar = new Surface(19, 17, 16, 4);
-	_flag = new Surface(34, 17, 304 - 34, 4);
+	_avatar = new Surface(20, 18, 16, 2); // the top bar interior height (y 2..19), 26:23 kept
+	_flag = new Surface(36, 18, 304 - 36, 2); // the 40x20 flag box scaled to the bar height
 
 	int yPos = 38;
 	int step = 9;
@@ -509,7 +509,7 @@ void UnitInfoState::updateAvatar(bool force)
 	const bool on = soldier && AvatarDraw::enabled(mod);
 	_avatar->setVisible(on);
 	_flag->setVisible(on);
-	_txtName->setSqueezeWidth(on ? 288 - 2 * (34 + 2) : 0);
+	_txtName->setSqueezeWidth(on ? 288 - 2 * (36 + 2) : 0);
 	_avatarSoldier = on ? soldier : nullptr;
 	if (!on)
 		return;

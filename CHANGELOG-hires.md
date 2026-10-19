@@ -16,6 +16,9 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
 - Avatar mode (mod defines `AvatarBackground`): base soldier info and battle unit info screens show the battle avatar
   (unit info: with the flag, scaled to the name row); the battle HUD avatar is drawn once at output resolution.
 - CPU xBRZ: exact partial map updates (no full redraw on every change); a log warning when xBRZ runs on the CPU.
+- battle-9: WebP decoded with libwebp directly (lossless / extended / alpha WebP; SDL_image 1.2 only read simple lossy);
+  flags keep their own aspect at the slot height (base: stock 40x20 slot rule; battle: bar height, right edge 1 px in);
+  optional interface `stats` element `nameBar` for the battle unit info name band (README section 12).
 
 ## 8.7.1-hires-2 (2026-10-13)
 

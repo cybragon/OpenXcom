@@ -35,6 +35,8 @@
 #include "BattlescapeGame.h"
 #include "BattlescapeState.h"
 #include "../Mod/RuleInterface.h"
+#include <climits>
+#include <cmath>
 #include "../Engine/HiResCanvas.h"
 #include "../Engine/HiResAssets.h"
 #include "../Engine/HiResLayer.h"
@@ -67,12 +69,37 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
 	// Create objects
 	_bg = new Surface(320, 200, 0, 0);
 	_exit = new InteractiveSurface(320, 180, 0, 20);
-	_txtName = new Text(288, 17, 16, 4);
-	// avatar mode: the top bar interior is y 2..19, x 16..303 (stock buttons 14x18 at (2, 2) / (304, 2) fill
-	// its height). Avatar 26:23 at the bar height, 1 px from the << button; the flag (sized per soldier,
-	// updateAvatar) at the bar height with its own aspect, right edge 1 px from the >> button.
-	_avatar = new Surface(20, 18, 17, 2);
-	_flag = new Surface(FLAG_MAX_W, 18, FLAG_RIGHT + 1 - FLAG_MAX_W, 2);
+	// Optional interface "stats" element "nameBar" (pos/size = the inner rect of the name band, e.g. for
+	// a mod background with a taller band): the name is centred vertically in it (height min(17, h));
+	// avatar mode: avatar h - 3 high (26:23) at (x + 1, y + 2), flag as high with its own aspect, right
+	// edge 1 px inside (x + w - 2), the name squeezed between them. "textName" pos stays ignored (as
+	// stock). Note: the stats start at y 38 (y 30 with mana): a band reaching lower overlaps them.
+	// Absent: the stock name rect and the constants below.
+	const Element *nameBar = _game->getMod()->getInterface("stats") ? _game->getMod()->getInterface("stats")->getElementOptional("nameBar") : nullptr;
+	if (nameBar && (nameBar->x == INT_MAX || nameBar->y == INT_MAX || nameBar->w == INT_MAX || nameBar->h == INT_MAX
+		|| nameBar->w < 8 || nameBar->h < 6))
+	{
+		Log(LOG_WARNING) << "Interface stats: nameBar needs pos and size (w >= 8, h >= 6); ignored";
+		nameBar = nullptr;
+	}
+	if (nameBar)
+	{
+		const int nameH = std::min(17, nameBar->h);
+		_txtName = new Text(nameBar->w, nameH, nameBar->x, nameBar->y + (nameBar->h - nameH) / 2);
+		const int ah = nameBar->h - 3;
+		_avatar = new Surface(std::max(1, (int)std::lround(ah * (double)AvatarDraw::WIDTH / AvatarDraw::HEIGHT)), ah, nameBar->x + 1, nameBar->y + 2);
+		_barX = nameBar->x; _barW = nameBar->w;
+		_flagH = ah; _flagMaxW = std::max(1, ah * 8 / 3); _flagRight = nameBar->x + nameBar->w - 2; _flagY = nameBar->y + 2;
+	}
+	else
+	{
+		_txtName = new Text(288, 17, 16, 4);
+		// avatar mode: the top bar interior is y 2..19, x 16..303 (stock buttons 14x18 at (2, 2) / (304, 2) fill
+		// its height). Avatar 26:23 at the bar height, 1 px from the << button; the flag (sized per soldier,
+		// updateAvatar) at the bar height with its own aspect, right edge 1 px from the >> button.
+		_avatar = new Surface(20, 18, 17, 2);
+	}
+	_flag = new Surface(_flagMaxW, _flagH, _flagRight + 1 - _flagMaxW, _flagY);
 
 	int yPos = 38;
 	int step = 9;
@@ -521,20 +548,20 @@ void UnitInfoState::updateAvatar(bool force)
 		_txtName->setSqueezeWidth(0);
 		return;
 	}
-	// flag rect: the bar height and the flag's own aspect (real picture size), right edge at FLAG_RIGHT
+	// flag rect: the flag height and the flag's own aspect (real picture size), right edge at _flagRight
 	Surface *raw = AvatarDraw::flagRaw(mod, soldier);
 	Surface *flag = nullptr;
 	int fw = 0, fh = 0, fdy = 0;
 	if (raw)
 	{
-		AvatarDraw::flagRect(AvatarDraw::flagAspect(raw), BAR_H, FLAG_MAX_W, fw, fh, fdy);
+		AvatarDraw::flagRect(AvatarDraw::flagAspect(raw), _flagH, _flagMaxW, fw, fh, fdy);
 		flag = HiResAssets::fit(raw, fw, fh);
 	}
 	_flag->setVisible(flag != nullptr);
 	// the name centred in the room between the avatar and the flag (symmetric)
-	// room = the bar interior x 16..303 less, on both sides, the wider of avatar / flag (+ 1 px gap)
-	const int side = std::max(_avatar->getX() + _avatar->getWidth() - 16, flag ? 304 - (_flag->getX() + _flag->getWidth() - fw) : 0);
-	_txtName->setSqueezeWidth(288 - 2 * (side + 2));
+	// room = the band (default x 16..303) less, on both sides, the wider of avatar / flag (+ 1 px gap)
+	const int side = std::max(_avatar->getX() + _avatar->getWidth() - _barX, flag ? _barX + _barW - (_flag->getX() + _flag->getWidth() - fw) : 0);
+	_txtName->setSqueezeWidth(std::max(1, _barW - 2 * (side + 2)));
 	if (force)
 	{
 		_avatar->clear();
@@ -547,7 +574,9 @@ void UnitInfoState::updateAvatar(bool force)
 			AvatarDraw::blitScaled8(flag, _flag, _flag->getWidth() - fw, fdy, fw, fh);
 		_avatarPending = true;
 	}
-	bool ok = AvatarDraw::presentNative(_game->getScreen(), _avatarCanvas, _avatarKey, AvatarDraw::contentKey(mod, soldier), _avatar,
+	// the content key carries the holder size too (presentNative also mixes it in): a nameBar avatar is redrawn per size
+	const Uint64 avKey = (AvatarDraw::contentKey(mod, soldier) ^ (Uint64)(_avatar->getWidth() * 65536 + _avatar->getHeight())) * 1099511628211ull;
+	bool ok = AvatarDraw::presentNative(_game->getScreen(), _avatarCanvas, _avatarKey, avKey, _avatar,
 		AvatarDraw::WIDTH, AvatarDraw::HEIGHT, _avatarPending,
 		[&](HiResCanvas &c) { AvatarDraw::drawNative(mod, soldier, c, 0, 0); });
 	// native: a flag with a picture (hi-res / 32-bit) at its fitted logical size (its rect, +-1 px rounding),

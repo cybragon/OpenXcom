@@ -86,8 +86,8 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId, bool forceLimit
 	// Create objects
 	_bg = new Surface(320, 200, 0, 0);
 	_rank = new InteractiveSurface(26, 23, 4, 4);
-	_avatar = new Surface(26, 23, 34, 4);
-	_flag = new InteractiveSurface(40, 20, 275, 6);
+	_avatar = new Surface(28, 25, 34, 3); // the top panel interior height (y 3..27), 26:23 kept
+	_flag = new InteractiveSurface(40, 25, 275, 3); // stock 40x20 at y 6; 25 rows so a hi-res flag fills the panel height
 	_btnPrev = new TextButton(28, 14, 0, 33);
 	_btnOk = new TextButton(48, 14, 30, 33);
 	_btnNext = new TextButton(28, 14, 80, 33);
@@ -469,7 +469,10 @@ void SoldierInfoState::init()
 		if (on)
 		{
 			_avatar->clear();
-			AvatarDraw::draw8ForPalette(mod, _soldier, _avatar, 0, 0, _avatar->getPalette());
+			Surface tmp(AvatarDraw::WIDTH, AvatarDraw::HEIGHT, 0, 0);
+			tmp.setPalette(_avatar->getPalette());
+			AvatarDraw::draw8ForPalette(mod, _soldier, &tmp, 0, 0, _avatar->getPalette());
+			AvatarDraw::blitScaled8(&tmp, _avatar, 0, 0, _avatar->getWidth(), _avatar->getHeight());
 			_avatarPending = true;
 			presentAvatar();
 		}
@@ -495,12 +498,15 @@ void SoldierInfoState::init()
 		}
 		flagId << index + _soldier->getRules()->getFlagOffset();
 	}
-	// hi-res assets: a flag larger than the 40x20 box is drawn fitted (right-aligned by its fitted width)
+	// hi-res assets: a flag larger than the stock 40x20 box is fitted into 40x25 (the panel height, right-aligned,
+	// centred vertically); a flag not fitted is drawn as stock (top at y 6)
 	Surface *flagTexture = HiResAssets::fit(_game->getMod()->getSurface(flagId.str().c_str(), false), _flag->getWidth(), _flag->getHeight());
 	_flag->clear();
 	if (flagTexture != 0)
 	{
-		flagTexture->blitNShade(_flag, _flag->getWidth() - flagTexture->getWidth(), 0); // align right
+		// not fitted (stock flag, or hi-res assets off): the stock place, y 6 on screen
+		const int fy = flagTexture == _game->getMod()->getSurface(flagId.str().c_str(), false) ? 3 : (_flag->getHeight() - flagTexture->getHeight()) / 2;
+		flagTexture->blitNShade(_flag, _flag->getWidth() - flagTexture->getWidth(), fy); // align right
 	}
 
 	// formats a stat for display.

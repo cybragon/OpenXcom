@@ -540,20 +540,25 @@ void UnitInfoState::updateAvatar(bool force)
 		_avatar->clear();
 		AvatarDraw::draw8Scaled(mod, soldier, _avatar, 0, 0, _avatar->getWidth(), _avatar->getHeight());
 		_flag->clear();
-		if (flag)
-			AvatarDraw::blitScaled8(flag, _flag, _flag->getWidth() - fw, fdy, fw, fh); // right-aligned, scaled to its rect
+		// 8-bit: right-aligned, scaled to its rect; not when the picture is drawn natively (its proxy is in
+		// the geoscape/base palette and could show around a picture rounded 1 px smaller)
+		int nw, nh;
+		if (flag && !(AvatarDraw::nativeActive() && HiResAssets::nativeInfo(flag->getSurface(), nw, nh)))
+			AvatarDraw::blitScaled8(flag, _flag, _flag->getWidth() - fw, fdy, fw, fh);
 		_avatarPending = true;
 	}
 	bool ok = AvatarDraw::presentNative(_game->getScreen(), _avatarCanvas, _avatarKey, AvatarDraw::contentKey(mod, soldier), _avatar,
 		AvatarDraw::WIDTH, AvatarDraw::HEIGHT, _avatarPending,
 		[&](HiResCanvas &c) { AvatarDraw::drawNative(mod, soldier, c, 0, 0); });
-	// native: the fitted flag at its own logical size (= its rect) in a holder-sized space; a flag that
-	// is not fitted (stock 8-bit, scaled above) stays 8-bit
-	if (flag && flag->getWidth() == fw && flag->getHeight() == fh)
+	// native: a flag with a picture (hi-res / 32-bit) at its fitted logical size (its rect, +-1 px rounding),
+	// right-aligned in a holder-sized space; an 8-bit-only flag stays as scaled above
+	int lw, lh;
+	if (flag && HiResAssets::nativeInfo(flag->getSurface(), lw, lh))
 	{
-		const int hw = _flag->getWidth();
-		ok = AvatarDraw::presentNative(_game->getScreen(), _flagCanvas, _flagKey, (Uint64)(size_t)flag * 31 + fdy, _flag, hw, _flag->getHeight(), _avatarPending,
-			[&](HiResCanvas &c) { c.drawSurface(flag, hw - fw, fdy); }) && ok;
+		const int hw = _flag->getWidth(), hh = _flag->getHeight();
+		const int px = hw - flag->getWidth(), py = std::max(0, fdy + (fh - flag->getHeight()) / 2);
+		ok = AvatarDraw::presentNative(_game->getScreen(), _flagCanvas, _flagKey, ((Uint64)(size_t)flag * 31 + px) * 31 + py, _flag, hw, hh, _avatarPending,
+			[&](HiResCanvas &c) { c.drawSurface(flag, px, py); }) && ok;
 	}
 	else if (force)
 		HiResLayer::clearSurface(_flag->getSurface());

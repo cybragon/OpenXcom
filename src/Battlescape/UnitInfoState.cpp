@@ -71,10 +71,11 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
 	_exit = new InteractiveSurface(320, 180, 0, 20);
 	// Optional interface "stats" element "nameBar" (pos/size = the inner rect of the name band, e.g. for
 	// a mod background with a taller band): the name is centred vertically in it (height min(17, h));
-	// avatar mode: avatar h - 3 high (26:23) at (x + 1, y + 2), flag as high with its own aspect, right
-	// edge 1 px inside (x + w - 2), the name squeezed between them. "textName" pos stays ignored (as
-	// stock). Note: the stats start at y 38 (y 30 with mana): a band reaching lower overlaps them.
-	// Absent: the stock name rect and the constants below.
+	// avatar mode: the avatar h high (26:23) at (x + 1, y); the flag in the h rows through the shared
+	// margin rule (AvatarDraw::flagSlot) with its own aspect, right edge 1 px inside (x + w - 2); the
+	// name squeezed between them. "textName" pos stays ignored (as stock). Note: the stats start at
+	// y 38 (y 30 with mana): a band reaching lower overlaps them.
+	// Absent: the stock name rect (16, 4, 288x17) and the stock bar interior x 16..303, y 2..19 (h 18).
 	const Element *nameBar = _game->getMod()->getInterface("stats") ? _game->getMod()->getInterface("stats")->getElementOptional("nameBar") : nullptr;
 	if (nameBar && (nameBar->x == INT_MAX || nameBar->y == INT_MAX || nameBar->w == INT_MAX || nameBar->h == INT_MAX
 		|| nameBar->w < 8 || nameBar->h < 6))
@@ -82,23 +83,25 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
 		Log(LOG_WARNING) << "Interface stats: nameBar needs pos and size (w >= 8, h >= 6); ignored";
 		nameBar = nullptr;
 	}
+	int barY = 2, barH = 18;
 	if (nameBar)
 	{
 		const int nameH = std::min(17, nameBar->h);
 		_txtName = new Text(nameBar->w, nameH, nameBar->x, nameBar->y + (nameBar->h - nameH) / 2);
-		const int ah = nameBar->h - 3;
-		_avatar = new Surface(std::max(1, (int)std::lround(ah * (double)AvatarDraw::WIDTH / AvatarDraw::HEIGHT)), ah, nameBar->x + 1, nameBar->y + 2);
-		_barX = nameBar->x; _barW = nameBar->w;
-		_flagH = ah; _flagMaxW = std::max(1, ah * 8 / 3); _flagRight = nameBar->x + nameBar->w - 2; _flagY = nameBar->y + 2;
+		_barX = nameBar->x; _barW = nameBar->w; barY = nameBar->y; barH = nameBar->h;
 	}
 	else
 	{
 		_txtName = new Text(288, 17, 16, 4);
-		// avatar mode: the top bar interior is y 2..19, x 16..303 (stock buttons 14x18 at (2, 2) / (304, 2) fill
-		// its height). Avatar 26:23 at the bar height, 1 px from the << button; the flag (sized per soldier,
-		// updateAvatar) at the bar height with its own aspect, right edge 1 px from the >> button.
-		_avatar = new Surface(20, 18, 17, 2);
 	}
+	// avatar: the band height, 26:23, 1 px from the band's left edge (default: 20x18 at (17, 2))
+	_avatar = new Surface(std::max(1, (int)std::lround(barH * (double)AvatarDraw::WIDTH / AvatarDraw::HEIGHT)), barH, _barX + 1, barY);
+	// flag: the shared margin rule (h 18: no margin), right edge 1 px inside; sized per soldier (updateAvatar)
+	int flagTop;
+	AvatarDraw::flagSlot(barH, flagTop, _flagH);
+	_flagY = barY + flagTop;
+	_flagMaxW = std::max(1, _flagH * 8 / 3);
+	_flagRight = _barX + _barW - 2;
 	_flag = new Surface(_flagMaxW, _flagH, _flagRight + 1 - _flagMaxW, _flagY);
 
 	int yPos = 38;

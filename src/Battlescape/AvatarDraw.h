@@ -19,6 +19,7 @@
  */
 #include <SDL.h>
 #include <functional>
+#include <algorithm>
 
 namespace OpenXcom
 {
@@ -64,6 +65,17 @@ namespace AvatarDraw
 	 * (then narrower and centred vertically). Writes the size (w x hh) and the y offset in the slot.
 	 */
 	void flagRect(double aspect, int h, int maxW, int &w, int &hh, int &dy);
+	/**
+	 * Vertical margins of a flag in a slot of h rows (shared by base soldier info and battle unit info):
+	 * h <= 20: none; h = 21: top 1, bottom 0; h >= 22: bottom 1, top 1 (h even) or 2 (h odd).
+	 * E.g. 18 -> 18, 20 -> 20, 21 -> 20, 22 -> 20, 23 -> 20 (stock base slot y 4..26 -> 40x20 at y 6), 24 -> 22, 25 -> 22, 26 -> 24.
+	 */
+	inline void flagSlot(int h, int &top, int &flagH)
+	{
+		if (h <= 20) { top = 0; flagH = std::max(1, h); }
+		else if (h == 21) { top = 1; flagH = 20; }
+		else { top = (h % 2) ? 2 : 1; flagH = h - 1 - top; }
+	}
 	/// Is the output-resolution path on (hi-res layer recording + hi-res assets)?
 	bool nativeActive();
 	/**

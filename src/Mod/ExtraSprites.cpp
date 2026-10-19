@@ -169,8 +169,10 @@ bool ExtraSprites::isImageFile(const std::string &filename)
 		if (CrossPlatform::compareExt(filename, exts[i]))
 			return true;
 	}
-	// hi-res assets: JPEG pictures (true colour) only with the option; without it they are ignored as before
-	if (HiResAssets::enabled() && (CrossPlatform::compareExt(filename, "JPG") || CrossPlatform::compareExt(filename, "JPEG")))
+	// hi-res assets: JPEG / WEBP pictures (true colour) only with the option; without it they are ignored as before.
+	// Selected by extension only (no content sniffing); a missing mod file is an error, other extensions are not tried.
+	if (HiResAssets::enabled() && (CrossPlatform::compareExt(filename, "JPG") || CrossPlatform::compareExt(filename, "JPEG")
+		|| CrossPlatform::compareExt(filename, "WEBP")))
 		return true;
 	return false;
 }

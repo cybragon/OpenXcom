@@ -1027,6 +1027,13 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 				// (covers the low-res proxy pixel, the outline follows the picture's alpha)
 				const Uint32 b = back[(size_t)my * c.clipW + mx];
 				Uint32 out = 0xFF000000u | (b & 0xFFFFFF);
+				if ((dst[x] >> 24) == 255)
+				{
+					// option A: a hi-res background already drawn under this very pixel (e.g. an image
+					// command drawn first): composite over it instead of the flat 8bpp colour
+					out = dst[x];
+				}
+				else
 				{
 					// a hi-res background already drawn next to it (e.g. a hi-res tile): the same
 					// point of the neighbouring base pixel instead of the flat 8bpp colour

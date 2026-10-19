@@ -22,6 +22,7 @@
 #include "Options.h"
 #include "Screen.h"
 #include "Scalers/hqx.h"
+#include "HiResResample.h"
 #include "Scalers/xbrz.h"
 #include "Scalers/scalebit.h"
 #include <algorithm>
@@ -35,15 +36,17 @@ namespace UiImageScaler
 
 Filter uiFilter()
 {
-	if (Options::geoscapeScale != SCALE_SCREEN_UI || Screen::useOpenGL())
+	if (Options::geoscapeScale != SCALE_SCREEN_UI)
 		return Filter::Nearest;
-	if (Options::useXBRZFilter)
-		return Filter::XBRZ;
-	if (Options::useHQXFilter)
-		return Filter::HQX;
-	if (Options::useScaleFilter)
-		return Filter::Scale;
-	return Filter::Nearest;
+	// same rule as the battlefield (HiResResample::mode): OpenGL output -> oxceHiResBattleFilter
+	// (0 none, 1 Scale, 2 HQx, 3 xBRZ), software output -> the screen filter
+	switch (HiResResample::mode())
+	{
+	case HiResResample::PIXEL: return Filter::XBRZ;
+	case HiResResample::HQX: return Filter::HQX;
+	case HiResResample::SMOOTH: return Filter::Scale;
+	default: return Filter::Nearest;
+	}
 }
 
 bool supports(Filter filter, int k)

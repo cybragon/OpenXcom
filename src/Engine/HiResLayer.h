@@ -161,6 +161,12 @@ public:
 	/// Adds a hi-res asset command (HiResAssets) drawn by the proxy 'origin' into dst; replaces the
 	/// previous copy of the same proxy at the same place. dst = screen: delivered (checked) at once.
 	static void recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Surface *origin);
+	/// A hi-res asset proxy 'src' is about to be blitted at (x, y) of dst (8bpp): keeps the destination
+	/// pixels under it, so the next recordAsset of that draw knows the background of every proxy pixel.
+	static void preBlit(const SDL_Surface *src, const SDL_Surface *dst, int x, int y);
+	/// A surface is about to be blitted at (x, y) of dst (8bpp): when it carries asset commands with a
+	/// pre-blit snapshot, keeps the destination pixels under it (background where it is transparent).
+	static void preCarrier(const SDL_Surface *src, const SDL_Surface *dst, int x, int y);
 	/// Surface contents were cleared.
 	static void clearSurface(SDL_Surface *holder);
 	/// Surface is being destroyed.

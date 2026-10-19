@@ -170,6 +170,9 @@ namespace HiResAssets
 	/// Blit hook: the rect (sx, sy, sw, sh) of 'src' was drawn unchanged at (dx, dy) of 'dst'; dw/dh > 0:
 	/// it was magnified (pixel-replicated) to dw x dh.
 	void onDraw(const SDL_Surface *src, int sx, int sy, int sw, int sh, SDL_Surface *dst, int dx, int dy, int dw = -1, int dh = -1);
+	/// Pre-blit hook: 'src' (a registered proxy) is about to be drawn at (dx, dy) of 'dst' (unscaled);
+	/// the destination pixels are kept for the background of its soft edges (HiResLayer::preBlit).
+	void preDraw(const SDL_Surface *src, const SDL_Surface *dst, int dx, int dy);
 
 	// --- used by HiResLayer
 	/// Expected (proxy) pixels of an asset, null if it is gone.

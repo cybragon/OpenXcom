@@ -559,6 +559,17 @@ void makeProxy(Surface *target, const Picture &pic, double rx, double ry, double
 	std::vector<int> hist(256, 0);
 	std::vector<int> touched;
 	// nearest palette colour, cached per RGB
+	// battlescape palette: 240-255 differ between PAL_BATTLESCAPE (corrected grey ramp) and
+	// PAL_BATTLEPEDIA (Ufopaedia battle pages) -> only the shared indices 1-239. By content: callers
+	// such as fit() pass a surface's own copy of the palette, not the PAL_BATTLESCAPE pointer
+	bool battlePal = palBattle && palette == palBattle;
+	if (palBattle && !battlePal && palette)
+	{
+		battlePal = true;
+		for (int i = 1; i < 256 && battlePal; ++i)
+			battlePal = palette[i].r == palBattle[i].r && palette[i].g == palBattle[i].g && palette[i].b == palBattle[i].b;
+	}
+	const int last = battlePal ? 239 : 255;
 	std::unordered_map<Uint32, Uint8> nearest;
 	auto quant = [&](Uint32 rgb) -> Uint8
 	{
@@ -566,9 +577,6 @@ void makeProxy(Surface *target, const Picture &pic, double rx, double ry, double
 		if (it != nearest.end()) return it->second;
 		const int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
 		int best = 1, bestD = 1 << 30;
-		// battlescape palette: 240-255 differ between PAL_BATTLESCAPE (corrected grey ramp) and
-		// PAL_BATTLEPEDIA (Ufopaedia battle pages) -> only the shared indices 1-239
-		const int last = palette == palBattle ? 239 : 255;
 		for (int i = 1; i <= last; ++i)
 		{
 			const SDL_Color &c = palette[i];
@@ -1023,6 +1031,19 @@ void onDraw(const SDL_Surface *src, int sx, int sy, int sw, int sh, SDL_Surface 
 	c.srcX = (Sint16)sx; c.srcY = (Sint16)sy; c.srcW = (Sint16)sw; c.srcH = (Sint16)sh;
 	c.clipX = (Sint16)dx; c.clipY = (Sint16)dy; c.clipW = (Sint16)dw; c.clipH = (Sint16)dh;
 	HiResLayer::recordAsset(dst, c, src);
+}
+
+void preDraw(const SDL_Surface *src, const SDL_Surface *dst, int dx, int dy)
+{
+	if (!src || !dst || !HiResLayer::recording() || !enabled())
+		return; // the destination format is checked by HiResLayer::preBlit
+	auto it = bySurface.find(src);
+	if (it == bySurface.end())
+		return;
+	Entry *e = find(it->second);
+	if (!e || e->pixels != src->pixels || e->w != src->w || e->h != src->h)
+		return;
+	HiResLayer::preBlit(src, dst, dx, dy);
 }
 
 const Uint8 *expected(Uint32 assetId, int &w, int &h)

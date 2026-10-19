@@ -725,6 +725,14 @@ void Surface::blit(SDL_Surface *surface)
 		SDL_Rect target {};
 		target.x = getX();
 		target.y = getY();
+		if (HiResLayer::recording())
+		{
+			HiResLayer::preCarrier(_surface.get(), surface, getX(), getY());
+			if (HiResAssets::any())
+			{
+				HiResAssets::preDraw(_surface.get(), surface, getX(), getY());
+			}
+		}
 		SDL_BlitSurface(_surface.get(), nullptr, surface, &target);
 		if (HiResLayer::recording())
 		{
@@ -1016,6 +1024,10 @@ void Surface::blitNShade(SurfaceRaw<Uint8> surface, int x, int y, int shade, boo
  */
 void Surface::blitNShade(Surface *surface, int x, int y, int shade, bool half, int newBaseColor) const
 {
+	if (HiResAssets::any() && surface && shade == 0 && !half && newBaseColor == 0)
+	{
+		HiResAssets::preDraw(_surface.get(), surface->getSurface(), x, y);
+	}
 	blitRaw(SurfaceRaw<Uint8>(surface), SurfaceRaw<const Uint8>(this), x, y, shade, half, newBaseColor);
 	if (HiResAssets::any() && surface && shade == 0 && !half && newBaseColor == 0)
 	{
@@ -1116,6 +1128,13 @@ void SurfaceCrop::blit(Surface* dest)
 	{
 		auto srcShader = ShaderCrop(*this, _x, _y);
 		auto destShader = ShaderMove<Uint8>(dest, 0, 0);
+		if (HiResAssets::any() && dest)
+		{
+			// the whole proxy at (_x, _y) minus the crop origin: the crop rect lands inside it
+			const SDL_Surface *src = const_cast<Surface*>(_surface)->getSurface();
+			const bool cropped = _crop.w || _crop.h;
+			HiResAssets::preDraw(src, dest->getSurface(), _x - (cropped ? _crop.x : 0), _y - (cropped ? _crop.y : 0));
+		}
 
 		ShaderDrawFunc(
 			[](Uint8& d, Uint8 s)

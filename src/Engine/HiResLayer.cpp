@@ -33,6 +33,7 @@
 #include <cstdio>
 #include <sstream>
 #include <map>
+#include <unordered_set>
 #include <cstdlib>
 #include <chrono>
 
@@ -91,6 +92,8 @@ struct SizeKeyHash
 };
 
 enum : Uint8 { MASK_NONE = 0, MASK_PROXY = 1, MASK_EDGE = 2, MASK_BACK = 3 };
+/// backs: the colour is the pixel's own background (pre-blit snapshot), not a neighbour's
+const Uint32 BACK_SELF = 1u << 26;
 
 struct LayerState
 {
@@ -120,6 +123,20 @@ struct LayerState
 	std::unordered_map<Uint32, std::vector<Uint8>> unders;
 	std::unordered_map<size_t, Uint32> underByHash;
 	Uint32 underCounter = 0;
+	size_t underBytes = 0;
+	/// unders taken from the destination before the 8bpp blit: every proxy pixel has its background
+	std::unordered_set<Uint32> fullUnders;
+	/// destination pixels under the proxy about to be blitted (preBlit), consumed by the next record
+	struct PreBlit
+	{
+		const SDL_Surface *src = nullptr, *dst = nullptr;
+		int x = 0, y = 0, w = 0, h = 0;
+		std::vector<Uint8> px;
+		std::vector<Uint32> px32; ///< carrier onto a 32bpp screen: its pixel values
+	} pre;
+	/// destination pixels under a surface carrying such commands, about to be blitted (preCarrier):
+	/// the background of the proxy pixels whose own surface was transparent (index 0) there
+	PreBlit carrier;
 	std::unordered_map<Uint32, bool> assetHasEdge; ///< proxy has transparent pixels next to opaque ones
 	// composition buffer (premultiplied BGRA, output resolution without black bands)
 	std::vector<Uint32> rgba;
@@ -1048,7 +1065,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 					// command drawn first): composite over it instead of the flat 8bpp colour
 					out = dst[x];
 				}
-				else
+				else if (!(b & BACK_SELF))
 				{
 					// a hi-res background already drawn next to it (e.g. a hi-res tile): the same
 					// point of the neighbouring base pixel instead of the flat 8bpp colour
@@ -1082,7 +1099,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 
 /// A hi-res asset command reaches the screen through 'src' (8bpp, blitted at x, y): resolves its
 /// palette and the snapshot mask (base pixels showing the proxy pixel it expects). False = drop it.
-bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
+bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState::PreBlit *carrier = nullptr)
 {
 	int ew = 0, eh = 0;
 	const Uint8 *e = HiResAssets::expected(c.assetId, ew, eh);
@@ -1100,11 +1117,15 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 	bool any = false;
 	// silhouette: pixels under the transparent proxy pixels when the asset was drawn
 	const std::vector<Uint8> *under = nullptr;
+	bool fullUnder = false;
 	if (c.underId)
 	{
 		auto ui = S.unders.find(c.underId);
 		if (ui != S.unders.end() && ui->second.size() == (size_t)c.srcW * c.srcH)
+		{
 			under = &ui->second;
+			fullUnder = S.fullUnders.count(c.underId) != 0;
+		}
 	}
 	auto proxyAt = [&](int u, int v) -> int
 	{
@@ -1263,11 +1284,63 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y)
 		}
 		SDL_UnlockSurface(S.screen);
 	}
+	if ((fullUnder || carrier) && spal && !c.tint && !c.battle)
+	{
+		// every proxy pixel on the screen has its own background (the destination before the blit):
+		// the picture is composited over it, so soft or semi-transparent pixels anywhere (diagonal
+		// corners, interiors, the rect border) never show the low-res proxy colour
+		for (int yy = vy; yy < vy + vh; ++yy)
+		{
+			const int v = std::min(eh - 1, std::min(c.srcY + c.srcH - 1, c.srcY + (yy - c.y) * c.srcH / c.h));
+			for (int xx = vx; xx < vx + vw; ++xx)
+			{
+				const size_t mi = (size_t)(yy - vy) * vw + (xx - vx);
+				if (m[mi] != MASK_PROXY && m[mi] != MASK_BACK)
+					continue;
+				const int u = std::min(ew - 1, std::min(c.srcX + c.srcW - 1, c.srcX + (xx - c.x) * c.srcW / c.w));
+				const int uv = fullUnder ? underAt(u, v) : -1; // a post-blit under shows the proxy itself
+				Uint32 rgb = 0;
+				if (uv > 0)
+				{
+					const SDL_Color &col = spal[uv];
+					rgb = ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
+				}
+				else if (uv <= 0 && carrier && xx >= carrier->x && yy >= carrier->y)
+				{
+					// transparent in its own surface (or drawn straight onto the screen): what was under
+					// it on the destination before the blit
+					const int px = xx - carrier->x, py = yy - carrier->y;
+					if (px >= carrier->w || py >= carrier->h)
+						continue;
+					const size_t ci = (size_t)py * carrier->w + px;
+					if (!carrier->px32.empty())
+					{
+						Uint8 r, g, b;
+						SDL_GetRGB(carrier->px32[ci], carrier->dst->format, &r, &g, &b);
+						rgb = ((Uint32)r << 16) | ((Uint32)g << 8) | b;
+					}
+					else
+					{
+						const SDL_Color &col = spal[carrier->px[ci]];
+						rgb = ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
+					}
+				}
+				else
+					continue; // nothing known under it (index 0 of its surface): keep the neighbour rule
+				if (bk.empty())
+					bk.assign((size_t)vw * vh, 0);
+				bk[mi] = BACK_SELF | rgb;
+				m[mi] = MASK_BACK;
+			}
+		}
+	}
 	S.masks.push_back(std::move(m));
 	S.backs.push_back(std::move(bk));
 	c.maskIdx = (Uint32)S.masks.size();
 	return true;
 }
+
+Uint32 storeUnder(const HiResCmd &c, std::vector<Uint8> &&u, bool full);
 
 /// Snapshot of the pixels under a hi-res asset's transparent proxy pixels next to its silhouette,
 /// taken when the asset is drawn into 'dst' (after the 8bpp blit: transparent proxy pixels left the
@@ -1297,18 +1370,22 @@ Uint32 snapshotUnder(const HiResCmd &c, const SDL_Surface *dst)
 			}
 		he = S.assetHasEdge.emplace(c.assetId, edge).first;
 	}
-	if (!he->second)
-		return 0;
-	std::vector<Uint8> u((size_t)c.srcW * c.srcH, 0);
 	int vx = c.clipX, vy = c.clipY, vw = c.clipW, vh = c.clipH;
 	if (!intersect(vx, vy, vw, vh, 0, 0, dst->w, dst->h))
 		return 0;
+	// the destination before this blit (preBlit), when it covers the drawn rect: a full snapshot
+	const LayerState::PreBlit &pre = S.pre;
+	const bool full = pre.src == c.origin && pre.dst == dst && c.origin && !pre.px.empty() && vx >= pre.x && vy >= pre.y
+		&& vx + vw <= pre.x + pre.w && vy + vh <= pre.y + pre.h;
+	if (!full && !he->second)
+		return 0;
+	std::vector<Uint8> u((size_t)c.srcW * c.srcH, 0);
 	for (int yy = vy; yy < vy + vh; ++yy)
 	{
 		const int v = c.srcY + (yy - c.y) * c.srcH / c.h;
 		if (v < c.srcY || v >= c.srcY + c.srcH)
 			continue;
-		const Uint8 *dp = (const Uint8*)dst->pixels + yy * dst->pitch;
+		const Uint8 *dp = full ? &pre.px[(size_t)(yy - pre.y) * pre.w] - pre.x : (const Uint8*)dst->pixels + yy * dst->pitch;
 		for (int xx = vx; xx < vx + vw; ++xx)
 		{
 			const int uu = c.srcX + (xx - c.x) * c.srcW / c.w;
@@ -1317,26 +1394,76 @@ Uint32 snapshotUnder(const HiResCmd &c, const SDL_Surface *dst)
 			u[(size_t)(v - c.srcY) * c.srcW + (uu - c.srcX)] = dp[xx];
 		}
 	}
+	return storeUnder(c, std::move(u), full);
+}
+
+/// Shares an under snapshot by content (full = taken before the blit, every proxy pixel).
+Uint32 storeUnder(const HiResCmd &c, std::vector<Uint8> &&u, bool full)
+{
 	size_t h = std::hash<std::string>()(std::string((const char*)u.data(), u.size()));
+	if (full)
+		h ^= 0x2545F4914F6CDD1Dull;
 	h ^= (size_t)c.assetId * 0x9E3779B97F4A7C15ull ^ ((size_t)c.srcX << 1) ^ ((size_t)c.srcY << 17) ^ ((size_t)c.srcW << 33) ^ ((size_t)c.srcH << 49);
 	auto hit = S.underByHash.find(h);
 	if (hit != S.underByHash.end())
 	{
 		auto ui = S.unders.find(hit->second);
-		if (ui != S.unders.end() && ui->second == u)
+		if (ui != S.unders.end() && ui->second == u && (S.fullUnders.count(hit->second) != 0) == full)
 			return hit->second;
 	}
-	if (S.unders.size() >= 4096)
+	if (S.unders.size() >= 4096 || S.underBytes + u.size() > ((size_t)64 << 20))
 	{
 		// bounded: older snapshots are dropped (their commands fall back to the proxy silhouette)
 		S.unders.clear();
 		S.underByHash.clear();
+		S.fullUnders.clear();
+		S.underBytes = 0;
 	}
 	if (++S.underCounter == 0)
 		++S.underCounter;
+	S.underBytes += u.size();
+	if (full)
+		S.fullUnders.insert(S.underCounter);
 	S.unders.emplace(S.underCounter, std::move(u));
 	S.underByHash[h] = S.underCounter;
 	return S.underCounter;
+}
+
+/// A command with a full under snapshot moves into another surface: the proxy pixels whose own
+/// surface was transparent there get the destination pixel under them (before the blit).
+void resolveUnder(HiResCmd &c, const LayerState::PreBlit &carrier)
+{
+	auto ui = S.unders.find(c.underId);
+	if (ui == S.unders.end() || ui->second.size() != (size_t)c.srcW * c.srcH || c.w <= 0 || c.h <= 0)
+		return;
+	if (std::find(ui->second.begin(), ui->second.end(), (Uint8)0) == ui->second.end())
+		return;
+	std::vector<Uint8> u = ui->second;
+	bool changed = false;
+	int vx = c.clipX, vy = c.clipY, vw = c.clipW, vh = c.clipH;
+	if (!intersect(vx, vy, vw, vh, carrier.x, carrier.y, carrier.w, carrier.h))
+		return;
+	for (int yy = vy; yy < vy + vh; ++yy)
+	{
+		const int v = c.srcY + (yy - c.y) * c.srcH / c.h;
+		if (v < c.srcY || v >= c.srcY + c.srcH)
+			continue;
+		const Uint8 *cp = &carrier.px[(size_t)(yy - carrier.y) * carrier.w] - carrier.x;
+		for (int xx = vx; xx < vx + vw; ++xx)
+		{
+			const int uu = c.srcX + (xx - c.x) * c.srcW / c.w;
+			if (uu < c.srcX || uu >= c.srcX + c.srcW)
+				continue;
+			Uint8 &d = u[(size_t)(v - c.srcY) * c.srcW + (uu - c.srcX)];
+			if (!d && cp[xx])
+			{
+				d = cp[xx];
+				changed = true;
+			}
+		}
+	}
+	if (changed)
+		c.underId = storeUnder(c, std::move(u), true);
 }
 
 void drawImage(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
@@ -2732,9 +2859,13 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 	c.underId = c.battle ? 0 : snapshotUnder(c, dst);
 	if (dst == S.screen)
 	{
-		// drawn straight onto the screen buffer: check it now, against the screen pixels
+		// drawn straight onto the screen buffer: check it now, against the screen pixels (the
+		// screen before the blit is the background of every proxy pixel)
 		c.stamp = ++S.stampCounter;
-		if (!deliverAsset(c, dst, 0, 0))
+		const bool pre = !c.battle && S.pre.src == origin && S.pre.dst == dst && origin;
+		const bool ok = deliverAsset(c, dst, 0, 0, pre ? &S.pre : nullptr);
+		S.pre.src = nullptr;
+		if (!ok)
 			return;
 		const std::vector<Uint8> &m = S.masks[c.maskIdx - 1];
 		for (int yy = 0; yy < c.clipH; ++yy)
@@ -2744,6 +2875,7 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 		S.frame.push_back(c);
 		return;
 	}
+	S.pre.src = nullptr; // a pre-blit snapshot belongs to this draw only
 	auto &dl = S.lists[dst];
 	dl.erase(std::remove_if(dl.begin(), dl.end(), [&](const HiResCmd &o)
 	{
@@ -2751,6 +2883,74 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 			&& (!c.battle || (o.clipX == c.clipX && o.clipY == c.clipY && o.clipW == c.clipW && o.clipH == c.clipH));
 	}), dl.end());
 	dl.push_back(c);
+}
+
+void HiResLayer::preBlit(const SDL_Surface *src, const SDL_Surface *dst, int x, int y)
+{
+	S.pre.src = nullptr;
+	const int bpp = dst ? dst->format->BytesPerPixel : 0;
+	if (!_recording || !src || !dst || (bpp != 1 && !(bpp == 4 && dst == S.screen)))
+		return;
+	ProfScope ps(prof.rec);
+	int vx = x, vy = y, vw = src->w, vh = src->h;
+	if (!intersect(vx, vy, vw, vh, 0, 0, dst->w, dst->h))
+		return;
+	if (bpp == 4)
+	{
+		S.pre.px.clear();
+		S.pre.px32.resize((size_t)vw * vh);
+		for (int yy = 0; yy < vh; ++yy)
+			std::memcpy(&S.pre.px32[(size_t)yy * vw], (const Uint8*)dst->pixels + (vy + yy) * dst->pitch + vx * 4, (size_t)vw * 4);
+	}
+	else
+	{
+		S.pre.px32.clear();
+		S.pre.px.resize((size_t)vw * vh);
+		for (int yy = 0; yy < vh; ++yy)
+			std::memcpy(&S.pre.px[(size_t)yy * vw], (const Uint8*)dst->pixels + (vy + yy) * dst->pitch + vx, vw);
+	}
+	S.pre.src = src; S.pre.dst = dst;
+	S.pre.x = vx; S.pre.y = vy; S.pre.w = vw; S.pre.h = vh;
+}
+
+void HiResLayer::preCarrier(const SDL_Surface *src, const SDL_Surface *dst, int x, int y)
+{
+	S.carrier.src = nullptr;
+	const int bpp = dst ? dst->format->BytesPerPixel : 0;
+	if (!_recording || !src || !dst || (bpp != 1 && !(bpp == 4 && dst == S.screen)) || S.fullUnders.empty())
+		return;
+	auto it = S.lists.find(const_cast<SDL_Surface*>(src));
+	if (it == S.lists.end())
+		return;
+	bool wanted = false;
+	for (const HiResCmd &c : it->second)
+		if (c.assetId && c.underId && S.fullUnders.count(c.underId))
+		{
+			wanted = true;
+			break;
+		}
+	if (!wanted)
+		return;
+	ProfScope ps(prof.rec);
+	int vx = x, vy = y, vw = src->w, vh = src->h;
+	if (!intersect(vx, vy, vw, vh, 0, 0, dst->w, dst->h))
+		return;
+	if (bpp == 4)
+	{
+		S.carrier.px.clear();
+		S.carrier.px32.resize((size_t)vw * vh);
+		for (int yy = 0; yy < vh; ++yy)
+			std::memcpy(&S.carrier.px32[(size_t)yy * vw], (const Uint8*)dst->pixels + (vy + yy) * dst->pitch + vx * 4, (size_t)vw * 4);
+	}
+	else
+	{
+		S.carrier.px32.clear();
+		S.carrier.px.resize((size_t)vw * vh);
+		for (int yy = 0; yy < vh; ++yy)
+			std::memcpy(&S.carrier.px[(size_t)yy * vw], (const Uint8*)dst->pixels + (vy + yy) * dst->pitch + vx, vw);
+	}
+	S.carrier.src = src; S.carrier.dst = dst;
+	S.carrier.x = vx; S.carrier.y = vy; S.carrier.w = vw; S.carrier.h = vh;
 }
 
 void HiResLayer::clearSurface(SDL_Surface *holder)
@@ -2868,6 +3068,8 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 	}
 
 	const SDL_Palette *pal = src->format->palette;
+	// the destination before this blit (preCarrier), in dst coordinates
+	const LayerState::PreBlit *carrier = (S.carrier.src == src && S.carrier.dst == dst && S.carrier.x <= x && S.carrier.y <= y) ? &S.carrier : nullptr;
 	std::vector<HiResCmd> *dl = toScreen ? &S.frame : &S.lists[dst];
 	// NOTE: S.lists[dst] may rehash; re-find src list after that
 	const std::vector<HiResCmd> &sl = S.lists.find(src)->second;
@@ -2883,7 +3085,8 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 		{
 			c.stamp = stamp;
 			c.mapLayer = (src == layerSurf) ? 1 : 0;
-			if (c.assetId && !deliverAsset(c, src, x, y))
+			// the carrier is the background only where the asset's own surface was transparent (full under)
+			if (c.assetId && !deliverAsset(c, src, x, y, (carrier && c.underId && S.fullUnders.count(c.underId)) ? carrier : nullptr))
 				continue; // proxy pixels did not reach the screen unchanged
 			if (pal)
 			{
@@ -2903,9 +3106,13 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 			c.origin = src;
 			c.originX = (Sint16)x;
 			c.originY = (Sint16)y;
+			if (carrier && c.assetId && c.underId && S.fullUnders.count(c.underId))
+				resolveUnder(c, *carrier);
 		}
 		dl->push_back(c);
 	}
+	if (S.carrier.src == src)
+		S.carrier.src = nullptr; // consumed
 	if (toScreen && src == layerSurf && layerVal.size() == (size_t)src->w * src->h && pal)
 	{
 		// layered map: pixels changed by unrecorded 8bpp draws (arrows, indicators, waypoints, projectiles,

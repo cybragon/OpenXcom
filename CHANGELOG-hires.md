@@ -10,6 +10,13 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
   "added" were written for this fork; files listed as "modified" were changed for this fork on the
   dates above.
 
+## battle test builds (unreleased, battle-8: 2026-10-19)
+- WEBP pictures (`.webp`, by extension) for hi-res assets, like JPEG; a missing mod file is an error (no other extension is tried).
+- UI panel filter follows the battlefield filter rule (OpenGL output: `oxceHiResBattleFilter`; software: the screen filter).
+- Avatar mode (mod defines `AvatarBackground`): base soldier info and battle unit info screens show the battle avatar
+  (unit info: with the flag, scaled to the name row); the battle HUD avatar is drawn once at output resolution.
+- CPU xBRZ: exact partial map updates (no full redraw on every change); a log warning when xBRZ runs on the CPU.
+
 ## 8.7.1-hires-2 (2026-10-13)
 
 Changes since 8.7.1-hires-1 (test builds 2test–10test).
@@ -111,6 +118,8 @@ Changes since 8.7.1-hires-1 (test builds 2test–10test).
 - `scripts/hires-overlay-package-win64.sh`
 - `src/Basescape/MaximizedBasescape.cpp`
 - `src/Basescape/MaximizedBasescape.h`
+- `src/Battlescape/AvatarDraw.cpp`
+- `src/Battlescape/AvatarDraw.h`
 - `src/Engine/HiResAssets.cpp`
 - `src/Engine/HiResAssets.h`
 - `src/Engine/HiResCanvas.cpp`
@@ -130,6 +139,7 @@ Changes since 8.7.1-hires-1 (test builds 2test–10test).
 - `src/Geoscape/GeoSidebarLayout.h`
 - `src/Menu/OptionsFontsState.cpp`
 - `src/Menu/OptionsFontsState.h`
+- `tools/build_webp_win64.sh`
 
 ## Modified files
 - `CMakeLists.txt`
@@ -145,19 +155,28 @@ Changes since 8.7.1-hires-1 (test builds 2test–10test).
 - `src/Basescape/PlaceLiftState.h`
 - `src/Basescape/SoldierDiaryOverviewState.cpp`
 - `src/Basescape/SoldierInfoState.cpp`
+- `src/Basescape/SoldierInfoState.h`
 - `src/Basescape/SoldierMemorialState.cpp`
 - `src/Battlescape/AliensCrashState.cpp`
 - `src/Battlescape/BattlescapeState.cpp`
+- `src/Battlescape/BattlescapeState.h`
 - `src/Battlescape/BriefingState.cpp`
 - `src/Battlescape/Inventory.cpp`
 - `src/Battlescape/Inventory.h`
 - `src/Battlescape/InventoryState.cpp`
 - `src/Battlescape/InventoryState.h`
 - `src/Battlescape/Map.cpp`
+- `src/Battlescape/UnitInfoState.cpp`
+- `src/Battlescape/UnitInfoState.h`
 - `src/CMakeLists.txt`
 - `src/Engine/Font.cpp`
 - `src/Engine/Font.h`
 - `src/Engine/Game.cpp`
+- `src/Engine/HiResCanvas.cpp`
+- `src/Engine/HiResCanvas.h`
+- `src/Engine/HiResLayer.cpp`
+- `src/Engine/HiResResample.cpp`
+- `src/Engine/HiResResample.h`
 - `src/Engine/Options.cpp`
 - `src/Engine/Options.h`
 - `src/Engine/Options.inc.h`
@@ -166,6 +185,7 @@ Changes since 8.7.1-hires-1 (test builds 2test–10test).
 - `src/Engine/State.h`
 - `src/Engine/Surface.cpp`
 - `src/Engine/Surface.h`
+- `src/Engine/UiImageScaler.cpp`
 - `src/Engine/Zoom.cpp`
 - `src/Geoscape/BaseDefenseState.cpp`
 - `src/Geoscape/BuildNewBaseState.cpp`
@@ -208,8 +228,8 @@ Changes since 8.7.1-hires-1 (test builds 2test–10test).
 - `src/Mod/RuleCountry.h`
 - `src/Mod/RuleRegion.cpp`
 - `src/Mod/RuleRegion.h`
-- `src/OpenXcom.2010.vcxproj`
 - `src/OpenXcom.2010.vcxproj.filters`
+- `src/OpenXcom.2010.vcxproj`
 - `src/OpenXcom.rc`
 - `src/Savegame/GameTime.cpp`
 - `src/Savegame/GameTime.h`

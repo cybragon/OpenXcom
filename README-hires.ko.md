@@ -56,8 +56,9 @@
 - 과학자/공학자 여유 인원 표시를 노란색으로 보여 줍니다.
 
 ### 6. UI 그래픽 필터
-"x1, UI 최적화" + 소프트웨어 출력(OpenGL 끔)에서 Scale, HQX, xBRZ 필터를 고르면 사이드바와 창 같은 UI 그림도 그 필터로 확대합니다.
-고해상도 글꼴을 꺼도 적용됩니다. 필터를 고르지 않으면 이전과 같습니다. OpenGL 셰이더 필터에는 적용되지 않습니다.
+"x1, UI 최적화"에서 사이드바와 창 같은 UI 그림은 전장과 같은 필터로 확대합니다: OpenGL 출력은 `oxceHiResBattleFilter`
+(0 없음, 1 Scale, 2 HQx, 3 xBRZ; 기본 1이라 OpenGL 사용자도 UI가 부드러워짐), 소프트웨어 출력은 Scale/HQX/xBRZ 화면 필터.
+고해상도 글꼴을 꺼도 적용됩니다. 1배 영역(지구본)은 확대하지 않으며 그대로입니다.
 
 ### 7. 기지 화면
 `maximizeInfoScreens`가 켜져 있으면 기지 화면도 320x200 크기로 키워서 보여 줍니다.
@@ -124,7 +125,7 @@ TU, 체력, 탄약 같은 전투 화면 숫자를 굵은 TTF 숫자 글꼴(`BATT
 | `oxceGeoscapeUiOptimized` | `false` | 지구 화면 스케일 "x1, UI 최적화" (비디오 옵션에서 고르면 저장됨) |
 | `oxceHiResLevel` | `-1` | 고해상도 단계 (비디오 목록): 0 끔, 1 지오스케이프, 2 전체; -1 = 예전 `oxceHiResAssets` 값 승계(켬 = 2). `oxceHiResAssets`는 이에 따라 바뀜 |
 | `oxceHiResShadeCurve` | `100,92,…,2` | 전투 조명 단계 1–16별 밝기 % |
-| `oxceHiResBattleFilter` | `1` | OpenGL 출력일 때 보간 필터 (UI 없음): 0 없음(선명), 1 Scale(부드럽게), 2 HQx, 3 xBRZ. 고해상도 이미지와 전장 지도에 적용. OpenGL 3.0 이상이고 셰이더가 빌드되면 1, 2, 3 모두 GPU로 자동 처리(HQx, xBRZ는 CPU 코드의 GLSL 포팅), 아니면 CPU 리샘플러가 같은 필터를 처리. 어느 경로인지와 이유는 openxcom.log (`battlefield path: ...`)에 기록. 소프트웨어 출력에서는 화면 필터를 따르며 이 값은 무시 |
+| `oxceHiResBattleFilter` | `1` | OpenGL 출력일 때 보간 필터 (UI 없음): 0 없음(선명), 1 Scale(부드럽게), 2 HQx, 3 xBRZ. 고해상도 이미지와 전장 지도에 적용. OpenGL 3.0 이상이고 셰이더가 빌드되면 1, 2, 3 모두 GPU로 자동 처리(HQx, xBRZ는 CPU 코드의 GLSL 포팅), 아니면 CPU 리샘플러가 같은 필터를 처리. 어느 경로인지와 이유는 openxcom.log (`battlefield path: ...`)에 기록. CPU의 xBRZ는 고해상도에서 느리며, 이때 로그에 경고(`the xBRZ battlefield filter runs on the CPU`)가 남습니다. OpenGL 3.0 이상 또는 필터 2/1을 쓰세요. 소프트웨어 출력에서는 화면 필터를 따르며 이 값은 무시 |
 | `oxceHiResVerifyGPU` | `false` | 디버그 (UI 없음, 느림): OpenGL 전장 프레임마다 같은 프레임의 CPU 리샘플러 전체 재합성과 비교해 다른 픽셀 수를 로그에 기록 (`HiResLayer verify (GPU vs CPU ...)`) |
 | `oxceHiResDebugScaleMask` | `false` | 전투 디버그: 배율 묶음별 색 표시 |
 | `oxceHiResDigitFont` | `""` (자동 = 굵은 시스템 글꼴) | 전투 화면 숫자 글꼴 |

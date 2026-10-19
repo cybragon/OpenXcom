@@ -227,6 +227,32 @@ void drawNative(Mod *mod, Soldier *soldier, HiResCanvas &canvas, int lx, int ly)
 
 Surface *flag(Mod *mod, Soldier *soldier, int boxW, int boxH)
 {
+	return HiResAssets::fit(flagRaw(mod, soldier), boxW, boxH);
+}
+
+double flagAspect(Surface *flag)
+{
+	if (!flag || !flag->getSurface() || flag->getWidth() <= 0 || flag->getHeight() <= 0)
+		return 0.0;
+	double w = flag->getWidth(), h = flag->getHeight();
+	HiResAssets::pictureSize(flag->getSurface(), w, h);
+	return w / h;
+}
+
+void flagRect(double aspect, int h, int maxW, int &w, int &hh, int &dy)
+{
+	hh = h; dy = 0;
+	w = std::max(1, (int)std::lround(h * aspect));
+	if (w > maxW)
+	{
+		w = maxW;
+		hh = std::max(1, std::min(h, (int)std::lround(maxW / aspect)));
+		dy = (h - hh) / 2;
+	}
+}
+
+Surface *flagRaw(Mod *mod, Soldier *soldier)
+{
 	if (!soldier)
 		return nullptr;
 	std::ostringstream flagId;
@@ -249,7 +275,7 @@ Surface *flag(Mod *mod, Soldier *soldier, int boxW, int boxH)
 		}
 		flagId << index + soldier->getRules()->getFlagOffset();
 	}
-	return HiResAssets::fit(mod->getSurface(flagId.str().c_str(), false), boxW, boxH);
+	return mod->getSurface(flagId.str().c_str(), false);
 }
 
 bool nativeActive()

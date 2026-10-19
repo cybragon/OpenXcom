@@ -36,6 +36,10 @@
 #include "BattlescapeState.h"
 #include "../Mod/RuleInterface.h"
 #include "../Engine/HiResCanvas.h"
+#include "../Engine/HiResAssets.h"
+#include "../Engine/HiResLayer.h"
+#include "../Engine/Logger.h"
+#include <algorithm>
 #include "AvatarDraw.h"
 #include "../Savegame/Soldier.h"
 
@@ -64,9 +68,11 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
 	_bg = new Surface(320, 200, 0, 0);
 	_exit = new InteractiveSurface(320, 180, 0, 20);
 	_txtName = new Text(288, 17, 16, 4);
-	// avatar mode: avatar (26x23) and flag (40x20) scaled down to the 17 px name row
-	_avatar = new Surface(20, 18, 16, 2); // the top bar interior height (y 2..19), 26:23 kept
-	_flag = new Surface(36, 18, 304 - 36, 2); // the 40x20 flag box scaled to the bar height
+	// avatar mode: the top bar interior is y 2..19, x 16..303 (stock buttons 14x18 at (2, 2) / (304, 2) fill
+	// its height). Avatar 26:23 at the bar height, 1 px from the << button; the flag (sized per soldier,
+	// updateAvatar) at the bar height with its own aspect, right edge 1 px from the >> button.
+	_avatar = new Surface(20, 18, 17, 2);
+	_flag = new Surface(FLAG_MAX_W, 18, FLAG_RIGHT + 1 - FLAG_MAX_W, 2);
 
 	int yPos = 38;
 	int step = 9;
@@ -498,7 +504,7 @@ UnitInfoState::~UnitInfoState()
  */
 /**
  * Avatar mode only (the mod defines AvatarBackground) and only for soldiers: the battlescape avatar
- * left of the centred name, the soldier's flag on the right, both scaled to the name row. A long name
+ * left of the centred name, the soldier's flag on the right (own aspect), both at the top bar height. A long name
  * is squeezed (hi-res text) to the room between them down to 80%, beyond that drawn as it is (the
  * avatar and flag are drawn after it). Mod off: the stock screen.
  */
@@ -509,33 +515,48 @@ void UnitInfoState::updateAvatar(bool force)
 	const bool on = soldier && AvatarDraw::enabled(mod);
 	_avatar->setVisible(on);
 	_flag->setVisible(on);
-	_txtName->setSqueezeWidth(on ? 288 - 2 * (36 + 2) : 0);
 	_avatarSoldier = on ? soldier : nullptr;
 	if (!on)
+	{
+		_txtName->setSqueezeWidth(0);
 		return;
-	Surface *flag = AvatarDraw::flag(mod, soldier, 40, 20);
+	}
+	// flag rect: the bar height and the flag's own aspect (real picture size), right edge at FLAG_RIGHT
+	Surface *raw = AvatarDraw::flagRaw(mod, soldier);
+	Surface *flag = nullptr;
+	int fw = 0, fh = 0, fdy = 0;
+	if (raw)
+	{
+		AvatarDraw::flagRect(AvatarDraw::flagAspect(raw), BAR_H, FLAG_MAX_W, fw, fh, fdy);
+		flag = HiResAssets::fit(raw, fw, fh);
+	}
+	_flag->setVisible(flag != nullptr);
+	// the name centred in the room between the avatar and the flag (symmetric)
+	// room = the bar interior x 16..303 less, on both sides, the wider of avatar / flag (+ 1 px gap)
+	const int side = std::max(_avatar->getX() + _avatar->getWidth() - 16, flag ? 304 - (_flag->getX() + _flag->getWidth() - fw) : 0);
+	_txtName->setSqueezeWidth(288 - 2 * (side + 2));
 	if (force)
 	{
 		_avatar->clear();
 		AvatarDraw::draw8Scaled(mod, soldier, _avatar, 0, 0, _avatar->getWidth(), _avatar->getHeight());
 		_flag->clear();
 		if (flag)
-		{
-			// fitted flag right-aligned in the 40x20 box, then the box scaled to the row
-			Surface box(40, 20, 0, 0);
-			box.setPalette(_flag->getPalette());
-			flag->blitNShade(&box, 40 - flag->getWidth(), 0);
-			AvatarDraw::blitScaled8(&box, _flag, 0, 0, _flag->getWidth(), _flag->getHeight());
-		}
-	}
-	if (force)
+			AvatarDraw::blitScaled8(flag, _flag, _flag->getWidth() - fw, fdy, fw, fh); // right-aligned, scaled to its rect
 		_avatarPending = true;
+	}
 	bool ok = AvatarDraw::presentNative(_game->getScreen(), _avatarCanvas, _avatarKey, AvatarDraw::contentKey(mod, soldier), _avatar,
 		AvatarDraw::WIDTH, AvatarDraw::HEIGHT, _avatarPending,
 		[&](HiResCanvas &c) { AvatarDraw::drawNative(mod, soldier, c, 0, 0); });
-	if (flag)
-		ok = AvatarDraw::presentNative(_game->getScreen(), _flagCanvas, _flagKey, (Uint64)(size_t)flag, _flag, 40, 20, _avatarPending,
-			[&](HiResCanvas &c) { c.drawSurface(flag, 40 - flag->getWidth(), 0); }) && ok;
+	// native: the fitted flag at its own logical size (= its rect) in a holder-sized space; a flag that
+	// is not fitted (stock 8-bit, scaled above) stays 8-bit
+	if (flag && flag->getWidth() == fw && flag->getHeight() == fh)
+	{
+		const int hw = _flag->getWidth();
+		ok = AvatarDraw::presentNative(_game->getScreen(), _flagCanvas, _flagKey, (Uint64)(size_t)flag * 31 + fdy, _flag, hw, _flag->getHeight(), _avatarPending,
+			[&](HiResCanvas &c) { c.drawSurface(flag, hw - fw, fdy); }) && ok;
+	}
+	else if (force)
+		HiResLayer::clearSurface(_flag->getSurface());
 	if (ok)
 		_avatarPending = false;
 }

@@ -86,8 +86,8 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId, bool forceLimit
 	// Create objects
 	_bg = new Surface(320, 200, 0, 0);
 	_rank = new InteractiveSurface(26, 23, 4, 4);
-	_avatar = new Surface(28, 25, 34, 3); // the top panel interior height (y 3..27), 26:23 kept
-	_flag = new InteractiveSurface(40, 25, 275, 3); // stock 40x20 at y 6; 25 rows so a hi-res flag fills the panel height
+	_avatar = new Surface(26, 23, 34, 4); // the rank slot (y 4..26), as the battlescape avatar
+	_flag = new InteractiveSurface(60, 20, 255, 6); // stock: 40x20 at (275, 6), right edge x 314; wider room for wide hi-res flags
 	_btnPrev = new TextButton(28, 14, 0, 33);
 	_btnOk = new TextButton(48, 14, 30, 33);
 	_btnNext = new TextButton(28, 14, 80, 33);
@@ -469,10 +469,7 @@ void SoldierInfoState::init()
 		if (on)
 		{
 			_avatar->clear();
-			Surface tmp(AvatarDraw::WIDTH, AvatarDraw::HEIGHT, 0, 0);
-			tmp.setPalette(_avatar->getPalette());
-			AvatarDraw::draw8ForPalette(mod, _soldier, &tmp, 0, 0, _avatar->getPalette());
-			AvatarDraw::blitScaled8(&tmp, _avatar, 0, 0, _avatar->getWidth(), _avatar->getHeight());
+			AvatarDraw::draw8ForPalette(mod, _soldier, _avatar, 0, 0, _avatar->getPalette());
 			_avatarPending = true;
 			presentAvatar();
 		}
@@ -498,14 +495,21 @@ void SoldierInfoState::init()
 		}
 		flagId << index + _soldier->getRules()->getFlagOffset();
 	}
-	// hi-res assets: a flag larger than the stock 40x20 box is fitted into 40x25 (the panel height, right-aligned,
-	// centred vertically); a flag not fitted is drawn as stock (top at y 6)
-	Surface *flagTexture = HiResAssets::fit(_game->getMod()->getSurface(flagId.str().c_str(), false), _flag->getWidth(), _flag->getHeight());
+	// stock: the flag right-aligned in 40x20 at (275, 6) (rank slot y 4..26: 2 px above, 1 below; right edge
+	// x 314). Hi-res assets: a flag larger than its slot is fitted to the 20 px height with its own aspect
+	// (at most 60 wide, then narrower and centred), right edge x 314 too. Not fitted: drawn as stock.
+	Surface *flagRaw = _game->getMod()->getSurface(flagId.str().c_str(), false);
+	Surface *flagTexture = flagRaw;
+	if (flagRaw && HiResAssets::enabled())
+	{
+		int fw, fh, fdy;
+		AvatarDraw::flagRect(AvatarDraw::flagAspect(flagRaw), _flag->getHeight(), _flag->getWidth(), fw, fh, fdy);
+		flagTexture = HiResAssets::fit(flagRaw, fw, fh);
+	}
 	_flag->clear();
 	if (flagTexture != 0)
 	{
-		// not fitted (stock flag, or hi-res assets off): the stock place, y 6 on screen
-		const int fy = flagTexture == _game->getMod()->getSurface(flagId.str().c_str(), false) ? 3 : (_flag->getHeight() - flagTexture->getHeight()) / 2;
+		const int fy = flagTexture == flagRaw ? 0 : (_flag->getHeight() - flagTexture->getHeight()) / 2;
 		flagTexture->blitNShade(_flag, _flag->getWidth() - flagTexture->getWidth(), fy); // align right
 	}
 

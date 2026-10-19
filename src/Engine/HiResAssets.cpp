@@ -743,6 +743,18 @@ Entry *nativeEntry(const SDL_Surface *surface)
 }
 }
 
+bool pictureSize(const SDL_Surface *surface, double &w, double &h)
+{
+	auto reg = bySurface.find(surface);
+	if (reg == bySurface.end())
+		return false;
+	Entry *e = find(reg->second);
+	if (!e || !e->pic || e->rw <= 0 || e->rh <= 0)
+		return false;
+	w = e->rw; h = e->rh;
+	return true;
+}
+
 bool nativeInfo(const SDL_Surface *surface, int &lw, int &lh)
 {
 	Entry *e = nativeEntry(surface);

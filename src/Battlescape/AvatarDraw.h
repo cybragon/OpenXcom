@@ -55,6 +55,15 @@ namespace AvatarDraw
 	void blitScaled8(Surface *src, Surface *dst, int x, int y, int w, int h);
 	/// Flag surface of the soldier (the SoldierInfoState rule), fitted into boxW x boxH; null = none.
 	Surface *flag(Mod *mod, Soldier *soldier, int boxW, int boxH);
+	/// Flag surface of the soldier as loaded (not fitted); null = none.
+	Surface *flagRaw(Mod *mod, Soldier *soldier);
+	/// Width / height of a flag: its real picture (hi-res) or its surface; 0 = none.
+	double flagAspect(Surface *flag);
+	/**
+	 * Flag rect for a slot: height h (the slot height) and the flag's own aspect, at most maxW wide
+	 * (then narrower and centred vertically). Writes the size (w x hh) and the y offset in the slot.
+	 */
+	void flagRect(double aspect, int h, int maxW, int &w, int &hh, int &dy);
 	/// Is the output-resolution path on (hi-res layer recording + hi-res assets)?
 	bool nativeActive();
 	/**

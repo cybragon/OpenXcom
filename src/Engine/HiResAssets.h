@@ -104,6 +104,9 @@ namespace HiResAssets
 	/// Picture of a surface for the native canvas (attached hi-res asset or native-only 32-bit picture):
 	/// its logical size (base px, from the top-left of the surface). False = 8-bit only.
 	bool nativeInfo(const SDL_Surface *surface, int &lw, int &lh);
+	/// Size of the picture shown by a registered surface (hi-res asset or quantized 32-bit proxy), in
+	/// picture pixels; false = not registered (use the surface size). For aspect ratios.
+	bool pictureSize(const SDL_Surface *surface, double &w, double &h);
 	/// The picture resampled to outW x outH (PREMULTIPLIED ARGB, HiResResample rule), palette for 8bpp pictures; nullptr = none.
 	const Uint32 *nativeRendered(const SDL_Surface *surface, const SDL_Palette *palette, int outW, int outH);
 	bool trueColorAllowed(const std::string &type);

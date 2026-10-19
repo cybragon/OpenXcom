@@ -24,6 +24,9 @@ Statically linked libraries (full license texts in the licenses\ folder):
     Copyright (C) 2009-2023 D. R. Commander. Copyright (C) 2015 Viktor Szathmary.
     Copyright (C) 1991-2020 Thomas G. Lane, Guido Vollbeding.
     (used only for .jpg/.jpeg pictures in mods when the hi-res assets option is on)
+- libwebp 1.4.0 (decoder; libsharpyuv) .............. BSD-3-Clause (Google) licenses\libwebp_COPYING.txt, licenses\libwebp_PATENTS.txt
+    Copyright (c) 2010, Google Inc. (used only for .webp pictures in mods when the hi-res assets option is on;
+    SDL_image IMG_webp.c entry point types adjusted to the libwebp 1.x API)
 - MinGW-w64 runtime, winpthreads .................... MinGW-w64 / MIT-style / public domain licenses\mingw-w64_copyright.txt
 - GCC runtime (libgcc, libstdc++) ................... GPL v3 with the GCC Runtime Library Exception
 

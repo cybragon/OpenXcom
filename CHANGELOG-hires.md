@@ -18,9 +18,7 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
 - CPU xBRZ: exact partial map updates (no full redraw on every change); a log warning when xBRZ runs on the CPU.
 - battle-9: WebP decoded with libwebp directly (lossless / extended / alpha WebP; SDL_image 1.2 only read simple lossy);
   flags keep their own aspect at the slot height (base: stock 40x20 slot rule; battle: bar height, right edge 1 px in);
-  optional interface `stats` element `nameBar` for the battle unit info name band (README section 12).
-- battle-9: one flag margin rule for both screens (h <= 20 none; 21 top 1; >= 22 bottom 1, top 1/2 for even/odd h);
-  nameBar avatar = band height (26:23; h 18 = default, h 23 = 26x23).
+  battle unit info avatar 20x18 and flag 18 px (bar height), base soldier info avatar 26x23 and flag 20 px (stock slot).
 
 ## 8.7.1-hires-2 (2026-10-13)
 

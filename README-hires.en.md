@@ -97,33 +97,6 @@ TU, health, ammo and other battlescape numbers are drawn with a bold TTF digit f
 ### 11. Korean (IME) text input (Windows only)
 IME input in text fields, with the caret, composition and candidate window placed on the TTF text.
 
-### 12. Soldier avatar and flag (mods defining `AvatarBackground`)
-When a mod defines the extra sprite `AvatarBackground` (OXCE: battle HUD avatar instead of the rank
-badge), the base soldier info screen shows that avatar next to the rank (26x23) and the battle unit
-info screen shows it left of the name with the soldier's flag on the right. Flags keep their own
-aspect ratio, right-aligned 1 px inside the slot. One margin rule for both screens (slot height h):
-h <= 20 no margin; h = 21 top 1; h >= 22 bottom 1 and top 1 (h even) or 2 (h odd), e.g. 22 -> 20,
-23 -> 20, 24 -> 22, 26 -> 24. Base: slot 23 rows (y 4..26) -> 20 px flag at y 6, right edge x 314 (stock);
-battle: bar 18 rows -> 18 px flag, right edge x 302; avatar 20x18.
-
-Battle unit info: a mod can give its own name band with the optional element `nameBar` of the
-interface `stats` (the inner rect of the band; without it the stock layout is used, `textName`
-positions stay ignored as in stock):
-
-```yaml
-interfaces:
-  - type: stats
-    elements:
-      - id: nameBar
-        pos: [16, 2]    # inner rect of the name band
-        size: [288, 18]
-```
-
-The name is centred vertically in the band (height min(17, h)); the avatar is h high (26:23) at
-(x + 1, y), so h = 18 is the default and h = 23 gives 26x23 like the base screen; the flag follows the
-margin rule above with its own aspect, right edge 1 px inside (x + w - 2); a long name is squeezed
-between them. The stats start at y 38 (y 30 with the mana feature on): a band reaching lower overlaps them.
-
 ## Installation (Windows x64)
 1. Unzip; you get an `Extended-8.7.1-hires-2` folder. Keep it separate from any other OpenXcom install.
 2. **No original game data is included.** Copy the data of your own copy of X-COM: UFO Defense

@@ -50,9 +50,8 @@ private:
 	InteractiveSurface *_exit;
 	Text *_txtName;
 	/// Avatar mode (AvatarBackground defined): avatar left of the name, flag on the right, scaled to the name row.
-	/// avatar mode name band layout (defaults: stock bar interior x 16..303, y 2..19; interface "stats"
-	/// element "nameBar" overrides): room for the name, flag height / widest flag / right edge / top
-	int _barX = 16, _barW = 288, _flagH = 18, _flagMaxW = 48, _flagRight = 302, _flagY = 2;
+	/// avatar mode top bar (stock interior x 16..303, y 2..19): room for the name, flag height / widest flag / right edge / top
+	const int _barX = 16, _barW = 288, _flagH = 18, _flagMaxW = 48, _flagRight = 302, _flagY = 2;
 	Surface *_avatar = nullptr, *_flag = nullptr;
 	HiResCanvas *_avatarCanvas = nullptr, *_flagCanvas = nullptr;
 	Uint64 _avatarKey = 0, _flagKey = 0;

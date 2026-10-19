@@ -87,11 +87,9 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId, bool forceLimit
 	_bg = new Surface(320, 200, 0, 0);
 	_rank = new InteractiveSurface(26, 23, 4, 4);
 	_avatar = new Surface(26, 23, 34, 4); // the rank slot (y 4..26), as the battlescape avatar
-	// flag: the rank slot rows y 4..26 (23) through the shared margin rule -> 20 rows at y 6, as stock 40x20 at
-	// (275, 6); right edge x 314 (1 px inside the slot); 60 wide so wide hi-res flags keep their aspect
-	int flagTop, flagH;
-	AvatarDraw::flagSlot(23, flagTop, flagH);
-	_flag = new InteractiveSurface(60, flagH, 255, 4 + flagTop);
+	// flag: stock 40x20 at (275, 6) (rank slot rows y 4..26: 2 above, 1 below), right edge x 314; 60 wide
+	// so wide hi-res flags keep their aspect
+	_flag = new InteractiveSurface(60, 20, 255, 6);
 	_btnPrev = new TextButton(28, 14, 0, 33);
 	_btnOk = new TextButton(48, 14, 30, 33);
 	_btnNext = new TextButton(28, 14, 80, 33);

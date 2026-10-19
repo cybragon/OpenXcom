@@ -690,6 +690,9 @@ Uint8 scaleClass(double kx, double ky, double phx, double phy)
 const Uint32 *smSrc = nullptr;
 Uint32 *smDst = nullptr;
 int smMargin = 0; ///< output px read around the region (filter reach)
+/// CPU xBRZ exact partial update: per class (index k), its bounding box over the WHOLE map (output px x0, y0, x1, y1);
+/// empty = the box within the pass region (full recompose)
+std::vector<int> smFullBox;
 
 void scaleMaskBegin(int dstW, int dstH)
 {
@@ -900,7 +903,19 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 		}
 		else
 		{
-			HiResResample::resample(small.data(), W, H, rx, ry, rw, rh, outW, outH, HiResResample::PIXEL, out);
+			// xBRZ: crop with 3 cells of context, clamped to the cells of the class's box over the whole map - the crop
+			// a full recompose uses - so a partial update gives the same pixels (exact, oxceHiResVerifyReuse)
+			int clamp[4] = { 0, 0, W, H };
+			int fx0 = X0, fy0 = Y0, fx1 = X1, fy1 = Y1;
+			if (smFullBox.size() >= (size_t)(k + 1) * 4 && smFullBox[k * 4 + 2] > smFullBox[k * 4])
+			{
+				fx0 = smFullBox[k * 4]; fy0 = smFullBox[k * 4 + 1]; fx1 = smFullBox[k * 4 + 2]; fy1 = smFullBox[k * 4 + 3];
+			}
+			clamp[0] = std::max(0, (int)std::floor(fx0 * isx * sc.kx - sc.phx) - gx0);
+			clamp[1] = std::max(0, (int)std::floor(fy0 * isy * sc.ky - sc.phy) - gy0);
+			clamp[2] = std::min(W, (int)std::ceil(fx1 * isx * sc.kx - sc.phx - 1e-9) - gx0);
+			clamp[3] = std::min(H, (int)std::ceil(fy1 * isy * sc.ky - sc.phy - 1e-9) - gy0);
+			HiResResample::resample(small.data(), W, H, rx, ry, rw, rh, outW, outH, HiResResample::PIXEL, out, 3, clamp);
 		}
 		if (out.size() != (size_t)outW * outH)
 			continue;
@@ -1599,6 +1614,9 @@ void logMapPath(bool gl, const char *cpuReason)
 		return;
 	lastMapPath = now;
 	Log(LOG_INFO) << "HiResLayer: battlefield path: " << now;
+	if (!gl && fm == HiResResample::PIXEL)
+		Log(LOG_WARNING) << "HiResLayer: the xBRZ battlefield filter runs on the CPU (" << cpuReason << "): slow at high output"
+			" resolutions; the GPU path needs OpenGL 3.0+ (OpenGL output or a software HQx/xBRZ screen filter). HQx (2) or Scale (1) are faster on the CPU.";
 }
 
 void logFrameSummary()
@@ -1992,12 +2010,8 @@ void planMapFrame(int dstW, int dstH, int backend)
 	}
 	// xBRZ: a partial update is not pixel-identical to a full recompose (verified with oxceHiResVerifyReuse: the result near
 	// rect edges depends on the window), so any change recomposes the whole map; only "unchanged" is skipped
-	if (mode == HiResResample::PIXEL && backend != 2 && (!rects.empty() || dx || dy))
-	{
-		P.reason = "xBRZ: partial update is not exact";
-		P.dx = P.dy = P.DX = P.DY = 0;
-		commit(); return;
-	}
+	// (battle-8: the CPU xBRZ crop has 3 cells of context clamped to the class box over the whole map, so a partial
+	// update is exact on both backends; the former "xBRZ: partial update is not exact" full recompose is gone)
 	long long area = 0;
 	for (auto &r : rects) area += (long long)r.w * r.h;
 	// cost rule: a partial update costs about its (exact) area plus a fixed share; a full one costs the map.
@@ -2126,6 +2140,28 @@ SDL_Rect composeMapCPU(size_t groupStart, size_t groupEnd, int dstW, int dstH, d
 		SM.inMap = false;
 		S.stamps.swap(MB.zeroStamps);
 		S.rgba.swap(MB.a);
+	}
+	// CPU xBRZ partial update: the class boxes over the whole map (the cache holds the whole map's classes)
+	smFullBox.clear();
+	if (mode == HiResResample::PIXEL && !full)
+	{
+		const int nc = (int)SM.classes.size();
+		smFullBox.assign((size_t)(nc + 1) * 4, 0);
+		for (int k = 0; k <= nc; ++k) { smFullBox[k * 4] = INT32_MAX; smFullBox[k * 4 + 1] = INT32_MAX; smFullBox[k * 4 + 2] = -1; smFullBox[k * 4 + 3] = -1; }
+		for (int y = my0; y < my1; ++y)
+		{
+			const Uint8 *cr = &SM.cls[(size_t)y * dstW];
+			for (int x = mx0; x < mx1; ++x)
+			{
+				const int k = cr[x];
+				if (!k || k > nc) continue;
+				int *b = &smFullBox[k * 4];
+				if (x < b[0]) b[0] = x;
+				if (x >= b[2]) b[2] = x + 1;
+				if (y < b[1]) b[1] = y;
+				if (y >= b[3]) b[3] = y + 1;
+			}
+		}
 	}
 	// result = nearest composite, then the interpolation, per rect - after ALL rects are composed (neighbouring rects
 	// are sources of each other's filter taps)

@@ -37,7 +37,11 @@ namespace HiResResample
 	/// Current upscale mode, from the screen filter.
 	int mode();
 	/// Source rect (rx, ry, rw, rh; may be fractional) of the w x h straight ARGB picture -> outW x outH premultiplied.
-	void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int mode, std::vector<Uint32> &out);
+	/// xbrzContext / xbrzClamp (PIXEL only): the xBRZ crop takes up to xbrzContext source cells around the rect, but
+	/// not beyond xbrzClamp = {x0, y0, x1, y1} (src cells; the crop edge replicates there). A partial update with the
+	/// clamp of the full-size rect then gives the same pixels as the full one (xBRZ reach < 3 cells).
+	void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int mode, std::vector<Uint32> &out,
+		int xbrzContext = 0, const int *xbrzClamp = nullptr);
 	/// Straight ARGB -> premultiplied.
 	Uint32 premultiply(Uint32 p);
 	/// Premultiplied source over a straight-alpha destination (result straight).

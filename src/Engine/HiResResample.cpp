@@ -205,7 +205,8 @@ void blendOver(Uint32 &d, Uint32 s)
 	d = ((Uint32)oa << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }
 
-void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int m, std::vector<Uint32> &out)
+void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int m, std::vector<Uint32> &out,
+	int xbrzContext, const int *xbrzClamp)
 {
 	out.clear();
 	if (!src || w <= 0 || h <= 0 || outW <= 0 || outH <= 0 || rw <= 0 || rh <= 0)
@@ -227,8 +228,13 @@ void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, 
 	{
 		// pixel art: xBRZ (alpha aware) by the next integer factor on the source rect, then area-average down
 		const int k = std::min(6, std::max(2, (int)std::ceil(scale - 1e-9)));
-		const int ix0 = std::max(0, (int)std::floor(rx)), iy0 = std::max(0, (int)std::floor(ry));
-		const int ix1 = std::min(w, (int)std::ceil(rx + rw - 1e-9)), iy1 = std::min(h, (int)std::ceil(ry + rh - 1e-9));
+		int ix0 = std::max(0, (int)std::floor(rx) - xbrzContext), iy0 = std::max(0, (int)std::floor(ry) - xbrzContext);
+		int ix1 = std::min(w, (int)std::ceil(rx + rw - 1e-9) + xbrzContext), iy1 = std::min(h, (int)std::ceil(ry + rh - 1e-9) + xbrzContext);
+		if (xbrzClamp)
+		{
+			ix0 = std::max(ix0, xbrzClamp[0]); iy0 = std::max(iy0, xbrzClamp[1]);
+			ix1 = std::min(ix1, xbrzClamp[2]); iy1 = std::min(iy1, xbrzClamp[3]);
+		}
 		const int cw = ix1 - ix0, ch = iy1 - iy0;
 		if (cw > 0 && ch > 0 && (size_t)cw * ch * k * k <= (size_t)32 * 1024 * 1024)
 		{

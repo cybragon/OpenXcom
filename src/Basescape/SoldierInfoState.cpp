@@ -48,6 +48,11 @@
 #include "../Mod/RuleSoldier.h"
 #include "../Savegame/SoldierDeath.h"
 #include "../Engine/HiResAssets.h"
+#include "../Engine/HiResCanvas.h"
+#include "../Engine/Logger.h"
+#include "../Engine/HiResLayer.h"
+#include "../Engine/Palette.h"
+#include "../Battlescape/AvatarDraw.h"
 
 namespace OpenXcom
 {
@@ -81,6 +86,7 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId, bool forceLimit
 	// Create objects
 	_bg = new Surface(320, 200, 0, 0);
 	_rank = new InteractiveSurface(26, 23, 4, 4);
+	_avatar = new Surface(26, 23, 34, 4);
 	_flag = new InteractiveSurface(40, 20, 275, 6);
 	_btnPrev = new TextButton(28, 14, 0, 33);
 	_btnOk = new TextButton(48, 14, 30, 33);
@@ -175,6 +181,7 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId, bool forceLimit
 
 	add(_bg);
 	add(_rank);
+	add(_avatar);
 	add(_flag);
 	add(_btnOk, "button", "soldierInfo");
 	add(_btnPrev, "button", "soldierInfo");
@@ -383,6 +390,7 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId, bool forceLimit
  */
 SoldierInfoState::~SoldierInfoState()
 {
+	delete _avatarCanvas;
 
 }
 
@@ -390,6 +398,33 @@ SoldierInfoState::~SoldierInfoState()
  * Updates soldier stats when
  * the soldier changes.
  */
+/**
+ * Hi-res: the avatar at output resolution (battlescape palette for the 8-bit art), only when the UI is
+ * not magnified; retried each frame until the output scale is known (display reset when entering).
+ */
+void SoldierInfoState::presentAvatar()
+{
+	if (!_avatarPending || !_avatarShown || !_soldier || getUiCanvasFactor() != 1)
+		return;
+	Mod *mod = _game->getMod();
+	Soldier *soldier = _soldier;
+	Palette *battle = mod->getPalette("PAL_BATTLESCAPE", false);
+	SDL_Palette pal;
+	pal.ncolors = 256;
+	pal.colors = battle ? battle->getColors() : nullptr;
+	if (AvatarDraw::presentNative(_game->getScreen(), _avatarCanvas, _avatarKey, AvatarDraw::contentKey(mod, soldier), _avatar,
+		AvatarDraw::WIDTH, AvatarDraw::HEIGHT, true,
+		[&](HiResCanvas &c) { AvatarDraw::drawNative(mod, soldier, c, 0, 0); },
+		battle ? &pal : nullptr))
+		_avatarPending = false;
+}
+
+void SoldierInfoState::think()
+{
+	State::think();
+	presentAvatar();
+}
+
 void SoldierInfoState::init()
 {
 	State::init();
@@ -418,6 +453,26 @@ void SoldierInfoState::init()
 	if (frame)
 	{
 		frame->blitNShade(_rank, 0, 0);
+	}
+
+	// avatar mode: the battlescape avatar next to the rank, the name ~28 px to the right (mod off: stock)
+	{
+		Mod *mod = _game->getMod();
+		const bool on = AvatarDraw::enabled(mod);
+		_avatar->setVisible(on);
+		if (on != _avatarShown)
+		{
+			_avatarShown = on;
+			_edtSoldier->setX(_edtSoldier->getX() + (on ? 28 : -28));
+			_edtSoldier->setWidth(_edtSoldier->getWidth() + (on ? -28 : 28));
+		}
+		if (on)
+		{
+			_avatar->clear();
+			AvatarDraw::draw8ForPalette(mod, _soldier, _avatar, 0, 0, _avatar->getPalette());
+			_avatarPending = true;
+			presentAvatar();
+		}
 	}
 
 	std::ostringstream flagId;

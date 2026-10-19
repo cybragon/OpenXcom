@@ -25,6 +25,7 @@ namespace OpenXcom
 
 class Base;
 class Surface;
+class HiResCanvas;
 class TextButton;
 class Text;
 class TextEdit;
@@ -47,6 +48,12 @@ private:
 	std::vector<Soldier*> *_list;
 
 	Surface *_bg;
+	/// Avatar mode (battlescape AvatarBackground defined): the battlescape avatar right of the rank, name moved right.
+	Surface *_avatar = nullptr;
+	HiResCanvas *_avatarCanvas = nullptr;
+	Uint64 _avatarKey = 0;
+	bool _avatarShown = false, _avatarPending = false;
+	void presentAvatar();
 	InteractiveSurface *_rank;
 	InteractiveSurface *_flag;
 	TextButton *_btnOk, *_btnPrev, *_btnNext, *_btnArmor, *_btnSack, *_btnDiary, *_btnBonuses, *_btnTransformations;
@@ -65,6 +72,8 @@ public:
 	~SoldierInfoState();
 	/// Updates the soldier info.
 	void init() override;
+	/// Hi-res avatar: recorded once the output scale is known.
+	void think() override;
 	/// Handles keypresses.
 	void handle(Action* action) override;
 	/// Set the soldier Id.

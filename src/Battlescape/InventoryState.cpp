@@ -459,9 +459,10 @@ void InventoryState::blitNativeBack(SDL_Surface *screen)
 				_canvasBack->drawSurface(l, _soldier->getX(), _soldier->getY());
 	}
 	Surface *holder = nativeHolder(_nativeHolder, screen, _bg->getPalette());
+	// only the background under the canvas: the paperdoll is drawn by the canvas alone. Its 8bpp
+	// proxy here showed through the doll's soft (alpha < 255) edge pixels, magnified nearest by the
+	// screen (4x4 blocks / dots around the silhouette); the 8bpp _bg is the doll's real background
 	_bg->blitNShade(holder, _bg->getX(), _bg->getY());
-	if (_soldier->getVisible())
-		_soldier->blitNShade(holder, _soldier->getX(), _soldier->getY());
 	_canvasBack->present(holder->getSurface());
 	holder->blit(screen);
 }

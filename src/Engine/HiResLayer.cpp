@@ -1025,7 +1025,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 					const Uint32 p = c.battle ? battlePixel(c, src[u], nbm ? nbm[(size_t)v * nW + u] : 0, bpal, bfac) : src[u];
 					if (!(p >> 24))
 						continue;
-					HiResResample::blendOver(dst[x], p);
+					HiResResample::blendOverPremul(dst[x], p);
 					cr[x] = k;
 					drawn = true;
 				}
@@ -1079,7 +1079,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 							out = q;
 					}
 				}
-				HiResResample::blendOver(out, p); // premultiplied picture over the background
+				HiResResample::blendOverPremul(out, p); // premultiplied picture over the background
 				dst[x] = out;
 				drawn = true;
 				continue;
@@ -1087,7 +1087,7 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			if (!a)
 				continue;
 			drawn = true;
-			HiResResample::blendOver(dst[x], p); // premultiplied (HiResResample)
+			HiResResample::blendOverPremul(dst[x], p); // premultiplied (HiResResample)
 			setCls(x, y, 0); // 1x / downscaled: final
 		}
 	}
@@ -1553,7 +1553,7 @@ void drawImage(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 				const Uint32 p = src[x];
 				if (!(p >> 24) || stampRow[std::min(S.baseW - 1, (int)(x * isx))] > c.stamp)
 					continue;
-				HiResResample::blendOver(dst[x], p);
+				HiResResample::blendOverPremul(dst[x], p);
 				drawn = true;
 			}
 		}
@@ -2340,7 +2340,7 @@ SDL_Rect composeMapCPU(size_t groupStart, size_t groupEnd, int dstW, int dstH, d
 			const Uint32 p = src[x];
 			const unsigned a = p >> 24;
 			if (a == 255) dst[x] = p;
-			else if (a) HiResResample::blendOver(dst[x], p);
+			else if (a) HiResResample::blendOverPremul(dst[x], p);
 		}
 	}
 	return SDL_Rect{ (Sint16)mx0, (Sint16)my0, (Uint16)(mx1 - mx0), (Uint16)(my1 - my0) };

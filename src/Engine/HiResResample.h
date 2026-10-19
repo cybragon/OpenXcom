@@ -46,6 +46,9 @@ namespace HiResResample
 	Uint32 premultiply(Uint32 p);
 	/// Premultiplied source over a straight-alpha destination (result straight).
 	void blendOver(Uint32 &d, Uint32 s);
+	/// Premultiplied source over a premultiplied destination (result premultiplied): the hi-res
+	/// layer's composition buffer, which both presenters draw as premultiplied.
+	void blendOverPremul(Uint32 &d, Uint32 s);
 }
 
 }

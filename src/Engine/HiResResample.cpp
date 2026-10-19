@@ -205,6 +205,21 @@ void blendOver(Uint32 &d, Uint32 s)
 	d = ((Uint32)oa << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }
 
+void blendOverPremul(Uint32 &d, Uint32 s)
+{
+	const unsigned a = s >> 24;
+	if (!a)
+		return;
+	if (a == 255 || !d)
+	{
+		d = s;
+		return;
+	}
+	const unsigned ia = 255 - a;
+	auto ch = [&](int sh) { return (Uint32)std::min(255u, ((s >> sh) & 0xFF) + (((d >> sh) & 0xFF) * ia + 127) / 255); };
+	d = (ch(24) << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
 void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int m, std::vector<Uint32> &out,
 	int xbrzContext, const int *xbrzClamp)
 {

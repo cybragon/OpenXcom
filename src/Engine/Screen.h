@@ -98,6 +98,9 @@ public:
 	static bool use32bitScaler();
 	/// Checks whether OpenGL output is requested
 	static bool useOpenGL();
+	/// Software screen filter (HQx / xBRZ) with the hi-res battlefield layer: the OpenGL output is used automatically
+	/// (GPU battlefield filter) when the driver can do it; false once a probe failed this session.
+	static bool wantsAutoGL();
 	/// update the game scale as required.
 	static void updateScale(int type, int &width, int &height, bool change);
 };

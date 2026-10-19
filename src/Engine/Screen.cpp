@@ -55,6 +55,8 @@ static const char* SDL_VIDEO_WINDOW_POS_UNSET = "SDL_VIDEO_WINDOW_POS=";
  * Sets up all the internal display flags depending on
  * the current video settings.
  */
+static bool _autoGLFailed = false;
+
 void Screen::makeVideoFlags()
 {
 	_flags = SDL_HWSURFACE|SDL_DOUBLEBUF|SDL_HWPALETTE;
@@ -104,6 +106,7 @@ void Screen::makeVideoFlags()
 		_flags |= SDL_NOFRAME;
 	}
 
+	HiResLayer::autoFromSoftwareFilter = wantsAutoGL();
 	_bpp = (use32bitScaler() || useOpenGL()) ? 32 : 8;
 	if (HiResLayer::wantsTrueColor())
 	{
@@ -389,6 +392,25 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 #endif
 		_screen = SDL_SetVideoMode(width, height, _bpp, _flags);
 		HiResLayer::onContextLost();
+		if (_screen == 0 && wantsAutoGL())
+		{
+			Log(LOG_INFO) << "HiResLayer: auto GPU from the software filter unavailable (OpenGL video mode failed: " << SDL_GetError() << "), software output";
+			_autoGLFailed = true;
+			resetDisplay(true, noShaders);
+			return;
+		}
+		if (_screen != 0 && wantsAutoGL())
+		{
+			std::string why;
+			if (!HiResLayer::probeGpuFilter(why))
+			{
+				Log(LOG_INFO) << "HiResLayer: auto GPU from the software filter unavailable (" << why << "), software output";
+				_autoGLFailed = true;
+				resetDisplay(true, noShaders);
+				return;
+			}
+			Log(LOG_INFO) << "HiResLayer: software " << (Options::useXBRZFilter ? "xBRZ" : "HQx") << " screen filter -> OpenGL output with GPU battlefield filter (auto; set oxceHiResBattleGL false to keep the software path)";
+		}
 		if (_screen == 0)
 		{
 			Log(LOG_ERROR) << SDL_GetError();
@@ -497,7 +519,16 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 		OpenGL::checkErrors = Options::checkOpenGLErrors;
 		glOutput.init(_baseWidth, _baseHeight);
 		glOutput.linear = Options::useOpenGLSmoothing; // setting from shader file will override this, though
-		if (!noShaders && FileMap::fileExists(Options::useOpenGLShader))
+		if (wantsAutoGL() && !Options::useOpenGL)
+		{
+			// whole screen: the closest shipped pixel-art shader instead of the software scaler (not saved to the options)
+			const std::string shader = Options::useXBRZFilter ? "Shaders/5xBR_Semi-Rounded.OpenGL.shader" : "Shaders/HQ2x.OpenGL.shader";
+			if (!noShaders && FileMap::fileExists(shader) && glOutput.set_shader(shader.c_str()))
+				Log(LOG_INFO) << "HiResLayer: auto GPU screen shader " << shader;
+			else
+				glOutput.linear = false;
+		}
+		else if (!noShaders && FileMap::fileExists(Options::useOpenGLShader))
 		{
 			if (!glOutput.set_shader(Options::useOpenGLShader.c_str()))
 			{
@@ -659,7 +690,17 @@ bool Screen::useOpenGL()
 #ifdef __NO_OPENGL
 	return false;
 #else
-	return Options::useOpenGL;
+	return Options::useOpenGL || wantsAutoGL();
+#endif
+}
+
+bool Screen::wantsAutoGL()
+{
+#ifdef __NO_OPENGL
+	return false;
+#else
+	return !Options::useOpenGL && !_autoGLFailed && (Options::useHQXFilter || Options::useXBRZFilter)
+		&& Options::oxceHiResLevel >= 2 && Options::oxceHiResBattleGL && Options::oxceHiResBattleLayered;
 #endif
 }
 

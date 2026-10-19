@@ -19,6 +19,7 @@
  */
 #include <SDL.h>
 #include <vector>
+#include <string>
 #include <memory>
 #include <unordered_map>
 #include "Unicode.h"
@@ -142,6 +143,11 @@ public:
 	static bool consumeModeChanged();
 	/// True if the overlay wants a 32bpp output surface in the software (non-OpenGL) path.
 	static bool wantsTrueColor();
+	/// Auto GPU from a software screen filter (Screen sets it): the battlefield log names it.
+	static bool autoFromSoftwareFilter;
+	/// With a fresh OpenGL context: can the GPU battlefield path run the current filter (FBOs, scale-mask shaders, xBRZ / HQx
+	/// shader, GL >= 3.0)? false + reason otherwise (the caller falls back to the software output).
+	static bool probeGpuFilter(std::string &reason);
 	/// Releases everything.
 	static void shutdown();
 	/// Called by Screen::resetDisplay: the (new) screen buffer and whether the output path supports the layer.

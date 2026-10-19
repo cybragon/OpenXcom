@@ -1587,7 +1587,7 @@ void logMapPath(bool gl, const char *cpuReason)
 	if (!gl && !cpuReason)
 		return;
 	const int fm = HiResResample::mode();
-	const std::string now = gl ? std::string("GPU (OpenGL framebuffers + GLSL") + (fm == HiResResample::PIXEL ? ", xBRZ shader)" : fm == HiResResample::HQX ? ", HQx shader)" : ")") : std::string("CPU - ") + cpuReason;
+	const std::string now = gl ? std::string(HiResLayer::autoFromSoftwareFilter ? "GPU (auto from software filter: OpenGL framebuffers + GLSL" : "GPU (OpenGL framebuffers + GLSL") + (fm == HiResResample::PIXEL ? ", xBRZ shader)" : fm == HiResResample::HQX ? ", HQx shader)" : ")") : std::string("CPU - ") + cpuReason;
 	if (now == lastMapPath)
 		return;
 	lastMapPath = now;
@@ -2589,6 +2589,27 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 #ifndef __NO_OPENGL
 namespace { void glMapReset(); }
 #endif
+#ifndef __NO_OPENGL
+namespace { bool glMapInit(); bool glScaleMaskInit(); bool glXbrzInit(std::string &why); bool glHqxInit(std::string &why); }
+#endif
+bool HiResLayer::autoFromSoftwareFilter = false;
+
+bool HiResLayer::probeGpuFilter(std::string &reason)
+{
+#ifdef __NO_OPENGL
+	reason = "built without OpenGL";
+	return false;
+#else
+	if (!glMapInit()) { reason = "no OpenGL framebuffer objects"; return false; }
+	if (!glScaleMaskInit()) { reason = "no GLSL / multiple draw buffers"; return false; }
+	const int m = HiResResample::mode();
+	std::string why;
+	if (m == HiResResample::PIXEL && !glXbrzInit(why)) { reason = "xBRZ: " + why; return false; }
+	if (m == HiResResample::HQX && !glHqxInit(why)) { reason = "HQx: " + why; return false; }
+	return true;
+#endif
+}
+
 void HiResLayer::onContextLost()
 {
 	++cacheEpoch;

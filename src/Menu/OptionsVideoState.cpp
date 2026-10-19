@@ -122,6 +122,7 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	add(_btnLockMouse, "button", "videoMenu");
 	add(_btnRootWindowedMode, "button", "videoMenu");
 
+	add(_cbxHiRes, "button", "videoMenu"); // before the filter combo: the filter list opens down over it
 	add(_cbxFilter, "button", "videoMenu");
 	add(_cbxDisplayMode, "button", "videoMenu");
 
@@ -132,7 +133,6 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	add(_cbxGeoScale, "button", "videoMenu");
 
 	add(_cbxLanguage, "button", "videoMenu");
-	add(_cbxHiRes, "button", "videoMenu"); // last: its list opens upwards over the other controls
 	centerAllSurfaces();
 
 	// Set up objects
@@ -247,7 +247,7 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 #endif
 
 	size_t selFilter = 0;
-	if (Screen::useOpenGL())
+	if (Options::useOpenGL)
 	{
 #ifndef __NO_OPENGL
 		std::string path = Options::useOpenGLShader;

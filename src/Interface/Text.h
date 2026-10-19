@@ -51,6 +51,7 @@ private:
 	TextVAlign _valign;
 	Uint8 _color, _color2;
 	int _scrollY;
+	int _squeezeW = 0; ///< hi-res text: width a line is squeezed to (down to 80%), 0 = the box width
 
 	/// Processes the contained text.
 	void processText();
@@ -63,6 +64,8 @@ public:
 	~Text();
 	/// Sets the text size to big.
 	void setBig();
+	/// Hi-res text: lines wider than w (base px) are narrowed down to 80% (0 = the box width); the bitmap box is unchanged.
+	void setSqueezeWidth(int w) { if (_squeezeW != w) { _squeezeW = w; _redraw = true; } }
 	/// Sets the text size to small.
 	void setSmall();
 	/// Gets the text's current font.

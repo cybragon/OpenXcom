@@ -27,6 +27,8 @@ class Text;
 class TextButton;
 class Bar;
 class Surface;
+class HiResCanvas;
+class Soldier;
 class SavedBattleGame;
 class BattlescapeState;
 
@@ -47,6 +49,13 @@ private:
 	Surface *_bg;
 	InteractiveSurface *_exit;
 	Text *_txtName;
+	/// Avatar mode (AvatarBackground defined): avatar left of the name, flag on the right, scaled to the name row.
+	Surface *_avatar = nullptr, *_flag = nullptr;
+	HiResCanvas *_avatarCanvas = nullptr, *_flagCanvas = nullptr;
+	Uint64 _avatarKey = 0, _flagKey = 0;
+	Soldier *_avatarSoldier = nullptr;
+	bool _avatarPending = false;
+	void updateAvatar(bool force);
 
 	Text *_txtTimeUnits, *_txtEnergy, *_txtHealth, *_txtFatalWounds, *_txtBravery, *_txtMorale, *_txtReactions, *_txtFiring, *_txtThrowing, *_txtMelee, *_txtStrength;
 	Text *_txtPsiStrength,  *_txtPsiSkill, *_txtMana;
@@ -67,6 +76,8 @@ public:
 	~UnitInfoState();
 	/// Updates the unit info.
 	void init() override;
+	/// Hi-res avatar/flag: follow the output scale (known after the first frame).
+	void think() override;
 	/// Handler for clicking the button.
 	void handle(Action *action) override;
 	/// Handler for clicking the Previous button.

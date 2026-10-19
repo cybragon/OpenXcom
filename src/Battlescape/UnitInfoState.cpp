@@ -35,6 +35,9 @@
 #include "BattlescapeGame.h"
 #include "BattlescapeState.h"
 #include "../Mod/RuleInterface.h"
+#include "../Engine/HiResCanvas.h"
+#include "AvatarDraw.h"
+#include "../Savegame/Soldier.h"
 
 namespace OpenXcom
 {
@@ -61,6 +64,9 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
 	_bg = new Surface(320, 200, 0, 0);
 	_exit = new InteractiveSurface(320, 180, 0, 20);
 	_txtName = new Text(288, 17, 16, 4);
+	// avatar mode: avatar (26x23) and flag (40x20) scaled down to the 17 px name row
+	_avatar = new Surface(19, 17, 16, 4);
+	_flag = new Surface(34, 17, 304 - 34, 4);
 
 	int yPos = 38;
 	int step = 9;
@@ -182,6 +188,8 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
 	add(_bg);
 	add(_exit);
 	add(_txtName, "textName", "stats", 0);
+	add(_avatar); // after the name: drawn over a name too long for its row
+	add(_flag);
 
 	add(_txtTimeUnits);
 	add(_numTimeUnits);
@@ -479,6 +487,8 @@ UnitInfoState::UnitInfoState(BattleUnit *unit, BattlescapeState *parent, bool fr
  */
 UnitInfoState::~UnitInfoState()
 {
+	delete _avatarCanvas;
+	delete _flagCanvas;
 
 }
 
@@ -486,6 +496,57 @@ UnitInfoState::~UnitInfoState()
  * Updates unit info which can change
  * after going into other screens.
  */
+/**
+ * Avatar mode only (the mod defines AvatarBackground) and only for soldiers: the battlescape avatar
+ * left of the centred name, the soldier's flag on the right, both scaled to the name row. A long name
+ * is squeezed (hi-res text) to the room between them down to 80%, beyond that drawn as it is (the
+ * avatar and flag are drawn after it). Mod off: the stock screen.
+ */
+void UnitInfoState::updateAvatar(bool force)
+{
+	Mod *mod = _game->getMod();
+	Soldier *soldier = _unit->getGeoscapeSoldier();
+	const bool on = soldier && AvatarDraw::enabled(mod);
+	_avatar->setVisible(on);
+	_flag->setVisible(on);
+	_txtName->setSqueezeWidth(on ? 288 - 2 * (34 + 2) : 0);
+	_avatarSoldier = on ? soldier : nullptr;
+	if (!on)
+		return;
+	Surface *flag = AvatarDraw::flag(mod, soldier, 40, 20);
+	if (force)
+	{
+		_avatar->clear();
+		AvatarDraw::draw8Scaled(mod, soldier, _avatar, 0, 0, _avatar->getWidth(), _avatar->getHeight());
+		_flag->clear();
+		if (flag)
+		{
+			// fitted flag right-aligned in the 40x20 box, then the box scaled to the row
+			Surface box(40, 20, 0, 0);
+			box.setPalette(_flag->getPalette());
+			flag->blitNShade(&box, 40 - flag->getWidth(), 0);
+			AvatarDraw::blitScaled8(&box, _flag, 0, 0, _flag->getWidth(), _flag->getHeight());
+		}
+	}
+	if (force)
+		_avatarPending = true;
+	bool ok = AvatarDraw::presentNative(_game->getScreen(), _avatarCanvas, _avatarKey, AvatarDraw::contentKey(mod, soldier), _avatar,
+		AvatarDraw::WIDTH, AvatarDraw::HEIGHT, _avatarPending,
+		[&](HiResCanvas &c) { AvatarDraw::drawNative(mod, soldier, c, 0, 0); });
+	if (flag)
+		ok = AvatarDraw::presentNative(_game->getScreen(), _flagCanvas, _flagKey, (Uint64)(size_t)flag, _flag, 40, 20, _avatarPending,
+			[&](HiResCanvas &c) { c.drawSurface(flag, 40 - flag->getWidth(), 0); }) && ok;
+	if (ok)
+		_avatarPending = false;
+}
+
+void UnitInfoState::think()
+{
+	State::think();
+	if (_avatarSoldier)
+		updateAvatar(false);
+}
+
 void UnitInfoState::init()
 {
 	State::init();
@@ -505,6 +566,7 @@ void UnitInfoState::init()
 	ss << _unit->getName(_game->getLanguage(), BattlescapeGame::_debugPlay);
 	_txtName->setBig();
 	_txtName->setText(ss.str());
+	updateAvatar(true);
 
 	ss.str("");
 	ss << _unit->getEnergy();

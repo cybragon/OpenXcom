@@ -28,6 +28,9 @@
 #include "SDL2Helpers.h"
 #include "../lodepng.h"
 #include <SDL_image.h>
+#ifdef OXCE_HAVE_WEBP
+#include <webp/decode.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -181,6 +184,48 @@ bool decodeTrueColor(const std::string &filename, Picture &pic)
 	auto rw = FileMap::getRWops(filename);
 	if (!rw)
 		return false;
+#ifdef OXCE_HAVE_WEBP
+	// WebP straight through libwebp: SDL_image 1.2.12's own WebP reader only knows the simple lossy
+	// "VP8 " layout, so lossless (VP8L) and extended (VP8X: alpha, EXIF/XMP/ICC) files fail there.
+	if (CrossPlatform::compareExt(filename, "webp"))
+	{
+		size_t size;
+		void *data = SDL_LoadFile_RW(rw, &size, SDL_TRUE);
+		if (!data)
+			return false;
+		WebPBitstreamFeatures f;
+		if (WebPGetFeatures((const uint8_t*)data, size, &f) != VP8_STATUS_OK)
+		{
+			SDL_free(data);
+			Log(LOG_ERROR) << "HiResAssets: " << filename << ": not a valid WebP file";
+			return false;
+		}
+		if (f.has_animation)
+		{
+			SDL_free(data);
+			Log(LOG_ERROR) << "HiResAssets: " << filename << ": animated WebP is not supported";
+			return false;
+		}
+		int w = 0, h = 0;
+		uint8_t *rgba = WebPDecodeRGBA((const uint8_t*)data, size, &w, &h);
+		SDL_free(data);
+		if (!rgba || w <= 0 || h <= 0)
+		{
+			if (rgba) WebPFree(rgba);
+			Log(LOG_ERROR) << "HiResAssets: " << filename << ": WebP decode failed";
+			return false;
+		}
+		pic.w = w; pic.h = h;
+		pic.argb.resize((size_t)w * h);
+		for (size_t i = 0; i < pic.argb.size(); ++i)
+		{
+			const uint8_t *s = &rgba[i * 4];
+			pic.argb[i] = s[3] ? (((Uint32)s[3] << 24) | ((Uint32)s[0] << 16) | ((Uint32)s[1] << 8) | s[2]) : 0u;
+		}
+		WebPFree(rgba);
+		return true;
+	}
+#endif
 	if (CrossPlatform::compareExt(filename, "png"))
 	{
 		size_t size;

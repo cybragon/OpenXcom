@@ -110,10 +110,17 @@ elseif(UNIX OR MINGW OR CYGWIN)
   pkg_check_modules(PKG_SDLIMAGE REQUIRED SDL_image)
   pkg_check_modules(PKG_SDLGFX REQUIRED SDL_gfx)
   pkg_check_modules(PKG_SDLMIXER REQUIRED SDL_mixer)
+  # optional: direct WebP decoding (all WebP variants) for hi-res assets
+  pkg_check_modules(PKG_WEBP libwebp)
 
   include_directories(${PKG_SDL_INCLUDE_DIRS} ${PKG_ZLIB_INCLUDE_DIRS} ${PKG_SDLIMAGE_INCLUDE_DIRS})
   include_directories(${PKG_SDLGFX_INCLUDE_DIRS} ${PKG_SDLMIXER_INCLUDE_DIRS})
   set(PKG_DEPS_LDFLAGS ${PKG_SDL_LDFLAGS} ${PKG_ZLIB_LDFLAGS} ${PKG_SDLIMAGE_LDFLAGS} ${PKG_SDLGFX_LDFLAGS} ${PKG_SDLMIXER_LDFLAGS} ${OPENGL_LIBRARIES})
+  if (PKG_WEBP_FOUND)
+    add_definitions(-DOXCE_HAVE_WEBP)
+    include_directories(${PKG_WEBP_INCLUDE_DIRS})
+    set(PKG_DEPS_LDFLAGS ${PKG_DEPS_LDFLAGS} ${PKG_WEBP_LDFLAGS})
+  endif()
 
   if (UNIX)
     set(PKG_DEPS_LDFLAGS "${PKG_DEPS_LDFLAGS};dl")

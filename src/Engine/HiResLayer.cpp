@@ -633,27 +633,28 @@ inline Uint8 battleExpected(const HiResCmd &c, Uint8 ev)
 	return ((n ^ ev) & 0xF0) ? 0x0F : n;
 }
 
-/// Hue of the 16-step ramp starting at palette index 'base' at the luminance of the premultiplied pixel p.
-inline Uint32 rampTint(Uint32 p, const SDL_Color *pal, int base)
+using HiResAssets::rampTint; // shared with the BACKPALS background effect (HiResAssets.h)
+
+/// Premultiplied pixel with its brightness mirrored around 'mid' (0..255), hue kept: the 32-bit form of
+/// Surface::invert (index + 2 * (mid - index) inside a colour ramp).
+inline Uint32 invertPixel(Uint32 p, int mid)
 {
 	const unsigned a = p >> 24;
-	if (!a || !pal)
+	if (!a)
 		return p;
 	const double r = ((p >> 16) & 0xFF) * 255.0 / a, g = ((p >> 8) & 0xFF) * 255.0 / a, b = (p & 0xFF) * 255.0 / a;
 	const double L = 0.299 * r + 0.587 * g + 0.114 * b;
-	int best = base;
-	double bd = 1e9;
-	for (int i = 0; i < 16 && base + i < 256; ++i)
+	const double L2 = std::min(255.0, std::max(0.0, 2.0 * mid - L));
+	double R, G, B;
+	if (L < 1.0)
+		R = G = B = L2;
+	else
 	{
-		const SDL_Color &q = pal[base + i];
-		const double d = std::fabs(0.299 * q.r + 0.587 * q.g + 0.114 * q.b - L);
-		if (d < bd) { bd = d; best = base + i; }
+		const double k = L2 / L;
+		R = r * k; G = g * k; B = b * k;
 	}
-	const SDL_Color &q = pal[best];
-	const double lq = std::max(1.0, 0.299 * q.r + 0.587 * q.g + 0.114 * q.b);
-	const double k = L / lq;
-	auto ch = [&](double v) { return (Uint32)std::min(255.0, std::max(0.0, v * k * a / 255.0 + 0.5)); };
-	return (p & 0xFF000000u) | (ch(q.r) << 16) | (ch(q.g) << 8) | ch(q.b);
+	auto ch = [&](double v) { return (Uint32)std::min(255.0, std::max(0.0, v * a / 255.0 + 0.5)); };
+	return (p & 0xFF000000u) | (ch(R) << 16) | (ch(G) << 8) | ch(B);
 }
 
 /// Battle draw at output resolution: mask recolour -> (night vision colour) -> brightness multiply.
@@ -1052,6 +1053,8 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 			if (mx < 0 || mx >= c.clipW || (maskRow && !maskRow[mx]) || stampRow[bx] > c.stamp)
 				continue;
 			Uint32 p = c.battle ? battlePixel(c, src[x], bm ? bm[(size_t)(y - Y0) * outW + (x - X0)] : 0, bpal, bfac) : src[x];
+			if (c.invert)
+				p = invertPixel(p, c.invertMid);
 			const unsigned a = p >> 24;
 			if (maskRow && maskRow[mx] == MASK_BACK && a < 255)
 			{
@@ -1176,12 +1179,12 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 			if (bown && bown[(size_t)(yy - y) * bownW + (xx - x)] != c.battleId)
 				continue; // a later 8-bit sprite / other battle draw owns this map pixel
 			const Uint8 ev = c.battle ? battleExpected(c, ep[u]) : ep[u];
-			if (c.tint && ev && sp[xx])
+			if ((c.tint || c.invert) && ev && sp[xx])
 			{
 				mp[xx] = MASK_PROXY; // recoloured copy (highlight): every opaque proxy pixel
 				any = true;
 			}
-			else if (!c.tint && ev && sp[xx] == ev)
+			else if (!c.tint && !c.invert && ev && sp[xx] == ev)
 			{
 				mp[xx] = MASK_PROXY;
 				any = true;
@@ -1226,7 +1229,7 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 	SDL_UnlockSurface(src);
 	if (!any)
 		return false;
-	if (!c.tint && !c.battle && S.screen && (S.screen->format->BytesPerPixel == 4 || (S.screen->format->BitsPerPixel == 8 && S.screen->format->palette)))
+	if (!c.tint && !c.invert && !c.battle && S.screen && (S.screen->format->BytesPerPixel == 4 || (S.screen->format->BitsPerPixel == 8 && S.screen->format->palette)))
 	{
 		// Output-resolution coverage: inside the proxy box grown by one base pixel around the silhouette,
 		// the picture's own alpha decides each output pixel (drawAsset). The 8bpp screen pixel next to the
@@ -1299,7 +1302,7 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 		}
 		SDL_UnlockSurface(S.screen);
 	}
-	if ((fullUnder || carrier) && spal && !c.tint && !c.battle && HiResAssets::hasTransparency(c.assetId))
+	if ((fullUnder || carrier) && spal && !c.tint && !c.invert && !c.battle && HiResAssets::hasTransparency(c.assetId))
 	{
 		// every proxy pixel on the screen has its own background (the destination before the blit):
 		// the picture is composited over it, so soft or semi-transparent pixels anywhere (diagonal
@@ -1857,7 +1860,7 @@ MapSig makeSig(const HiResCmd &c, double sx, double sy)
 	h = mix64(h, c.assetId); h = mix64(h, c.palKey);
 	h = mix64(h, (Uint64)(Uint16)c.srcX); h = mix64(h, (Uint64)(Uint16)c.srcY); h = mix64(h, (Uint64)(Uint16)c.srcW); h = mix64(h, (Uint64)(Uint16)c.srcH);
 	h = mix64(h, c.battle); h = mix64(h, c.layered); h = mix64(h, c.nearest); h = mix64(h, c.spriteKey);
-	h = mix64(h, c.shade); h = mix64(h, c.nvColor); h = mix64(h, c.tint);
+	h = mix64(h, c.shade); h = mix64(h, c.nvColor); h = mix64(h, c.tint); h = mix64(h, c.invert); h = mix64(h, c.invertMid);
 	for (int i = 0; i < 4; ++i) { h = mix64(h, c.rcFrom[i]); h = mix64(h, c.rcTo[i]); }
 	m.sig = h;
 	if (!m.clear && !m.overlay)
@@ -2414,7 +2417,7 @@ Uint64 frameHash(int dstW, int dstH, bool mapInBuffer)
 		h = mix64(h, (Uint64)(Uint16)c.srcX | ((Uint64)(Uint16)c.srcY << 16) | ((Uint64)(Uint16)c.srcW << 32) | ((Uint64)(Uint16)c.srcH << 48));
 		h = mix64(h, c.palKey); h = mix64(h, c.maskIdx); h = mix64(h, c.underId);
 		h = mix64(h, (Uint64)c.battle | ((Uint64)c.layered << 8) | ((Uint64)c.clearRect << 16) | ((Uint64)c.nearest << 24) | ((Uint64)c.shade << 32) | ((Uint64)c.nvColor << 40));
-		h = mix64(h, c.spriteKey); h = mix64(h, c.battleId); h = mix64(h, c.tint); h = mix64(h, c.stamp);
+		h = mix64(h, c.spriteKey); h = mix64(h, c.battleId); h = mix64(h, c.tint); h = mix64(h, c.invert); h = mix64(h, c.invertMid); h = mix64(h, c.stamp);
 		h = hashBytes(h, c.rcFrom, 4); h = hashBytes(h, c.rcTo, 4);
 		h = mix64(h, (Uint64)c.fill.r | ((Uint64)c.fill.g << 8) | ((Uint64)c.fill.b << 16) | ((Uint64)c.line.r << 24) | ((Uint64)c.line.g << 32) | ((Uint64)c.line.b << 40));
 	}
@@ -3312,6 +3315,7 @@ void HiResLayer::onCopy(SDL_Surface *src, SDL_Surface *dst, int fromX, int fromY
 			c.originX = (Sint16)-fromX;
 			c.originY = (Sint16)-fromY;
 			c.tint = 0;
+			c.invert = 0;
 			out.push_back(c);
 		}
 	}
@@ -3328,6 +3332,21 @@ void HiResLayer::tintSurface(SDL_Surface *holder, Uint32 tint)
 	for (HiResCmd &c : it->second)
 		if (c.kind == HiResCmdKind::Image)
 			c.tint = tint;
+}
+
+void HiResLayer::invertSurface(SDL_Surface *holder, Uint8 midLum)
+{
+	if (!_recording || !holder)
+		return;
+	auto it = S.lists.find(holder);
+	if (it == S.lists.end())
+		return;
+	for (HiResCmd &c : it->second)
+		if (c.kind == HiResCmdKind::Image)
+		{
+			c.invert ^= 1;
+			c.invertMid = midLum;
+		}
 }
 
 void HiResLayer::transferScaled(SDL_Surface *src, int x, int y, int w, int h, SDL_Surface *dst, int scale)

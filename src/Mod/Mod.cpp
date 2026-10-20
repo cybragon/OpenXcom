@@ -5767,16 +5767,18 @@ void Mod::loadVanillaResources()
  */
 void Mod::loadBattlescapeResources()
 {
-	// hi-res assets: every resource loaded here is a battlescape resource (no 32-bit pictures)
-	struct DenyLoaded
+	// hi-res assets: every resource loaded here is a battlescape resource. battle-13: they may be 32-bit
+	// (battlescape-palette proxy), except the deny-list of classifyHiResBattleTypes; only their names are kept
+	struct NoteLoaded
 	{
 		Mod *m;
-		~DenyLoaded()
+		~NoteLoaded()
 		{
-			for (const auto &p : m->_surfaces) if (!m->_hiResGeoTypes.count(p.first)) HiResAssets::denyTrueColor(p.first);
-			for (const auto &p : m->_sets) if (!m->_hiResGeoTypes.count(p.first)) HiResAssets::denyTrueColor(p.first);
+			m->_hiResBattleNames.clear();
+			for (const auto &p : m->_surfaces) if (!m->_hiResGeoTypes.count(p.first)) m->_hiResBattleNames.insert(p.first);
+			for (const auto &p : m->_sets) if (!m->_hiResGeoTypes.count(p.first)) m->_hiResBattleNames.insert(p.first);
 		}
-	} denyLoaded{ this };
+	} noteLoaded{ this };
 	_hiResGeoTypes.clear();
 	for (const auto &p : _surfaces) _hiResGeoTypes.insert(p.first);
 	for (const auto &p : _sets) _hiResGeoTypes.insert(p.first);
@@ -6175,21 +6177,66 @@ void Mod::classifyHiResBattleTypes()
 		if (it != _palettes.end())
 			battlePal = it->second->getColors();
 	}
-	// Battlescape stage 1: static unshaded UI chrome may be 32-bit PNG/JPG (geoscape-style dual store).
-	// Must stay 8-bit: paperdolls, BIGOBS/HANDOB/FLOOROB, MEDIBITS, DETBLOB, CURSOR, map smoke, units/terrain.
-	// ICONS: pressed state uses 8bpp invert of a copy (_altSurface); unpressed can be hi-res.
-	// TinyRanks: dedicated 7x7 set (do not allowTrueColor SMOKE.PCK — shared with map smoke).
-	for (const char *name : {
-		"TAC00.SCR", "TAC01.SCR", "UNIBORD.PCK",
-		"SCANBORD.PCK", "DETBORD.PCK", "DETBORD2.PCK", "MEDIBORD.PCK",
-		"ICONS.PCK", "TinyRanks"
-	})
+	// battle-13: every picture may be 32-bit (deny-list instead of an allow-list). A 32-bit battlescape
+	// picture gets a battlescape-palette proxy for the game and is drawn as is by the overlay; the names
+	// below keep their 8-bit images (a 32-bit file is downscaled + converted to the battlescape palette).
+	// Each entry: why the 8-bit pixels are needed (see docs/hires-deny-list in the battle-13 report).
+	struct Keep8 { const char *name; const char *why; };
+	static const Keep8 keep8[] = {
+		{ "CURSOR.PCK", "3D cursor / waypoint markers recoloured by colour index (newBaseColor, tile marker colour)" },
+		{ "Pathfinding", "path arrows recoloured per TU state by colour index (newBaseColor)" },
+		{ "FLOOROB.PCK", "floor items: drawn on the map without a hi-res hook (ItemSprite), recolorItemSprite scripts" },
+		{ "HANDOB.PCK", "hand items: recolorItemSprite scripts work on colour indices; drawn inside the unit sprite" },
+		{ "MEDIBITS.DAT", "medikit body parts recoloured green/red by colour index (MedikitView, newBaseColor)" },
+		{ "SCANG.DAT", "minimap tiles and inventory primer pulse: colour index + offset / pulsing shade" },
+		{ "BIGOBS.PCK", "shared: map/shaded draws use the 8-bit proxy, UI and inventory canvas the picture (native path)" },
+		{ "DETBLOB.DAT", "shared: unit detail dots, proxy for shaded draws, picture for the UI (native path)" },
+	};
+	std::set<std::string> keep8Names;
+	for (const Keep8 &k : keep8)
 	{
+		keep8Names.insert(k.name);
+		HiResAssets::denyTrueColor(k.name);
+	}
+	if (!HiResAssets::battleEnabled())
+	{
+		// no hi-res battle map: everything drawn on the map keeps its 8-bit pixels (shade / LUT / recolour)
+		for (const char *name : { "SMOKE.PCK", "X1.PCK", "HIT.PCK", "Projectiles", "UnderwaterProjectiles" })
+		{
+			keep8Names.insert(name);
+			HiResAssets::denyTrueColor(name);
+		}
+	}
+	else
+	{
+		// bullets / hits go through the same hi-res battle hook as SMOKE.PCK / X1.PCK (Map.cpp hiResBattle)
+		for (const char *name : { "HIT.PCK", "Projectiles", "UnderwaterProjectiles" })
+			HiResAssets::allowBattle(name);
+	}
+	// former stage-1 allow-list (re-allowed after the interface backgrounds above, as before)
+	static const std::set<std::string> chrome = { "TAC00.SCR", "TAC01.SCR", "UNIBORD.PCK", "SCANBORD.PCK", "DETBORD.PCK",
+		"DETBORD2.PCK", "MEDIBORD.PCK", "ICONS.PCK", "TinyRanks" };
+	std::set<std::string> uiNames = _hiResBattleNames;
+	uiNames.insert(chrome.begin(), chrome.end());
+	size_t uiCount = 0;
+	for (const std::string &name : uiNames)
+	{
+		if (keep8Names.count(name) || HiResAssets::battleType(name))
+			continue;
+		if (!chrome.count(name) && !HiResAssets::trueColorAllowed(name))
+			continue; // armor inventory / layers (native canvas), interface backgrounds, terrain with the battle map off
 		HiResAssets::allowTrueColor(name);
 		// quantized proxies in the battlescape palette (not the geoscape fallback); box-sized 32-bit
 		// pictures are attached too (a 320x200 custom ICONS must show as is)
 		HiResAssets::setTypePalette(name, battlePal);
 		HiResAssets::attachWhenFits(name);
+		++uiCount;
+	}
+	if (HiResAssets::enabled())
+	{
+		for (const Keep8 &k : keep8)
+			Log(LOG_DEBUG) << "HiResAssets: " << k.name << " keeps 8-bit images: " << k.why;
+		Log(LOG_INFO) << "HiResAssets: " << uiCount << " battlescape pictures may be 32-bit (deny-list: " << keep8Names.size() << " names)";
 	}
 	HiResAssets::setTypePalette("AvatarBackground", battlePal);
 	// sprite sets drawn only on basescape-palette screens (craft info, soldier diary); DayNightIndicator
@@ -6205,10 +6252,12 @@ void Mod::classifyHiResBattleTypes()
 	// (BIGOBS items, SMOKE.PCK ranks, DETBLOB.DAT); map smoke and hand slots stay 8-bit (battle map stage)
 	for (const char *name : { "BIGOBS.PCK", "SMOKE.PCK", "DETBLOB.DAT" })
 		HiResAssets::allowNative(name);
+	if (!HiResAssets::battleEnabled())
+		HiResAssets::denyTrueColor("SMOKE.PCK"); // shared (ranks): native path
 	HiResAssets::setTypePalette("SCANG.DAT", battlePal); // minimap: battlescape palette
 	if (HiResAssets::enabled())
 	{
-		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (stage-1 UI chrome allow-listed)";
+		Log(LOG_INFO) << "HiResAssets: " << HiResAssets::deniedCount() << " battlescape resource names/prefixes keep 8-bit images only (deny-list)";
 	}
 }
 

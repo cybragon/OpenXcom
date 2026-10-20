@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "BattlescapeButton.h"
+#include <algorithm>
 #include <cstring>
 #include "../Engine/HiResLayer.h"
 #include "../Engine/Action.h"
@@ -200,6 +201,15 @@ void BattlescapeButton::initSurfaces(Surface* custom)
 
 	// Unlock the surface
 	_altSurface->unlock();
+
+	if (!_tftdMode && HiResLayer::recording())
+	{
+		// battle-13: hi-res pictures under the button (32-bit ICONS...) are drawn inverted in the pressed
+		// state too, instead of leaving the 8-bit inverted copy alone on screen
+		HiResLayer::onCopy(_surface.get(), _altSurface->getSurface(), 0, 0);
+		const SDL_Color &m = getPalette()[(Uint8)(_color + 3)];
+		HiResLayer::invertSurface(_altSurface->getSurface(), (Uint8)std::min(255.0, 0.299 * m.r + 0.587 * m.g + 0.114 * m.b + 0.5));
+	}
 }
 
 /**

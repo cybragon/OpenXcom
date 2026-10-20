@@ -182,6 +182,7 @@ private:
 	std::map<std::string, MapDataSet*> _mapDataSets;
 	/// hi-res assets: resources loaded before the battlescape ones (not battlescape)
 	std::set<std::string> _hiResGeoTypes;
+	std::set<std::string> _hiResBattleNames; ///< pictures loaded by loadBattlescapeResources (hi-res deny-list base)
 	std::map<std::string, RuleSkill*> _skills;
 	std::map<std::string, RuleSoldier*> _soldiers;
 	std::map<std::string, Unit*> _units;

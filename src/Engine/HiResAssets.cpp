@@ -61,6 +61,7 @@ struct Picture
 	std::string file;
 	std::vector<Uint8> mask;      ///< battle unit/terrain sheets: recolour mask (<file>_mask.png), channel 1 face, 2 hair, 3 utile, 4 rank; empty = none
 	int transparent = -1;         ///< cached: any pixel not fully opaque (-1 = not checked yet)
+	int achromatic = -1;          ///< cached: 32-bit picture without colour (grey levels only), -1 = not checked yet
 };
 
 namespace
@@ -77,6 +78,10 @@ struct Entry
 	const SDL_Surface *surface = nullptr;
 	const void *pixels = nullptr;           ///< sanity check: the SDL surface was not replaced
 	std::string name;
+	// --- 32-bit pictures: palette effects (battle-13)
+	std::vector<SDL_Color> ref;             ///< palette the proxy was quantized with (empty = unknown: no effect)
+	std::vector<std::pair<Uint8, int>> used; ///< proxy colour indices and their pixel counts
+	int tint = 0;                           ///< 1 = brightness mapped onto the screen's BACKPALS ramp (224-239)
 };
 
 std::unordered_map<const SDL_Surface*, Uint32> bySurface;
@@ -89,6 +94,19 @@ const SDL_Color *palGeo = nullptr, *palBase = nullptr, *palBattle = nullptr;
 
 /// Palettes 8bpp pictures were resolved with (key -> colours).
 std::unordered_map<Uint32, std::vector<SDL_Color>> palettes;
+
+/// battle-13: palette effects of 32-bit pictures (key -> effect), see paletteKey.
+struct Effect
+{
+	int mul[3] = {256, 256, 256};   ///< colour multiply (fades, TFTD depth palettes), 256 = 1
+	bool ramp = false;              ///< brightness -> the 16 colours of 'rampCol' (BACKPALS backgrounds)
+	SDL_Color rampCol[16];
+};
+std::unordered_map<Uint32, Effect> effects;
+/// palette each proxy surface was quantized with (makeProxy -> attach)
+std::unordered_map<const SDL_Surface*, std::vector<SDL_Color>> proxyPalettes;
+/// ruleset hiResTint per type: 0 none, 1 backPalette (absent = auto: achromatic BACK*.SCR)
+std::unordered_map<std::string, int> tintModes;
 
 /// Resampled pictures (output resolution), most recently used first.
 struct Rendered
@@ -359,6 +377,8 @@ void beginModLoad()
 	deniedTypes.clear();
 	deniedPrefixes.clear();
 	battleTypes.clear();
+	tintModes.clear();
+	effects.clear();
 }
 
 
@@ -556,6 +576,8 @@ void logMismatch(const std::string &type, const std::string &filename, int origW
 void makeProxy(Surface *target, const Picture &pic, double rx, double ry, double rw, double rh, int w, int h, const SDL_Color *palette)
 {
 	SDL_Surface *s = target->getSurface();
+	if (s && palette && pic.trueColor)
+		proxyPalettes[s].assign(palette, palette + 256);
 	SDL_LockSurface(s);
 	std::vector<int> hist(256, 0);
 	std::vector<int> touched;
@@ -641,6 +663,64 @@ void makeProxy(Surface *target, const Picture &pic, double rx, double ry, double
 	SDL_UnlockSurface(s);
 }
 
+namespace
+{
+/// Grey-levels-only 32-bit picture (every opaque pixel within 24 levels between its channels, 1% allowed).
+bool isAchromatic(Picture &pic)
+{
+	if (pic.achromatic < 0)
+	{
+		size_t opaque = 0, coloured = 0;
+		const size_t step = std::max<size_t>(1, pic.argb.size() / 65536);
+		for (size_t i = 0; i < pic.argb.size(); i += step)
+		{
+			const Uint32 p = pic.argb[i];
+			if ((p >> 24) < 16)
+				continue;
+			const int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+			++opaque;
+			if (std::max(r, std::max(g, b)) - std::min(r, std::min(g, b)) > 24)
+				++coloured;
+		}
+		pic.achromatic = (opaque && coloured * 100 <= opaque) ? 1 : 0;
+	}
+	return pic.achromatic == 1;
+}
+
+/// BACK01.SCR ... BACK17.SCR (and mod BACKxx.SCR): screen backgrounds coloured by the BACKPALS ramp.
+bool isBackPalsName(const std::string &name)
+{
+	return name.size() > 8 && name.compare(0, 4, "BACK") == 0 && name.compare(name.size() - 4, 4, ".SCR") == 0;
+}
+
+void setupEffects(Entry &e)
+{
+	e.used.clear();
+	std::vector<int> n(256, 0);
+	for (Uint8 v : e.expected)
+		++n[v];
+	for (int i = 1; i < 256; ++i)
+		if (n[i])
+			e.used.emplace_back((Uint8)i, n[i]);
+	auto tm = tintModes.find(e.name);
+	const int mode = tm != tintModes.end() ? tm->second : -1;
+	e.tint = (mode == 1 || (mode < 0 && isBackPalsName(e.name) && isAchromatic(*e.pic))) ? 1 : 0;
+	if (e.tint)
+	{
+		Log(LOG_INFO) << "HiResAssets: " << e.name << ": 32-bit picture coloured by the screen's background palette (BACKPALS 224-239)"
+			<< (mode == 1 ? " (hiResTint: backPalette)" : " (grey picture)");
+	}
+}
+}
+
+void setTintMode(const std::string &type, int mode)
+{
+	if (mode < 0)
+		tintModes.erase(type);
+	else
+		tintModes[type] = mode;
+}
+
 void attach(Surface *proxy, const std::shared_ptr<Picture> &pic, double rx, double ry, double rw, double rh, const std::string &name)
 {
 	SDL_Surface *s = proxy->getSurface();
@@ -661,6 +741,16 @@ void attach(Surface *proxy, const std::shared_ptr<Picture> &pic, double rx, doub
 	for (int y = 0; y < s->h; ++y)
 		std::memcpy(&e->expected[(size_t)y * s->w], (const Uint8*)s->pixels + y * s->pitch, s->w);
 	SDL_UnlockSurface(s);
+	if (pic->trueColor)
+	{
+		auto pp = proxyPalettes.find(s);
+		if (pp != proxyPalettes.end())
+		{
+			e->ref = pp->second;
+			proxyPalettes.erase(pp);
+		}
+		setupEffects(*e);
+	}
 	bySurface[s] = e->id;
 	byPixels[s->pixels] = s;
 	byId[e->id] = std::move(e);
@@ -719,6 +809,22 @@ bool loadNative(Surface *target, const std::shared_ptr<Picture> &pic, const std:
 	e->surface = s;
 	e->pixels = s->pixels;
 	e->name = type;
+	if (palBattle)
+		e->ref.assign(palBattle, palBattle + 256);
+	e->expected.clear();
+	{
+		// colour indices of the proxy (palette effects)
+		std::vector<int> n(256, 0);
+		SDL_LockSurface(s);
+		for (int y = 0; y < lh && y < s->h; ++y)
+			for (int x = 0; x < lw && x < s->w; ++x)
+				++n[((const Uint8*)s->pixels)[y * s->pitch + x]];
+		SDL_UnlockSurface(s);
+		for (int i = 1; i < 256; ++i)
+			if (n[i])
+				e->used.emplace_back((Uint8)i, n[i]);
+	}
+	proxyPalettes.erase(s);
 	nativeBySurface[s] = e->id;
 	byId[e->id] = std::move(e);
 	Log(LOG_INFO) << "HiResAssets: " << type << ": " << filename << " is a 32-bit image of " << pic->w << "x" << pic->h
@@ -1081,9 +1187,91 @@ const Uint8 *expected(Uint32 assetId, int &w, int &h)
 	return e->expected.data();
 }
 
+namespace
+{
+inline Uint32 fnv(Uint32 h, Uint32 v) { return (h ^ v) * 16777619u; }
+
+/// battle-13: effect of the delivering palette on a 32-bit picture, 0 = drawn as is (no change from before).
+/// - BACKPALS backgrounds (Entry::tint): brightness mapped onto the palette's 224-239 ramp (rampTint).
+/// - otherwise the palette compared with the one the proxy was quantized with, over the proxy's colours:
+///   a uniform per-channel scale of those colours (screen fade, TFTD depth tint) is multiplied in; any other
+///   palette change (another screen's palette, a palette swap) leaves the picture as is.
+Uint32 trueColorKey(const Entry &e, const SDL_Palette *palette)
+{
+	if (!palette || palette->ncolors < 256)
+		return 0;
+	const SDL_Color *P = palette->colors;
+	Effect fx;
+	Uint32 h = 2166136261u;
+	if (e.tint == 1)
+	{
+		fx.ramp = true;
+		h = fnv(h, 0x52414D50u);
+		for (int i = 0; i < 16; ++i)
+		{
+			fx.rampCol[i] = P[224 + i];
+			h = fnv(fnv(fnv(h, P[224 + i].r), P[224 + i].g), P[224 + i].b);
+		}
+	}
+	else
+	{
+		if (e.ref.size() < 256 || e.used.empty())
+			return 0;
+		bool same = true;
+		for (const auto &u : e.used)
+		{
+			const SDL_Color &r = e.ref[u.first], &c = P[u.first];
+			if (r.r != c.r || r.g != c.g || r.b != c.b)
+			{
+				same = false;
+				break;
+			}
+		}
+		if (same)
+			return 0; // the palette it was made for (the usual case): drawn as is, no extra work
+		double num[3] = {0, 0, 0}, den[3] = {0, 0, 0}, cur2[3] = {0, 0, 0};
+		for (const auto &u : e.used)
+		{
+			if (u.first >= 224 && u.first < 240)
+				continue; // BACKPALS block: swapped per screen (not a fade), see the ramp effect
+			const SDL_Color &r = e.ref[u.first], &c = P[u.first];
+			const double R[3] = { (double)r.r, (double)r.g, (double)r.b }, C[3] = { (double)c.r, (double)c.g, (double)c.b };
+			for (int k = 0; k < 3; ++k)
+			{
+				num[k] += u.second * C[k] * R[k];
+				den[k] += u.second * R[k] * R[k];
+				cur2[k] += u.second * C[k] * C[k];
+			}
+		}
+		double res = 0, tot = 0;
+		bool identity = true;
+		for (int k = 0; k < 3; ++k)
+		{
+			const double kk = den[k] > 0 ? num[k] / den[k] : 1.0;
+			// sum (C - kR)^2 = C2 - 2k CR + k^2 R2
+			res += std::max(0.0, cur2[k] - 2 * kk * num[k] + kk * kk * den[k]);
+			tot += den[k];
+			fx.mul[k] = std::max(0, std::min(512, (int)std::lround(kk * 256)));
+			if (std::abs(fx.mul[k] - 256) > 4)
+				identity = false;
+		}
+		if (identity || tot <= 0 || res / tot > 0.004)
+			return 0; // not a uniform scale of the proxy colours (or no visible change): as before
+		h = fnv(fnv(fnv(fnv(h, 0x4D554C54u), (Uint32)fx.mul[0]), (Uint32)fx.mul[1]), (Uint32)fx.mul[2]);
+	}
+	if (!h) h = 1;
+	if (effects.size() > 256)
+		effects.clear(); // keys are content hashes: dropped effects are rebuilt (cached renders stay valid)
+	effects[h] = fx;
+	return h;
+}
+}
+
 Uint32 paletteKey(Uint32 assetId, const SDL_Palette *palette)
 {
 	Entry *e = find(assetId);
+	if (e && e->pic->trueColor && !e->pic->ownPalette)
+		return trueColorKey(*e, palette);
 	if (!e || e->pic->trueColor || e->pic->ownPalette || !palette || palette->ncolors <= 0)
 		return 0;
 	Uint32 hsh = 2166136261u;
@@ -1142,7 +1330,28 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 		pal = p->second.data();
 	}
 	Rendered r{ assetId, palKey, sx, sy, sw, sh, outW, outH, mode, {} };
-	resample(*e->pic, pal, e->rx + sx * fx, e->ry + sy * fy, sw * fx, sh * fy, outW, outH, down ? HiResResample::SMOOTH : mode, r.px);
+	if (palKey && e->pic->trueColor)
+	{
+		// battle-13 palette effect: applied to the plain render (cached separately, cheap per pixel)
+		auto ef = effects.find(palKey);
+		const Uint32 *base = rendered(assetId, 0, sx, sy, sw, sh, outW, outH);
+		if (!base || ef == effects.end())
+			return base;
+		const Effect fxe = ef->second;
+		r.px.assign(base, base + (size_t)outW * outH);
+		for (Uint32 &p : r.px)
+		{
+			if (!(p >> 24))
+				continue;
+			if (fxe.ramp)
+				p = rampTint(p, fxe.rampCol, 0, 16);
+			else
+				p = (p & 0xFF000000u) | (std::min<Uint32>(p >> 24, (((p >> 16) & 0xFF) * fxe.mul[0]) >> 8) << 16)
+					| (std::min<Uint32>(p >> 24, (((p >> 8) & 0xFF) * fxe.mul[1]) >> 8) << 8) | std::min<Uint32>(p >> 24, ((p & 0xFF) * fxe.mul[2]) >> 8);
+		}
+	}
+	else
+		resample(*e->pic, pal, e->rx + sx * fx, e->ry + sy * fy, sw * fx, sh * fy, outW, outH, down ? HiResResample::SMOOTH : mode, r.px);
 	renderBytes += r.px.size() * sizeof(Uint32);
 	renderCache.push_front(std::move(r));
 	renderIndex.emplace(renderKey(assetId, palKey, sx, sy, sw, sh, outW, outH, mode), renderCache.begin());

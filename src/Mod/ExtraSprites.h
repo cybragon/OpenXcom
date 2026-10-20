@@ -41,6 +41,7 @@ private:
 	bool _sizeFromRule = false; ///< width or height given in the rule (box of a new image)
 	bool _singleImage;
 	int _subX, _subY;
+	int _hiResTint = -1; ///< hiResTint: -1 auto, 0 none, 1 backPalette (32-bit pictures, battle-13)
 	bool _loaded;
 
 	Surface *getFrame(SurfaceSet *set, int index, bool *existed = nullptr) const;

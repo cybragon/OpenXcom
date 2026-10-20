@@ -21,6 +21,8 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 
 namespace OpenXcom
 {
@@ -180,10 +182,36 @@ namespace HiResAssets
 	/// The asset's picture has a pixel that is not fully opaque (alpha < 255 or index 0): only then the
 	/// destination under it can show through (F2 pre-blit/carrier snapshots and the self background pass).
 	bool hasTransparency(Uint32 assetId);
-	/// Key of the palette an 8bpp picture is resolved with (0 for 32bpp pictures).
+	/// ruleset extraSprites 'hiResTint' of a type: -1 auto (grey BACK*.SCR), 0 none, 1 backPalette.
+	void setTintMode(const std::string &type, int mode);
+	/// Key of the palette an 8bpp picture is resolved with; for 32bpp pictures the palette effect
+	/// (BACKPALS ramp, fade / depth multiply), 0 = drawn as is.
 	Uint32 paletteKey(Uint32 assetId, const SDL_Palette *palette);
 	/// The proxy rect (sx, sy, sw, sh) of an asset resampled to outW x outH output pixels (PREMULTIPLIED ARGB, HiResResample rule).
 	const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, int sh, int outW, int outH);
+	/// Hue of the 16-step ramp pal[base..base+n) at the luminance of the premultiplied pixel p (nearest step by
+	/// luminance, scaled to the pixel's luminance; alpha kept).
+	inline Uint32 rampTint(Uint32 p, const SDL_Color *pal, int base, int n = 16)
+	{
+		const unsigned a = p >> 24;
+		if (!a || !pal)
+			return p;
+		const double r = ((p >> 16) & 0xFF) * 255.0 / a, g = ((p >> 8) & 0xFF) * 255.0 / a, b = (p & 0xFF) * 255.0 / a;
+		const double L = 0.299 * r + 0.587 * g + 0.114 * b;
+		int best = base;
+		double bd = 1e9;
+		for (int i = 0; i < n && base + i < 256; ++i)
+		{
+			const SDL_Color &q = pal[base + i];
+			const double d = std::fabs(0.299 * q.r + 0.587 * q.g + 0.114 * q.b - L);
+			if (d < bd) { bd = d; best = base + i; }
+		}
+		const SDL_Color &q = pal[best];
+		const double lq = std::max(1.0, 0.299 * q.r + 0.587 * q.g + 0.114 * q.b);
+		const double k = L / lq;
+		auto ch = [&](double v) { return (Uint32)std::min(255.0, std::max(0.0, v * k * a / 255.0 + 0.5)); };
+		return (p & 0xFF000000u) | (ch(q.r) << 16) | (ch(q.g) << 8) | ch(q.b);
+	}
 	/// Picture pixels per proxy pixel of an asset (its own resolution relative to the 8-bit proxy).
 	bool nativeScale(Uint32 assetId, double &fx, double &fy);
 }

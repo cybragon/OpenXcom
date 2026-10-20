@@ -99,6 +99,9 @@ struct HiResCmd
 	Uint8 rcTo[4] = {0, 0, 0, 0};    ///< recolour target base colour per channel
 	Uint32 tint = 0;                 ///< ARGB colour blended over the picture (8bpp highlight of a copied background), 0 = none;
 	                                 ///< the proxy pixels are recoloured, so they are not verified (every opaque proxy pixel counts)
+	Uint8 invert = 0;                ///< 1 = brightness inverted around 'invertMid' (8bpp Surface::invert of a pressed button);
+	                                 ///< like tint, the proxy pixels are recoloured and not verified
+	Uint8 invertMid = 0;             ///< luminance of the middle colour of the 8bpp inversion
 	// --- resolved when the command reaches the screen buffer
 	SDL_Color fill = {0, 0, 0, 0};
 	SDL_Color line = {0, 0, 0, 0};
@@ -182,6 +185,9 @@ public:
 	/// The image commands of holder were recoloured by an 8bpp effect (Surface::offset/offsetBlock):
 	/// the pictures are drawn with the ARGB colour 'tint' blended over them instead.
 	static void tintSurface(SDL_Surface *holder, Uint32 tint);
+	/// The surface was inverted by Surface::invert (mid colour luminance 'midLum'): its pictures are drawn with
+	/// their brightness inverted around it; a second inversion restores them.
+	static void invertSurface(SDL_Surface *holder, Uint8 midLum);
 	static void transferScaled(SDL_Surface *src, int x, int y, int w, int h, SDL_Surface *dst, int scale);
 
 	// --- glyph helpers

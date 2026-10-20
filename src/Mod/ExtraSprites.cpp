@@ -80,6 +80,9 @@ void ExtraSprites::load(const YAML::YamlNodeReader& reader, const ModData* curre
 	reader.tryRead("singleImage", _singleImage);
 	reader.tryRead("subX", _subX);
 	reader.tryRead("subY", _subY);
+	std::string tint;
+	if (reader.tryRead("hiResTint", tint))
+		_hiResTint = tint == "backPalette" ? 1 : tint == "none" ? 0 : -1;
 	_current = current;
 }
 
@@ -205,6 +208,8 @@ Surface *ExtraSprites::loadSurface(Surface *surface)
 	}
 	surface = new Surface(_width, _height);
 	const std::string &fileName = _sprites.begin()->second;
+	if (_hiResTint >= 0)
+		HiResAssets::setTintMode(_type, _hiResTint);
 	// new image: no box at load time (consumers fit it, HiResAssets::fit); a 32-bit picture is kept true-colour at its size
 	// new image with width/height in its rule: that is its box (logical size, e.g. a puppet layer of 320x200)
 	const bool hiRes = origW > 0
@@ -335,6 +340,8 @@ void ExtraSprites::loadFrameImage(Surface *frame, bool existed, const std::strin
 {
 	const int origW = frame->getWidth(), origH = frame->getHeight();
 	std::vector<SDL_Color> origPalette(frame->getPalette(), frame->getPalette() + 256);
+	if (_hiResTint >= 0)
+		HiResAssets::setTintMode(_type, _hiResTint);
 	// box: the replaced frame, or the set frame size for a new frame
 	if (HiResAssets::loadReplacement(frame, fileName, origW, origH, existed ? origPalette.data() : nullptr, _type))
 		return;
@@ -362,6 +369,8 @@ bool ExtraSprites::loadSheetHiRes(SurfaceSet *set, int startFrame, const std::st
 	std::shared_ptr<HiResAssets::Picture> pic = HiResAssets::decode(fileName);
 	if (!pic)
 		return false;
+	if (_hiResTint >= 0)
+		HiResAssets::setTintMode(_type, _hiResTint);
 	const int pw = HiResAssets::pictureWidth(*pic), ph = HiResAssets::pictureHeight(*pic);
 	const bool trueColor = HiResAssets::pictureTrueColor(*pic);
 	if (trueColor && HiResAssets::battleType(_type))

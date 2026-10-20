@@ -667,6 +667,12 @@ void Surface::offsetBlock(int off, int blk, int mul)
  */
 void Surface::invert(Uint8 mid)
 {
+	if (HiResLayer::recording() && _surface && _surface->format->palette)
+	{
+		// hi-res pictures held by this surface: drawn inverted too (instead of exposing the 8-bit proxy)
+		const SDL_Color &m = _surface->format->palette->colors[mid];
+		HiResLayer::invertSurface(_surface.get(), (Uint8)std::min(255.0, 0.299 * m.r + 0.587 * m.g + 0.114 * m.b + 0.5));
+	}
 	// Lock the surface
 	lock();
 

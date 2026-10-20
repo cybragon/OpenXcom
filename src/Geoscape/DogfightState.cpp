@@ -55,6 +55,8 @@
 #include "../Mod/RuleInterface.h"
 #include "../Mod/Mod.h"
 #include "../Engine/HiResAssets.h"
+#include "../Engine/HiResLayer.h"
+#include <cmath>
 
 namespace OpenXcom
 {
@@ -2413,6 +2415,38 @@ void DogfightState::recolor(const int weaponNo, const bool currentState)
 		weapon->offset(_colors[DISABLED_WEAPON]);
 		ammo->offset(_colors[DISABLED_AMMO]);
 		range->offset(_colors[DISABLED_RANGE]);
+	}
+	if (HiResLayer::recording())
+	{
+		// a hi-res weapon picture is greyed like the 8-bit colour shift (instead of exposing the proxy)
+		Uint32 tint = 0;
+		if (!currentState && weapon->getSurface() && weapon->getSurface()->format->palette)
+		{
+			// brightness change of the shifted colours (after vs before the shift), as a black / white veil
+			const SDL_Color *pal = weapon->getSurface()->format->palette->colors;
+			const int off = _colors[DISABLED_WEAPON];
+			double before = 0, after = 0;
+			weapon->lock();
+			for (int y = 0; y < weapon->getHeight(); ++y)
+				for (int x = 0; x < weapon->getWidth(); ++x)
+				{
+					const int i = weapon->getPixel(x, y);
+					if (!i || i - off < 1 || i - off > 255)
+						continue;
+					const SDL_Color &a = pal[i], &b = pal[i - off];
+					after += 0.299 * a.r + 0.587 * a.g + 0.114 * a.b;
+					before += 0.299 * b.r + 0.587 * b.g + 0.114 * b.b;
+				}
+			weapon->unlock();
+			const double k = before > 0 ? after / before : 0.5;
+			if (k < 1.0)
+				tint = (Uint32)std::lround(std::min(1.0, 1.0 - k) * 255) << 24;
+			else if (k > 1.0)
+				tint = ((Uint32)std::lround(std::min(1.0, (k - 1.0) * 0.5) * 255) << 24) | 0xFFFFFFu;
+			if (!(tint >> 24))
+				tint = 0x80000000u;
+		}
+		HiResLayer::tintSurface(weapon->getSurface(), tint);
 	}
 }
 

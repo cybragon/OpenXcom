@@ -1116,7 +1116,10 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 	Entry *e = find(assetId);
 	if (!e || outW <= 0 || outH <= 0 || sw <= 0 || sh <= 0)
 		return nullptr;
-	const int mode = HiResResample::mode();
+	const double fx = e->rw / e->w, fy = e->rh / e->h;
+	// a smooth downscale does not depend on the screen filter: one cache entry for every filter (key mode -1)
+	const bool down = HiResResample::smoothDownscale(sw * fx, sh * fy, outW, outH);
+	const int mode = down ? -1 : HiResResample::mode();
 	{
 		auto r = renderIndex.equal_range(renderKey(assetId, palKey, sx, sy, sw, sh, outW, outH, mode));
 		for (auto i = r.first; i != r.second; ++i)
@@ -1139,8 +1142,7 @@ const Uint32 *rendered(Uint32 assetId, Uint32 palKey, int sx, int sy, int sw, in
 		pal = p->second.data();
 	}
 	Rendered r{ assetId, palKey, sx, sy, sw, sh, outW, outH, mode, {} };
-	const double fx = e->rw / e->w, fy = e->rh / e->h;
-	resample(*e->pic, pal, e->rx + sx * fx, e->ry + sy * fy, sw * fx, sh * fy, outW, outH, mode, r.px);
+	resample(*e->pic, pal, e->rx + sx * fx, e->ry + sy * fy, sw * fx, sh * fy, outW, outH, down ? HiResResample::SMOOTH : mode, r.px);
 	renderBytes += r.px.size() * sizeof(Uint32);
 	renderCache.push_front(std::move(r));
 	renderIndex.emplace(renderKey(assetId, palKey, sx, sy, sw, sh, outW, outH, mode), renderCache.begin());

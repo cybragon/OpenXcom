@@ -25,7 +25,7 @@ namespace OpenXcom
 
 /**
  * One resampling rule for every hi-res asset (overlay pictures, native inventory canvas incl. 8-bit art):
- * exact size = copy, downscale = area average, upscale = the interpolation of the selected screen
+ * exact size = copy, downscale = smooth tent filter (oxceHiResDownscale 1, default) or area average (0), upscale = the interpolation of the selected screen
  * filter (mode(): none = nearest, Scale or any OpenGL output = smooth, HQx = HQX, xBRZ = PIXEL).
  * Per picture HQX is done as PIXEL (xBRZ is alpha aware, hqx is not); the battlescape scale-mask
  * pass uses the real hqx on opaque map pixels.
@@ -41,7 +41,11 @@ namespace HiResResample
 	/// not beyond xbrzClamp = {x0, y0, x1, y1} (src cells; the crop edge replicates there). A partial update with the
 	/// clamp of the full-size rect then gives the same pixels as the full one (xBRZ reach < 3 cells).
 	void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int mode, std::vector<Uint32> &out,
-		int xbrzContext = 0, const int *xbrzClamp = nullptr);
+		int xbrzContext = 0, const int *xbrzClamp = nullptr, bool allowSmoothDown = true);
+	/// True when a w x h rect drawn at outW x outH is a pure downscale (no axis enlarged, not 1:1) and
+	/// oxceHiResDownscale selects the smooth downscale: tent filter (radius = source pixels per output pixel)
+	/// after 2x2 halvings, taps clamped to the rect. The result then does not depend on mode().
+	bool smoothDownscale(double rw, double rh, int outW, int outH);
 	/// Straight ARGB -> premultiplied.
 	Uint32 premultiply(Uint32 p);
 	/// Premultiplied source over a straight-alpha destination (result straight).

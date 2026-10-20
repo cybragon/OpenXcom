@@ -389,6 +389,7 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleLayered", &oxceHiResBattleLayered, true)); // battlescape: every map draw at output resolution in draw order (false = 8-bit pixel match)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResForceFullRedraw", &oxceHiResForceFullRedraw, false)); // battlescape: recompose the whole map every frame (debug / seam comparison)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleFilter", &oxceHiResBattleFilter, 1)); // hi-res interpolation filter with OpenGL output: 0 none (sharp), 1 Scale (smooth), 2 HQx, 3 xBRZ; software output follows the screen filter
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDownscale", &oxceHiResDownscale, 1)); // hi-res pictures drawn smaller than their file: 0 area average (previous builds), 1 smooth (tent filter, cached)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResVerifyReuse", &oxceHiResVerifyReuse, false)); // battlescape: compare each reused frame with a full recompose, log the pixel difference (debug, slow)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResVerifyGPU", &oxceHiResVerifyGPU, false)); // battlescape, OpenGL map pass: compare every frame with the CPU resampler (full recompose), log the pixel difference (debug, slow)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDebugScaleMask", &oxceHiResDebugScaleMask, false)); // battlescape: tint pixels by scale class (debug)
@@ -1301,7 +1302,9 @@ bool saveHiRes()
 		"# oxceHiResBattleFilter: interpolation filter of hi-res images and the battlescape map when the OpenGL output is on:\n"
 		"#   0 = none (sharp / nearest), 1 = Scale (smooth, default), 2 = HQx, 3 = xBRZ.\n"
 		"#   The GPU (GLSL, needs OpenGL 3.0) is used automatically when it works, else the CPU resampler; see openxcom.log.\n"
-		"#   With the software output the screen filter (none / Scale / HQx / xBRZ) decides and this setting is ignored.\n" + yaml + "\n"))
+		"#   With the software output the screen filter (none / Scale / HQx / xBRZ) decides and this setting is ignored.\n"
+		"# oxceHiResDownscale: hi-res pictures drawn smaller than their file (mods mixing art resolutions):\n"
+		"#   1 = smooth (default), 0 = area average (as before battle-12).\n" + yaml + "\n"))
 	{
 		Log(LOG_WARNING) << "Failed to save " << path;
 		return false;

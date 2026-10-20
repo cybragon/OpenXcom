@@ -849,7 +849,7 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 			else if (f == 3) hq3x_32(small.data(), big.data(), W, H);
 			else hq4x_32(small.data(), big.data(), W, H);
 			for (auto &q : big) q |= 0xFF000000u;
-			HiResResample::resample(big.data(), W * f, H * f, rx * f, ry * f, rw * f, rh * f, outW, outH, HiResResample::SMOOTH, out);
+			HiResResample::resample(big.data(), W * f, H * f, rx * f, ry * f, rw * f, rh * f, outW, outH, HiResResample::SMOOTH, out, 0, nullptr, false); // hqx result: area down as before
 		}
 		else if (mode == HiResResample::SMOOTH || mode == HiResResample::NEAREST)
 		{

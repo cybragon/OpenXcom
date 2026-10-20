@@ -142,6 +142,133 @@ void separable(const Uint32 *src, int w, int h, double rx, double ry, double rw,
 	}
 }
 
+
+/// Smooth downscale (oxceHiResDownscale 1): output cell o of an axis is the tent (triangle) of radius = step source
+/// pixels around its centre, the taps clamped to the source rect's own pixels (no bleed from neighbouring sheet frames).
+/// Large ratios are first halved by 2x2 averages (premultiplied) until fewer than 2 source pixels per output pixel
+/// remain, so the cost follows the output size and big pictures shrink without shimmer.
+struct TentAxis
+{
+	std::vector<int> first, count;
+	std::vector<float> w;
+	std::vector<size_t> offs;
+};
+
+TentAxis tentTaps(double a, double len, int outN, int n)
+{
+	TentAxis t;
+	const double step = len / outN, r = std::max(1.0, step);
+	for (int o = 0; o < outN; ++o)
+	{
+		const double c = a + (o + 0.5) * step;
+		const int i0 = std::max(0, (int)std::floor(c - r)), i1 = std::min(n, (int)std::ceil(c + r));
+		t.offs.push_back(t.w.size());
+		double sum = 0;
+		const size_t base = t.w.size();
+		for (int i = i0; i < i1; ++i)
+		{
+			const double wt = std::max(0.0, 1.0 - std::fabs(i + 0.5 - c) / r);
+			t.w.push_back((float)wt);
+			sum += wt;
+		}
+		if (sum <= 0)
+		{
+			// degenerate (rect thinner than a pixel): nearest pixel
+			t.w.resize(base);
+			const int i = std::min(n - 1, std::max(0, (int)std::floor(c)));
+			t.first.push_back(i); t.count.push_back(1); t.w.push_back(1.0f);
+			continue;
+		}
+		for (size_t k = base; k < t.w.size(); ++k) t.w[k] = (float)(t.w[k] / sum);
+		t.first.push_back(i0);
+		t.count.push_back(i1 - i0);
+	}
+	return t;
+}
+
+void smoothDown(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, std::vector<Uint32> &out)
+{
+	const int ix0 = std::max(0, (int)std::floor(rx + 1e-9)), iy0 = std::max(0, (int)std::floor(ry + 1e-9));
+	const int ix1 = std::min(w, (int)std::ceil(rx + rw - 1e-9)), iy1 = std::min(h, (int)std::ceil(ry + rh - 1e-9));
+	int cw = ix1 - ix0, ch = iy1 - iy0;
+	if (cw <= 0 || ch <= 0)
+		return;
+	// premultiplied float crop: r*a, g*a, b*a (0..255), a (0..1)
+	std::vector<float> buf((size_t)cw * ch * 4);
+	for (int y = 0; y < ch; ++y)
+	{
+		const Uint32 *s = src + (size_t)(iy0 + y) * w + ix0;
+		float *d = &buf[(size_t)y * cw * 4];
+		for (int x = 0; x < cw; ++x)
+		{
+			const Uint32 p = s[x];
+			const float a = (p >> 24) / 255.0f;
+			d[x * 4 + 0] = ((p >> 16) & 0xFF) * a; d[x * 4 + 1] = ((p >> 8) & 0xFF) * a; d[x * 4 + 2] = (p & 0xFF) * a; d[x * 4 + 3] = a;
+		}
+	}
+	double lx = rx - ix0, ly = ry - iy0, lw = rw, lh = rh;
+	while (lw / outW >= 2.0 - 1e-9 && cw >= 2)
+	{
+		const int nw = (cw + 1) / 2;
+		std::vector<float> nb((size_t)nw * ch * 4);
+		for (int y = 0; y < ch; ++y)
+			for (int x = 0; x < nw; ++x)
+			{
+				const float *p0 = &buf[((size_t)y * cw + 2 * x) * 4], *p1 = &buf[((size_t)y * cw + std::min(cw - 1, 2 * x + 1)) * 4];
+				float *d = &nb[((size_t)y * nw + x) * 4];
+				for (int c = 0; c < 4; ++c) d[c] = (p0[c] + p1[c]) * 0.5f;
+			}
+		buf.swap(nb); cw = nw; lx /= 2; lw /= 2;
+	}
+	while (lh / outH >= 2.0 - 1e-9 && ch >= 2)
+	{
+		const int nh = (ch + 1) / 2;
+		std::vector<float> nb((size_t)cw * nh * 4);
+		for (int y = 0; y < nh; ++y)
+		{
+			const float *r0 = &buf[(size_t)2 * y * cw * 4], *r1 = &buf[(size_t)std::min(ch - 1, 2 * y + 1) * cw * 4];
+			float *d = &nb[(size_t)y * cw * 4];
+			for (int i = 0; i < cw * 4; ++i) d[i] = (r0[i] + r1[i]) * 0.5f;
+		}
+		buf.swap(nb); ch = nh; ly /= 2; lh /= 2;
+	}
+	const TentAxis tx = tentTaps(lx, lw, outW, cw), ty = tentTaps(ly, lh, outH, ch);
+	std::vector<float> tmp((size_t)ch * outW * 4, 0.0f);
+	for (int y = 0; y < ch; ++y)
+	{
+		const float *srow = &buf[(size_t)y * cw * 4];
+		float *row = &tmp[(size_t)y * outW * 4];
+		for (int o = 0; o < outW; ++o)
+		{
+			float acc[4] = { 0, 0, 0, 0 };
+			const float *wt = &tx.w[tx.offs[o]];
+			const float *s = srow + (size_t)tx.first[o] * 4;
+			for (int k = 0; k < tx.count[o]; ++k, s += 4)
+				for (int c = 0; c < 4; ++c) acc[c] += s[c] * wt[k];
+			for (int c = 0; c < 4; ++c) row[o * 4 + c] = acc[c];
+		}
+	}
+	out.assign((size_t)outW * outH, 0);
+	for (int o = 0; o < outH; ++o)
+	{
+		const float *wt = &ty.w[ty.offs[o]];
+		for (int x = 0; x < outW; ++x)
+		{
+			float acc[4] = { 0, 0, 0, 0 };
+			for (int k = 0; k < ty.count[o]; ++k)
+			{
+				const float *s = &tmp[((size_t)(ty.first[o] + k) * outW + x) * 4];
+				for (int c = 0; c < 4; ++c) acc[c] += s[c] * wt[k];
+			}
+			const unsigned A = (unsigned)std::min(255L, std::lround(acc[3] * 255.0f));
+			if (!A)
+				continue;
+			auto chn = [&](float v) { return (Uint32)std::min((long)A, std::max(0L, std::lround(v))); };
+			out[(size_t)o * outW + x] = ((Uint32)A << 24) | (chn(acc[0]) << 16) | (chn(acc[1]) << 8) | chn(acc[2]);
+		}
+	}
+}
+
 }
 
 int mode()
@@ -220,8 +347,13 @@ void blendOverPremul(Uint32 &d, Uint32 s)
 	d = (ch(24) << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }
 
+bool smoothDownscale(double rw, double rh, int outW, int outH)
+{
+	return Options::oxceHiResDownscale != 0 && outW <= rw + 1e-9 && outH <= rh + 1e-9 && (outW < rw - 1e-9 || outH < rh - 1e-9);
+}
+
 void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, double rh, int outW, int outH, int m, std::vector<Uint32> &out,
-	int xbrzContext, const int *xbrzClamp)
+	int xbrzContext, const int *xbrzClamp, bool allowSmoothDown)
 {
 	out.clear();
 	if (!src || w <= 0 || h <= 0 || outW <= 0 || outH <= 0 || rw <= 0 || rh <= 0)
@@ -235,6 +367,12 @@ void resample(const Uint32 *src, int w, int h, double rx, double ry, double rw, 
 			for (int x = 0; x < outW; ++x)
 				out[(size_t)y * outW + x] = premultiply(src[(size_t)(y + (int)ry) * w + x + (int)rx]);
 		return;
+	}
+	if (allowSmoothDown && smoothDownscale(rw, rh, outW, outH))
+	{
+		smoothDown(src, w, h, rx, ry, rw, rh, outW, outH, out);
+		if (!out.empty())
+			return;
 	}
 	const double scale = std::max(outW / rw, outH / rh);
 	if (m == HQX)

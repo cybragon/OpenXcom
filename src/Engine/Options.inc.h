@@ -143,6 +143,7 @@ OPT bool oxceHiResForceFullRedraw, oxceHiResVerifyReuse, oxceHiResVerifyGPU;
 OPT int oxceHiResBattleFilter;
 // hi-res pictures drawn smaller than their file: 0 area average (old), 1 smooth (tent filter, default)
 OPT int oxceHiResDownscale;
+OPT int oxceHiResUnitShadow;
 OPT bool oxceRecommendedOptionsWereSet;
 OPT std::string password;
 

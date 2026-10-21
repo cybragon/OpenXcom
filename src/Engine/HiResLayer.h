@@ -95,6 +95,9 @@ struct HiResCmd
 	Uint32 battleId = 0;             ///< draw id in the map ownership buffer (HiResAssets::battleOwners), 0 = untracked
 	Uint8 shade = 0;                 ///< tile shade 0..16 (brightness multiply at draw time)
 	Uint8 nvColor = 0;               ///< night vision / marker base colour + 1 (ColorReplace), 0 = none
+	Uint8 shadowA = 0;               ///< battle-14 unit shadow piece: opacity 1..255 (0 = not a shadow); drawn translucent,
+	                                 ///< clipped to the floor diamond centred at (diaX, diaY) base px (32x16), scale class kept
+	Sint16 diaX = 0, diaY = 0;
 	Uint8 rcFrom[4] = {0, 0, 0, 0};  ///< recolour source group<<4 per channel (face, hair, utile, rank), 0 = off
 	Uint8 rcTo[4] = {0, 0, 0, 0};    ///< recolour target base colour per channel
 	Uint32 tint = 0;                 ///< ARGB colour blended over the picture (8bpp highlight of a copied background), 0 = none;

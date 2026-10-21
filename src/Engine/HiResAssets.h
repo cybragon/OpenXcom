@@ -80,6 +80,13 @@ namespace HiResAssets
 	/// clipped to (clipX, clipY, clipW, clipH) of dst (clipW <= 0: no extra clip).
 	void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int shade, bool half, int newBaseColor,
 		const Uint8 rcFrom[4], const Uint8 rcTo[4], int clipX = 0, int clipY = 0, int clipW = 0, int clipH = 0);
+	/// battle-14: engine picture (straight ARGB w x h) shown by a new proxy of boxW x boxH quantized to the
+	/// battlescape palette, registered under 'name' (a mod replaces it with extraSprites of that name).
+	Surface *makeEnginePicture(const std::string &name, const std::vector<Uint32> &argb, int w, int h, int boxW, int boxH, const SDL_Color *palette);
+	/// battle-14: records a unit shadow piece on the layered battle map: the picture of proxy src drawn into
+	/// (dx, dy, dw, dh) base px with opacity alpha (1..255), clipped to the floor diamond (32x16) centred at
+	/// (diaX, diaY) and to its bounding box. Nothing is drawn into the 8bpp map.
+	void onShadowDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int dw, int dh, int alpha, int diaX, int diaY);
 	/// Battle draw ownership (per base pixel of the map surface: id of the last battle draw that wrote
 	/// an opaque pixel there, 0 = an 8-bit sprite / not hi-res). Started by Map::draw each frame.
 	void battleBegin(SDL_Surface *map);

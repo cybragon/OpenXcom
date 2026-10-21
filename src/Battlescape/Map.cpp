@@ -54,6 +54,9 @@
 #include "../Interface/NumberText.h"
 #include "../Interface/Text.h"
 #include "../fmath.h"
+#include "../Engine/HiResLayer.h"
+#include "../Engine/Options.h"
+#include <cmath>
 
 
 /*
@@ -99,6 +102,15 @@ namespace OpenXcom
 
 namespace
 {
+/// battle-14: one unit shadow of this frame (base px of the map surface): the ellipse picture drawn at
+/// (x, y, w, h), cast onto the floors of level z, opacity 0..1 before the floor brightness.
+struct HiResShadow
+{
+	const Surface *pic;
+	int x, y, w, h, z;
+	double opacity;
+};
+
 /// Hi-res battle stage 1: records a terrain/unit-set proxy drawn by Surface::blitRaw (same arguments).
 inline void hiResBattle(Surface *dst, SurfaceRaw<const Uint8> src, int x, int y, int shade, bool half = false, int newBaseColor = 0)
 {
@@ -940,6 +952,50 @@ void Map::drawTerrain(Surface *surface)
 		movingUnitPosition = movingUnit->getPosition();
 	}
 
+	// battle-14: hi-res unit shadows, one per visible unit, placed with the unit's own walking offset (they
+	// move with the sprite, pixel by pixel) and cast onto the first floor at or below it (up to 2 levels)
+	std::vector<HiResShadow> hiResShadows;
+	if (Options::oxceHiResUnitShadow > 0 && HiResAssets::any() && HiResAssets::battleEnabled() && HiResLayer::recording() && HiResLayer::layered())
+	{
+		Mod *mod = _game->getMod();
+		const Surface *defSmall = mod->getSurface("HiResShadowSmall", false), *defLarge = mod->getSurface("HiResShadowLarge", false);
+		const Position camOff = _camera->getMapOffset();
+		for (const BattleUnit *bu : *_save->getUnits())
+		{
+			if (bu->isOut() || !bu->getTile() || !(bu->getVisible() || _save->getDebugMode()))
+				continue;
+			const Armor *armor = bu->getArmor();
+			const int size = armor->getSize();
+			const Surface *pic = armor->getHiResShadow().empty() ? (size > 1 ? defLarge : defSmall) : mod->getSurface(armor->getHiResShadow(), false);
+			if (!pic)
+				continue;
+			const Position pos = bu->getPosition();
+			int down = 0;
+			const Tile *t = _save->getTile(pos);
+			while (t && t->hasNoFloor(_save) && down < 3)
+			{
+				// standing on a unit / object below counts as a floor (hasNoFloor checks the tile below)
+				++down;
+				t = pos.z - down >= 0 ? _save->getTile(pos - Position(0, 0, down)) : nullptr;
+			}
+			if (!t || down > 2 || (down > 0 && !armor->getHiResShadowFlying()))
+				continue;
+			Position sp;
+			_camera->convertMapToScreen(pos, &sp);
+			sp += camOff;
+			const UnitWalkingOffset off = calculateWalkingOffset(bu);
+			const double scale = std::pow(0.8, down);
+			const int w = std::max(1, (int)std::lround(pic->getWidth() * scale)), h = std::max(1, (int)std::lround(pic->getHeight() * scale));
+			const int fx = sp.x + off.ScreenOffset.x + 16 + armor->getHiResShadowOffsetX();
+			const int fy = sp.y + off.ScreenOffset.y + (size > 1 ? 40 : 32) + down * Position::TileZ + armor->getHiResShadowOffsetY();
+			const int opct = armor->getHiResShadowOpacity() < 0 ? 100 : std::min(100, armor->getHiResShadowOpacity());
+			const double opacity = std::min(100, Options::oxceHiResUnitShadow) / 100.0 * opct / 100.0 * std::pow(0.5, down);
+			if (opacity <= 0.0)
+				continue;
+			hiResShadows.push_back({ pic, fx - w / 2, fy - h / 2, w, h, pos.z - down, opacity });
+		}
+	}
+
 	surface->lock();
 	const Position cameraPos = _camera->getMapOffset();
 	for (int itZ = beginZ; itZ <= endZ; itZ++)
@@ -988,6 +1044,21 @@ void Map::drawTerrain(Surface *surface)
 							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), obstacleShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), obstacleShade, false, _nvColor); }
 						else
 							{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_FLOOR), tileShade, false, _nvColor); }
+					}
+
+					// battle-14: the parts of the unit shadows that fall on this floor (clipped to its diamond),
+					// strength following the floor brightness (light 100% = full, dark = none)
+					if (!hiResShadows.empty() && tile->getSprite(O_FLOOR) && tile->isDiscovered(O_FLOOR))
+					{
+						const int dcx = screenPosition.x + 16, dcy = screenPosition.y + 32 + tile->getTerrainLevel();
+						for (const HiResShadow &hs : hiResShadows)
+						{
+							if (hs.z != itZ || hs.x >= dcx + 16 || hs.x + hs.w <= dcx - 16 || hs.y >= dcy + 8 || hs.y + hs.h <= dcy - 8)
+								continue;
+							const int a = (int)std::lround(255.0 * hs.opacity * HiResAssets::shadeFactor(tileShade) / 256.0);
+							if (a > 0)
+								HiResAssets::onShadowDraw(const_cast<Surface*>(hs.pic)->getSurface(), surface->getSurface(), hs.x, hs.y, hs.w, hs.h, a, dcx, dcy);
+						}
 					}
 
 					auto* unit = tile->getUnit();

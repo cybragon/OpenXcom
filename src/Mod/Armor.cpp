@@ -237,6 +237,10 @@ void Armor::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScript &pa
 	_manaRecovery.load(_type, reader["recovery"], parsers.bonusStatsScripts.get<ModScript::ManaRecoveryStatBonus>());
 	_stunRecovery.load(_type, reader["recovery"], parsers.bonusStatsScripts.get<ModScript::StunRecoveryStatBonus>());
 
+	reader.tryRead("hiResShadow", _hiResShadow);
+	reader.tryRead("hiResShadowOffset", _hiResShadowOffset);
+	reader.tryRead("hiResShadowOpacity", _hiResShadowOpacity);
+	reader.tryRead("hiResShadowFlying", _hiResShadowFlying);
 	reader.tryRead("spriteFaceGroup", _faceColorGroup);
 	reader.tryRead("spriteHairGroup", _hairColorGroup);
 	reader.tryRead("spriteRankGroup", _rankColorGroup);

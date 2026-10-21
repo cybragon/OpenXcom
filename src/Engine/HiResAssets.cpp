@@ -1605,3 +1605,57 @@ void onBattleDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int 
 
 }
 }
+
+namespace OpenXcom
+{
+namespace HiResAssets
+{
+
+Surface *makeEnginePicture(const std::string &name, const std::vector<Uint32> &argb, int w, int h, int boxW, int boxH, const SDL_Color *palette)
+{
+	if (w <= 0 || h <= 0 || argb.size() != (size_t)w * h || boxW <= 0 || boxH <= 0)
+		return nullptr;
+	auto pic = std::make_shared<Picture>();
+	pic->w = w; pic->h = h;
+	pic->trueColor = true;
+	pic->argb = argb;
+	pic->file = "<engine:" + name + ">";
+	Surface *target = new Surface(boxW, boxH, 0, 0);
+	std::vector<SDL_Color> pal(256, SDL_Color{0, 0, 0, 255});
+	if (palette)
+		std::memcpy(pal.data(), palette, 256 * sizeof(SDL_Color));
+	target->setPalette(pal.data(), 0, 256);
+	makeProxy(target, *pic, 0, 0, w, h, boxW, boxH, palette ? palette : pal.data());
+	attach(target, pic, 0, 0, w, h, name);
+	return target;
+}
+
+void onShadowDraw(const SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int dw, int dh, int alpha, int diaX, int diaY)
+{
+	if (!src || !dst || alpha <= 0 || dw <= 0 || dh <= 0 || !HiResLayer::recording() || !enabled() || !HiResLayer::layered() || dst != ownSurf)
+		return;
+	auto it = bySurface.find(src);
+	if (it == bySurface.end())
+		return;
+	Entry *e = find(it->second);
+	if (!e || e->pixels != src->pixels || e->w != src->w || e->h != src->h)
+		return;
+	const int x0 = std::max(dx, diaX - 16), y0 = std::max(dy, diaY - 8);
+	const int x1 = std::min(dx + dw, diaX + 16), y1 = std::min(dy + dh, diaY + 8);
+	if (x0 >= x1 || y0 >= y1)
+		return;
+	HiResCmd c;
+	c.kind = HiResCmdKind::Image;
+	c.assetId = e->id;
+	c.battle = 1;
+	c.layered = 1;
+	c.shadowA = (Uint8)std::min(255, alpha);
+	c.diaX = (Sint16)diaX; c.diaY = (Sint16)diaY;
+	c.x = (Sint16)dx; c.y = (Sint16)dy; c.w = (Sint16)dw; c.h = (Sint16)dh;
+	c.srcX = 0; c.srcY = 0; c.srcW = (Sint16)e->w; c.srcH = (Sint16)e->h;
+	c.clipX = (Sint16)x0; c.clipY = (Sint16)y0; c.clipW = (Sint16)(x1 - x0); c.clipH = (Sint16)(y1 - y0);
+	HiResLayer::recordAsset(dst, c, src);
+}
+
+}
+}

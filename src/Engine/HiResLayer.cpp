@@ -960,6 +960,52 @@ void scaleMaskPass(const SDL_Rect &region, double sx, double sy)
 
 /// Hi-res asset command: the replacement picture resampled to the output size of the box, drawn
 /// only on the base pixels whose proxy pixels reached the screen unchanged (mask) and not hidden later.
+/// battle-14 unit shadow piece (CPU): the shadow picture (premultiplied, rendered at outW x outH at X0, Y0)
+/// times c.shadowA, over the pixels whose centre lies in the floor diamond (diaX, diaY, 16 x 8 half axes)
+/// and the clip rect. The scale class is kept: the floor under it is still interpolated with its class.
+void drawShadowPiece(const HiResCmd &c, const Uint32 *px, int X0, int Y0, int outW, int outH, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
+{
+	const int x0 = std::max(std::max(0, X0), (int)std::floor(c.clipX * sx)), y0 = std::max(std::max(0, Y0), (int)std::floor(c.clipY * sy));
+	const int x1 = std::min(std::min(dstW, X0 + outW), (int)std::ceil((c.clipX + c.clipW) * sx));
+	const int y1 = std::min(std::min(dstH, Y0 + outH), (int)std::ceil((c.clipY + c.clipH) * sy));
+	if (x0 >= x1 || y0 >= y1)
+		return;
+	const double isx = 1.0 / sx, isy = 1.0 / sy;
+	const unsigned A = c.shadowA;
+	bool drawn = false;
+	for (int y = y0; y < y1; ++y)
+	{
+		const double fy = std::fabs((y + 0.5) * isy - c.diaY) / 8.0;
+		if (fy >= 1.0)
+			continue;
+		const int by = std::min(S.baseH - 1, (int)(y * isy));
+		if (by < c.clipY || by >= c.clipY + c.clipH)
+			continue;
+		const Uint32 *stampRow = &S.stamps[by * S.baseW];
+		const Uint32 *src = px + (size_t)(y - Y0) * outW - X0;
+		Uint32 *dst = &S.rgba[y * S.bufW];
+		for (int x = x0; x < x1; ++x)
+		{
+			if (std::fabs((x + 0.5) * isx - c.diaX) / 16.0 + fy > 1.0)
+				continue;
+			const int bx = std::min(S.baseW - 1, (int)(x * isx));
+			if (bx < c.clipX || bx >= c.clipX + c.clipW || stampRow[bx] > c.stamp)
+				continue;
+			const Uint32 q = src[x];
+			if (!(q >> 24))
+				continue;
+			const Uint32 p = ((((q >> 24) * A + 127) / 255) << 24) | (((((q >> 16) & 0xFF) * A + 127) / 255) << 16)
+				| (((((q >> 8) & 0xFF) * A + 127) / 255) << 8) | (((q & 0xFF) * A + 127) / 255);
+			if (!(p >> 24))
+				continue;
+			HiResResample::blendOverPremul(dst[x], p);
+			drawn = true;
+		}
+	}
+	if (drawn)
+		unionRect(dirty, x0, y0, x1 - x0, y1 - y0);
+}
+
 void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_Rect &dirty)
 {
 	static const std::vector<Uint8> noMask;
@@ -980,6 +1026,11 @@ void drawAsset(const HiResCmd &c, int dstW, int dstH, double sx, double sy, SDL_
 	const Uint32 *px = HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, outW, outH);
 	if (!px)
 		return;
+	if (c.shadowA)
+	{
+		drawShadowPiece(c, px, X0, Y0, outW, outH, dstW, dstH, sx, sy, dirty);
+		return;
+	}
 	const Uint8 *bm = c.battle ? HiResAssets::renderedMask(c.assetId, c.srcX, c.srcY, c.srcW, c.srcH, outW, outH) : nullptr;
 	const SDL_Color *bpal = HiResAssets::battlePalette();
 	const int bfac = c.battle ? HiResAssets::shadeFactor(c.shade) : 256;
@@ -1860,7 +1911,7 @@ MapSig makeSig(const HiResCmd &c, double sx, double sy)
 	h = mix64(h, c.assetId); h = mix64(h, c.palKey);
 	h = mix64(h, (Uint64)(Uint16)c.srcX); h = mix64(h, (Uint64)(Uint16)c.srcY); h = mix64(h, (Uint64)(Uint16)c.srcW); h = mix64(h, (Uint64)(Uint16)c.srcH);
 	h = mix64(h, c.battle); h = mix64(h, c.layered); h = mix64(h, c.nearest); h = mix64(h, c.spriteKey);
-	h = mix64(h, c.shade); h = mix64(h, c.nvColor); h = mix64(h, c.tint); h = mix64(h, c.invert); h = mix64(h, c.invertMid);
+	h = mix64(h, c.shade); h = mix64(h, c.nvColor); h = mix64(h, c.shadowA); h = mix64(h, (Uint32)(Uint16)c.diaX); h = mix64(h, (Uint32)(Uint16)c.diaY); h = mix64(h, c.tint); h = mix64(h, c.invert); h = mix64(h, c.invertMid);
 	for (int i = 0; i < 4; ++i) { h = mix64(h, c.rcFrom[i]); h = mix64(h, c.rcTo[i]); }
 	m.sig = h;
 	if (!m.clear && !m.overlay)
@@ -2417,7 +2468,7 @@ Uint64 frameHash(int dstW, int dstH, bool mapInBuffer)
 		h = mix64(h, (Uint64)(Uint16)c.srcX | ((Uint64)(Uint16)c.srcY << 16) | ((Uint64)(Uint16)c.srcW << 32) | ((Uint64)(Uint16)c.srcH << 48));
 		h = mix64(h, c.palKey); h = mix64(h, c.maskIdx); h = mix64(h, c.underId);
 		h = mix64(h, (Uint64)c.battle | ((Uint64)c.layered << 8) | ((Uint64)c.clearRect << 16) | ((Uint64)c.nearest << 24) | ((Uint64)c.shade << 32) | ((Uint64)c.nvColor << 40));
-		h = mix64(h, c.spriteKey); h = mix64(h, c.battleId); h = mix64(h, c.tint); h = mix64(h, c.invert); h = mix64(h, c.invertMid); h = mix64(h, c.stamp);
+		h = mix64(h, c.spriteKey); h = mix64(h, c.battleId); h = mix64(h, c.shadowA); h = mix64(h, (Uint32)(Uint16)c.diaX); h = mix64(h, (Uint32)(Uint16)c.diaY); h = mix64(h, c.tint); h = mix64(h, c.invert); h = mix64(h, c.invertMid); h = mix64(h, c.stamp);
 		h = hashBytes(h, c.rcFrom, 4); h = hashBytes(h, c.rcTo, 4);
 		h = mix64(h, (Uint64)c.fill.r | ((Uint64)c.fill.g << 8) | ((Uint64)c.fill.b << 16) | ((Uint64)c.line.r << 24) | ((Uint64)c.line.g << 32) | ((Uint64)c.line.b << 40));
 	}
@@ -4155,6 +4206,62 @@ bool glMapPass(int dstW, int dstH, int outW, int outH, int top, int bottom, int 
 			const int oW = (int)std::lround((c.x + c.w) * sx) - X0, oH = (int)std::lround((c.y + c.h) * sy) - Y0;
 			if (oW <= 0 || oH <= 0)
 				return;
+			if (c.shadowA)
+			{
+				// battle-14 unit shadow piece: the picture clipped to the floor diamond (polygon), opacity
+				// shadowA, fixed function, colour attachment only (the scale class under it is kept)
+				size_t k = 0x5348414457ull;
+				auto mix = [&](size_t v) { k = (k ^ v) * 1099511628211ull; };
+				mix(c.assetId); mix(c.palKey); mix((size_t)oW); mix((size_t)oH); mix((size_t)mode);
+				GLuint stex = cachedTex(k, oW, oH, [&]() { return HiResAssets::rendered(c.assetId, c.palKey, c.srcX, c.srcY, c.srcW, c.srcH, oW, oH); });
+				if (!stex)
+					return;
+				std::vector<std::pair<double, double>> poly = { {(double)X0, (double)Y0}, {(double)(X0 + oW), (double)Y0},
+					{(double)(X0 + oW), (double)(Y0 + oH)}, {(double)X0, (double)(Y0 + oH)} };
+				const double cx = c.diaX * sx, cy = c.diaY * sy, hx = 16.0 * sx, hy = 8.0 * sy;
+				for (int e = 0; e < 4 && poly.size() >= 3; ++e)
+				{
+					const double ax = (e & 1) ? -1.0 : 1.0, ay = (e & 2) ? -1.0 : 1.0; // ax*(x-cx)/hx + ay*(y-cy)/hy <= 1
+					auto val = [&](const std::pair<double, double> &p) { return ax * (p.first - cx) / hx + ay * (p.second - cy) / hy - 1.0; };
+					std::vector<std::pair<double, double>> out;
+					for (size_t i = 0; i < poly.size(); ++i)
+					{
+						const auto &P = poly[i], &Q = poly[(i + 1) % poly.size()];
+						const double vp = val(P), vq = val(Q);
+						if (vp <= 0) out.push_back(P);
+						if ((vp < 0 && vq > 0) || (vp > 0 && vq < 0))
+						{
+							const double t = vp / (vp - vq);
+							out.push_back({ P.first + t * (Q.first - P.first), P.second + t * (Q.second - P.second) });
+						}
+					}
+					poly.swap(out);
+				}
+				if (poly.size() < 3)
+					return;
+				if (interp)
+				{
+					GF.useProgram(0);
+					GF.drawBuffers(1, bufs2);
+				}
+				glEnable(GL_TEXTURE_2D);
+				glBindTexture(GL_TEXTURE_2D, stex);
+				const float a = c.shadowA / 255.0f;
+				glColor4f(a, a, a, a);
+				glBegin(GL_POLYGON);
+				for (const auto &p : poly)
+				{
+					glTexCoord2f((float)((p.first - X0) / oW), (float)((p.second - Y0) / oH));
+					glVertex2d(p.first, p.second);
+				}
+				glEnd();
+				if (interp)
+				{
+					GF.drawBuffers(2, bufs2);
+					GF.useProgram(G.progDraw);
+				}
+				return;
+			}
 			GLuint tex = 0;
 			float f = 1.0f;
 			if (interp)

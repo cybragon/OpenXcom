@@ -181,6 +181,11 @@ private:
 	bool _constantAnimation, _hasInventory;
 	ForcedTorso _forcedTorso;
 	int _faceColorGroup, _hairColorGroup, _utileColorGroup, _rankColorGroup;
+	// hi-res battle unit shadow (battle-14): sprite name ("" = by size), offset, opacity % (-1 = default), flying units
+	std::string _hiResShadow;
+	std::vector<int> _hiResShadowOffset;
+	int _hiResShadowOpacity = -1;
+	bool _hiResShadowFlying = true;
 	std::vector<int> _faceColor, _hairColor, _utileColor, _rankColor;
 	Sint8  _fearImmune, _bleedImmune, _painImmune, _zombiImmune;
 	Sint8 _ignoresMeleeThreat, _createsMeleeThreat;
@@ -442,6 +447,15 @@ public:
 	float getOverKill() const;
 	/// Get face base color
 	int getFaceColorGroup() const;
+	/// Hi-res unit shadow sprite name ("" = HiResShadowSmall / HiResShadowLarge by unit size).
+	const std::string &getHiResShadow() const { return _hiResShadow; }
+	/// Hi-res unit shadow offset in base px (x, y).
+	int getHiResShadowOffsetX() const { return _hiResShadowOffset.size() > 0 ? _hiResShadowOffset[0] : 0; }
+	int getHiResShadowOffsetY() const { return _hiResShadowOffset.size() > 1 ? _hiResShadowOffset[1] : 0; }
+	/// Hi-res unit shadow opacity % (multiplies oxceHiResUnitShadow), -1 = 100.
+	int getHiResShadowOpacity() const { return _hiResShadowOpacity; }
+	/// Hi-res unit shadow drawn under a unit hovering over empty space.
+	bool getHiResShadowFlying() const { return _hiResShadowFlying; }
 	/// Get hair base color
 	int getHairColorGroup() const;
 	/// Get utile base color

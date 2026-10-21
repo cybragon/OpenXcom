@@ -384,7 +384,8 @@ void createOptionsOXCE()
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResDigitFont", &oxceHiResDigitFont, "")); // battle UI digits: font specs, empty = built-in bold list
 	// hi-res battle: brightness (%) of tile shade 0..15 (level 1..16), shade 16 = black; missing entries repeat the last
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResShadeCurve", &oxceHiResShadeCurve, "100,92,84,76,68,60,52,44,36,28,12,10,8,6,4,2"));
-	// hi-res battle: soft shadow under units on the floor, opacity % (0 = off)
+	// hi-res battle: soft shadow under units on the floor, opacity % (0 = off); battle-14: follows the unit
+	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResUnitShadow", &oxceHiResUnitShadow, 60));
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleGL", &oxceHiResBattleGL, true)); // layered battlescape drawn by OpenGL (framebuffer objects) when the OpenGL output is used; false / unavailable = CPU
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResBattleLayered", &oxceHiResBattleLayered, true)); // battlescape: every map draw at output resolution in draw order (false = 8-bit pixel match)
 	_info.push_back(OptionInfo(OPTION_OXCE, "oxceHiResForceFullRedraw", &oxceHiResForceFullRedraw, false)); // battlescape: recompose the whole map every frame (debug / seam comparison)
@@ -1304,7 +1305,8 @@ bool saveHiRes()
 		"#   The GPU (GLSL, needs OpenGL 3.0) is used automatically when it works, else the CPU resampler; see openxcom.log.\n"
 		"#   With the software output the screen filter (none / Scale / HQx / xBRZ) decides and this setting is ignored.\n"
 		"# oxceHiResDownscale: hi-res pictures drawn smaller than their file (mods mixing art resolutions):\n"
-		"#   1 = smooth (default), 0 = area average (as before battle-12).\n" + yaml + "\n"))
+		"#   1 = smooth (default), 0 = area average (as before battle-12).\n"
+		"# oxceHiResUnitShadow: opacity % of the soft shadow under units on the hi-res battle map (Hi-res All, layered), 0 = off.\n" + yaml + "\n"))
 	{
 		Log(LOG_WARNING) << "Failed to save " << path;
 		return false;

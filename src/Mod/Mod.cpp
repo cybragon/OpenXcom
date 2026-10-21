@@ -5782,6 +5782,36 @@ void Mod::loadBattlescapeResources()
 	_hiResGeoTypes.clear();
 	for (const auto &p : _surfaces) _hiResGeoTypes.insert(p.first);
 	for (const auto &p : _sets) _hiResGeoTypes.insert(p.first);
+	// battle-14: default hi-res unit shadows (engine assets, procedural soft black ellipses; a mod replaces
+	// them with extraSprites HiResShadowSmall / HiResShadowLarge, or names its own per armor: hiResShadow)
+	if (HiResAssets::battleEnabled())
+	{
+		auto pal = _palettes.find("PAL_BATTLESCAPE");
+		const SDL_Color *bp = pal != _palettes.end() ? pal->second->getColors() : nullptr;
+		const int K = 8;
+		struct Def { const char *name; int w, h; };
+		for (const Def &d : { Def{ "HiResShadowSmall", 22, 11 }, Def{ "HiResShadowLarge", 44, 22 } })
+		{
+			const int W = d.w * K, H = d.h * K;
+			std::vector<Uint32> argb((size_t)W * H);
+			for (int y = 0; y < H; ++y)
+				for (int x = 0; x < W; ++x)
+				{
+					const double dx = (x + 0.5 - W / 2.0) / (W / 2.0), dy = (y + 0.5 - H / 2.0) / (H / 2.0);
+					const double r = std::sqrt(dx * dx + dy * dy);
+					double t = (r - 0.45) / 0.55;
+					t = t < 0 ? 0 : (t > 1 ? 1 : t);
+					const double a = 1.0 - t * t * (3 - 2 * t);
+					argb[(size_t)y * W + x] = (Uint32)std::lround(a * 255.0) << 24;
+				}
+			if (Surface *sf = HiResAssets::makeEnginePicture(d.name, argb, W, H, d.w, d.h, bp))
+			{
+				delete _surfaces[d.name];
+				_surfaces[d.name] = sf;
+			}
+			HiResAssets::attachWhenFits(d.name);
+		}
+	}
 	// Load Battlescape ICONS
 	_sets["SPICONS.DAT"] = new SurfaceSet(32, 24);
 	_sets["SPICONS.DAT"]->loadDat("UFOGRAPH/SPICONS.DAT");

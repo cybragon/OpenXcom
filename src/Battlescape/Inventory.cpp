@@ -19,6 +19,7 @@
 #include "Inventory.h"
 #include <cstring>
 #include "../Engine/HiResCanvas.h"
+#include "ItemSprite.h"
 #include "../Engine/HiResLayer.h"
 #include <algorithm>
 #include <cmath>
@@ -348,7 +349,8 @@ void Inventory::drawItems()
 			}
 			if (_native && HiResCanvas::hasPicture(frame))
 			{
-				_nativeItems.push_back({ frame, x, y }); // 32-bit / hi-res: drawn as is, no recolour script
+				// 32-bit / hi-res: drawn as is; a custom recolour script gives its brightness only (battle-14)
+				_nativeItems.push_back({ frame, x, y, HiResItem::scriptBrightness(frame, invItem, save, BODYPART_ITEM_INVENTORY, _animFrame) });
 			}
 			else
 			{
@@ -412,7 +414,7 @@ void Inventory::drawItems()
 			y = (groundItem->getSlot()->getY() + groundItem->getSlotY() * RuleInventory::SLOT_H);
 			if (_native && HiResCanvas::hasPicture(frame))
 			{
-				_nativeItems.push_back({ frame, x, y });
+				_nativeItems.push_back({ frame, x, y, HiResItem::scriptBrightness(frame, groundItem, save, BODYPART_ITEM_INVENTORY, _animFrame) });
 			}
 			else
 			{
@@ -500,7 +502,8 @@ void Inventory::drawSelectedItem()
 			const Surface *frame = _selItem->getBigSprite(_game->getMod()->getSurfaceSet("BIGOBS.PCK"), _game->getSavedGame()->getSavedBattle(), _animFrame);
 			if (frame && HiResCanvas::hasPicture(frame))
 			{
-				_nativeSel = { frame, _selItem->getRules()->getHandSpriteOffX(), _selItem->getRules()->getHandSpriteOffY() };
+				_nativeSel = { frame, _selItem->getRules()->getHandSpriteOffX(), _selItem->getRules()->getHandSpriteOffY(),
+					HiResItem::scriptBrightness(frame, _selItem, _game->getSavedGame()->getSavedBattle(), BODYPART_ITEM_INVENTORY, _animFrame) };
 				return;
 			}
 		}
@@ -690,14 +693,14 @@ void Inventory::drawNative(HiResCanvas &canvas, int lx, int ly) const
 {
 	canvas.drawSurface8(_grid, lx, ly);
 	for (const auto &ni : _nativeItems)
-		canvas.drawSurface(ni.frame, lx + ni.x, ly + ni.y);
+		canvas.drawSurface(ni.frame, lx + ni.x, ly + ni.y, ni.bright);
 	canvas.drawSurface8(_items, lx, ly);
 	canvas.drawSurface8(_gridLabels, lx, ly);
 	if (_selItem)
 	{
 		canvas.drawSurface8(_selection, lx + _selection->getX(), ly + _selection->getY());
 		if (_nativeSel.frame)
-			canvas.drawSurface(_nativeSel.frame, lx + _selection->getX() + _nativeSel.x, ly + _selection->getY() + _nativeSel.y);
+			canvas.drawSurface(_nativeSel.frame, lx + _selection->getX() + _nativeSel.x, ly + _selection->getY() + _nativeSel.y, _nativeSel.bright);
 	}
 	if (_warning->getVisible())
 		canvas.drawSurface8(_warning, lx + _warning->getX(), ly + _warning->getY());
@@ -730,8 +733,8 @@ Uint64 Inventory::nativeHash() const
 	mix(_selItem ? 1 : 0);
 	if (_selItem)
 		mixSurface(_selection);
-	for (const auto &ni : _nativeItems) { mix((Uint64)(size_t)ni.frame); mix((Uint64)ni.x); mix((Uint64)ni.y); }
-	mix((Uint64)(size_t)_nativeSel.frame);
+	for (const auto &ni : _nativeItems) { mix((Uint64)(size_t)ni.frame); mix((Uint64)ni.x); mix((Uint64)ni.y); mix((Uint64)ni.bright); }
+	mix((Uint64)(size_t)_nativeSel.frame); mix((Uint64)_nativeSel.bright);
 	mix(_warning->getVisible() ? 1 : 0);
 	if (_warning->getVisible())
 		mixSurface(_warning);

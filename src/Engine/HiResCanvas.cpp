@@ -203,7 +203,7 @@ bool HiResCanvas::hasPicture(const Surface *surface, int *lw, int *lh)
 	return true;
 }
 
-bool HiResCanvas::drawSurface(const Surface *surface, int lx, int ly)
+bool HiResCanvas::drawSurface(const Surface *surface, int lx, int ly, int bright)
 {
 	int lw = 0, lh = 0;
 	if (hasPicture(surface, &lw, &lh))
@@ -211,6 +211,15 @@ bool HiResCanvas::drawSurface(const Surface *surface, int lx, int ly)
 		// resampled once to exactly the output size of its logical rect (cached by HiResAssets)
 		const int pw = ox(lx + lw) - ox(lx), ph = oy(ly + lh) - oy(ly);
 		const Uint32 *px = pw > 0 && ph > 0 ? HiResAssets::nativeRendered(const_cast<Surface*>(surface)->getSurface(), (_palette ? _palette : const_cast<Surface*>(surface)->getSurface()->format->palette), pw, ph) : nullptr;
+		if (px && bright >= 0 && bright < 256)
+		{
+			// brightness of a custom item recolour script (battle-14), colour channels only
+			std::vector<Uint32> dim(px, px + (size_t)pw * ph);
+			for (Uint32 &p : dim)
+				p = (p & 0xFF000000u) | (((((p >> 16) & 0xFF) * bright) >> 8) << 16) | (((((p >> 8) & 0xFF) * bright) >> 8) << 8) | (((p & 0xFF) * bright) >> 8);
+			drawPicture(dim.data(), pw, ph, lx, ly, lw, lh);
+			return true;
+		}
 		if (px)
 		{
 			drawPicture(px, pw, ph, lx, ly, lw, lh);

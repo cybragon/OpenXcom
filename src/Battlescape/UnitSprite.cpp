@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "UnitSprite.h"
+#include "ItemSprite.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/Armor.h"
@@ -158,8 +159,8 @@ void UnitSprite::blitItem(Part& item)
 
 	if (HiResAssets::any())
 	{
-		const SDL_Surface *ps = const_cast<Surface*>(item.src)->getSurface();
-		HiResAssets::battleMark8(_dest->getSurface(), (const Uint8*)ps->pixels, ps->w, ps->h, ps->pitch, _x + item.offX, _y + item.offY, false,
+		// battle-14: a 32-bit HANDOB frame is drawn shaded / recoloured like the unit (custom script: shade only)
+		HiResItem::mapDraw(item.src, _dest, _x + item.offX, _y + item.offY, _shade, (item.bodyPart == BODYPART_ITEM_RIGHTHAND ? _itemR : _itemL),
 			_mask.beg_x, _mask.beg_y, _mask.end_x - _mask.beg_x, _mask.end_y - _mask.beg_y);
 	}
 }

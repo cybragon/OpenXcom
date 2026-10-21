@@ -72,7 +72,7 @@ public:
 	void drawPicture(const Uint32 *argb, int pw, int ph, int lx, int ly, int lw, int lh);
 	/// A surface: its picture (HiResAssets: hi-res asset or native 32-bit picture) if it has one,
 	/// otherwise its 8-bit pixels. Returns true if a picture was drawn.
-	bool drawSurface(const Surface *surface, int lx, int ly);
+	bool drawSurface(const Surface *surface, int lx, int ly, int bright = 256);
 	/// Has the surface a picture for the canvas (and its logical size)?
 	static bool hasPicture(const Surface *surface, int *lw = nullptr, int *lh = nullptr);
 	/// Shows the canvas: records its Image command at the front of 'holder' (coordinates relative

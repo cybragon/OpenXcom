@@ -35,6 +35,9 @@
 #include "../Engine/ScriptBind.h"
 #include "../Engine/RNG.h"
 #include "../Battlescape/BattlescapeGame.h"
+#include "../Battlescape/ItemSprite.h"
+#include "../Engine/HiResAssets.h"
+#include "../Engine/HiResLayer.h"
 
 namespace OpenXcom
 {
@@ -1816,7 +1819,20 @@ void RuleItem::drawHandSprite(const SurfaceSet *texture, Surface *surface, const
 		{
 			ScriptWorkerBlit scr;
 			BattleItem::ScriptFill(&scr, item, save, BODYPART_ITEM_INVENTORY, animFrame, 0);
+			// battle-14: a 32-bit BIGOBS picture is recorded for the hi-res layer like the unscripted blit
+			// below (custom recolorItemSprite: drawn with the brightness the script gives the 8-bit proxy)
+			const bool hr = HiResAssets::any() && surface;
+			if (hr)
+				HiResAssets::preDraw(const_cast<Surface*>(frame)->getSurface(), surface->getSurface(), this->getHandSpriteOffX(), this->getHandSpriteOffY());
 			scr.executeBlit(frame, surface, this->getHandSpriteOffX(), this->getHandSpriteOffY(), 0);
+			if (hr)
+			{
+				const SDL_Surface *fs = const_cast<Surface*>(frame)->getSurface();
+				HiResAssets::onDraw(fs, 0, 0, fs->w, fs->h, surface->getSurface(), this->getHandSpriteOffX(), this->getHandSpriteOffY());
+				const int bright = HiResItem::scriptBrightness(frame, item, save, BODYPART_ITEM_INVENTORY, animFrame);
+				if (bright < 256)
+					HiResLayer::tintSurface(surface->getSurface(), ((Uint32)(255 - std::min(255, bright)) << 24));
+			}
 		}
 	}
 	else

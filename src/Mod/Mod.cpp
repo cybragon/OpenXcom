@@ -6161,15 +6161,18 @@ void Mod::classifyHiResBattleTypes()
 		HiResAssets::allowBattle("SMOKE.PCK");
 		HiResAssets::allowBattle("X1.PCK");
 	}
+	// battle-14: the backgrounds of the battlescape interfaces are drawn like the stock chrome (TAC00/TAC01):
+	// 32-bit allowed with a battlescape-palette proxy (before: denied, a mod background became 8-bit)
+	std::set<std::string> ifaceBg;
 	for (const char *name : { "battlescape", "inventory", "medikit", "minimap", "stats" })
 	{
 		auto it = _interfaces.find(name);
 		if (it == _interfaces.end())
 			continue;
 		const std::string &bg = it->second->getBackgroundImage(this, nullptr);
-		if (!bg.empty()) HiResAssets::denyTrueColor(bg);
+		if (!bg.empty()) ifaceBg.insert(bg);
 		const std::string &alt = it->second->getAltBackgroundImage();
-		if (!alt.empty()) HiResAssets::denyTrueColor(alt);
+		if (!alt.empty()) ifaceBg.insert(alt);
 	}
 	const SDL_Color *battlePal = nullptr;
 	{
@@ -6183,10 +6186,6 @@ void Mod::classifyHiResBattleTypes()
 	// Each entry: why the 8-bit pixels are needed (see docs/hires-deny-list in the battle-13 report).
 	struct Keep8 { const char *name; const char *why; };
 	static const Keep8 keep8[] = {
-		{ "CURSOR.PCK", "3D cursor / waypoint markers recoloured by colour index (newBaseColor, tile marker colour)" },
-		{ "Pathfinding", "path arrows recoloured per TU state by colour index (newBaseColor)" },
-		{ "FLOOROB.PCK", "floor items: drawn on the map without a hi-res hook (ItemSprite), recolorItemSprite scripts" },
-		{ "HANDOB.PCK", "hand items: recolorItemSprite scripts work on colour indices; drawn inside the unit sprite" },
 		{ "MEDIBITS.DAT", "medikit body parts recoloured green/red by colour index (MedikitView, newBaseColor)" },
 		{ "SCANG.DAT", "minimap tiles and inventory primer pulse: colour index + offset / pulsing shade" },
 		{ "BIGOBS.PCK", "shared: map/shaded draws use the 8-bit proxy, UI and inventory canvas the picture (native path)" },
@@ -6201,7 +6200,8 @@ void Mod::classifyHiResBattleTypes()
 	if (!HiResAssets::battleEnabled())
 	{
 		// no hi-res battle map: everything drawn on the map keeps its 8-bit pixels (shade / LUT / recolour)
-		for (const char *name : { "SMOKE.PCK", "X1.PCK", "HIT.PCK", "Projectiles", "UnderwaterProjectiles" })
+		for (const char *name : { "SMOKE.PCK", "X1.PCK", "HIT.PCK", "Projectiles", "UnderwaterProjectiles",
+			"CURSOR.PCK", "Pathfinding", "FLOOROB.PCK", "HANDOB.PCK" })
 		{
 			keep8Names.insert(name);
 			HiResAssets::denyTrueColor(name);
@@ -6209,21 +6209,35 @@ void Mod::classifyHiResBattleTypes()
 	}
 	else
 	{
-		// bullets / hits go through the same hi-res battle hook as SMOKE.PCK / X1.PCK (Map.cpp hiResBattle)
-		for (const char *name : { "HIT.PCK", "Projectiles", "UnderwaterProjectiles" })
+		// bullets / hits go through the same hi-res battle hook as SMOKE.PCK / X1.PCK (Map.cpp hiResBattle);
+		// battle-14: 3D cursor / path arrows (marker colour = rampTint of the picture brightness, draw grey
+		// art), floor / hand items (unit colour-swap table, custom recolorItemSprite = shade only) and the
+		// floor unconscious-unit indicators (shaded like the tile)
+		for (const char *name : { "HIT.PCK", "Projectiles", "UnderwaterProjectiles", "CURSOR.PCK", "Pathfinding",
+			"FLOOROB.PCK", "HANDOB.PCK", "FloorStunIndicator", "FloorWoundIndicator", "FloorBurnIndicator", "FloorShockIndicator" })
 			HiResAssets::allowBattle(name);
+		for (const auto &e : _enviroEffects)
+			if (!e.second->getMapShockIndicator().empty())
+				HiResAssets::allowBattle(e.second->getMapShockIndicator());
 	}
 	// former stage-1 allow-list (re-allowed after the interface backgrounds above, as before)
 	static const std::set<std::string> chrome = { "TAC00.SCR", "TAC01.SCR", "UNIBORD.PCK", "SCANBORD.PCK", "DETBORD.PCK",
 		"DETBORD2.PCK", "MEDIBORD.PCK", "ICONS.PCK", "TinyRanks" };
 	std::set<std::string> uiNames = _hiResBattleNames;
 	uiNames.insert(chrome.begin(), chrome.end());
+	uiNames.insert(ifaceBg.begin(), ifaceBg.end());
+	// battle-14: OXCE battlescape-only pictures that are not vanilla resources (a mod adds them with
+	// extraSprites, loaded after loadBattlescapeResources): battlescape-palette proxies, not geoscape
+	for (const char *name : { "reactionIndicator", "noReactionIndicator", "oxceLinks", "oxceLinksInv", "TFTDReserve",
+		"KneelButton", "Touch", "InvPaste", "InvPasteEmpty", "InvCopy", "InvCopyActive", "AlienInventory", "AlienInventory2",
+		"BigStunIndicator", "BigWoundIndicator", "BigBurnIndicator", "BigShockIndicator" })
+		uiNames.insert(name);
 	size_t uiCount = 0;
 	for (const std::string &name : uiNames)
 	{
 		if (keep8Names.count(name) || HiResAssets::battleType(name))
 			continue;
-		if (!chrome.count(name) && !HiResAssets::trueColorAllowed(name))
+		if (!chrome.count(name) && !ifaceBg.count(name) && !HiResAssets::trueColorAllowed(name))
 			continue; // armor inventory / layers (native canvas), interface backgrounds, terrain with the battle map off
 		HiResAssets::allowTrueColor(name);
 		// quantized proxies in the battlescape palette (not the geoscape fallback); box-sized 32-bit

@@ -52,4 +52,23 @@ public:
 	void drawShadow(const BattleItem* item, int x, int y);
 };
 
+/// Hi-res helpers for item pictures (FLOOROB / HANDOB on the map, BIGOBS in the UI), battle-14.
+namespace HiResItem
+{
+	/// Armor colour-swap pairs of a unit (face, hair, utile, rank: group<<4 -> colour), the same table the
+	/// default recolorUnitSprite uses (HiResLayer battleExpected / rampTint).
+	void unitRecolor(const BattleUnit *unit, Uint8 from[4], Uint8 to[4]);
+	/// True when the item rule has its own (non-default) recolorItemSprite script (warned once per item).
+	bool customScript(const BattleItem *item);
+	/// Colour-swap pairs of an item: no script = the pairs of its unit (corpse / carrier), custom script = none.
+	void recolor(const BattleItem *item, Uint8 from[4], Uint8 to[4]);
+	/// Records a map draw of an item frame (after the 8bpp blit): a 32-bit picture is drawn shaded and
+	/// recoloured at output resolution, an 8bpp frame becomes a filtered 8bpp sprite command.
+	void mapDraw(const Surface *frame, Surface *dest, int x, int y, int shade, const BattleItem *item,
+		int clipX = 0, int clipY = 0, int clipW = 0, int clipH = 0);
+	/// Brightness (0..256+, 256 = unchanged) a custom recolorItemSprite script gives an item frame, measured
+	/// on the 8bpp proxy (palette luminance of the scripted vs the plain pixels); 256 without a custom script.
+	int scriptBrightness(const Surface *frame, const BattleItem *item, const SavedBattleGame *save, int part, int animFrame);
+}
+
 } //namespace OpenXcom

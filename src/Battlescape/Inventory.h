@@ -66,10 +66,10 @@ private:
 	RuleInventory *_inventorySlotGround = nullptr;
 	/// native canvas mode (InventoryState, hi-res images on): items with a picture are not drawn
 	/// into the 8bpp layers but listed here and drawn as pictures by drawNative
-	struct NativeItem { const Surface *frame; int x, y; };
+	struct NativeItem { const Surface *frame; int x, y; int bright = 256; };
 	bool _native = false;
 	std::vector<NativeItem> _nativeItems;
-	NativeItem _nativeSel = { nullptr, 0, 0 };
+	NativeItem _nativeSel = { nullptr, 0, 0, 256 };
 
 	/// Clear all occupied slots markers.
 	std::vector<std::vector<char>>* clearOccupiedSlotsCache();

@@ -1088,31 +1088,23 @@ void Map::drawTerrain(Surface *surface)
 								{
 									if (_burnIndicator && itemUnit->getFire() > 0)
 									{
-										_burnIndicator->blitNShade(surface,
-											screenPosition.x,
-											screenPosition.y + tile->getTerrainLevel(),
-											tileShade);
+										_burnIndicator->blitNShade(surface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
+										hiResBattle(surface, _burnIndicator, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
 									}
 									else if (_woundIndicator && itemUnit->getFatalWounds() > 0)
 									{
-										_woundIndicator->blitNShade(surface,
-											screenPosition.x,
-											screenPosition.y + tile->getTerrainLevel(),
-											tileShade);
+										_woundIndicator->blitNShade(surface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
+										hiResBattle(surface, _woundIndicator, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
 									}
 									else if (_shockIndicator && itemUnit->hasNegativeHealthRegen())
 									{
-										_shockIndicator->blitNShade(surface,
-											screenPosition.x,
-											screenPosition.y + tile->getTerrainLevel(),
-											tileShade);
+										_shockIndicator->blitNShade(surface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
+										hiResBattle(surface, _shockIndicator, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
 									}
 									else if (_stunIndicator)
 									{
-										_stunIndicator->blitNShade(surface,
-											screenPosition.x,
-											screenPosition.y + tile->getTerrainLevel(),
-											tileShade);
+										_stunIndicator->blitNShade(surface, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
+										hiResBattle(surface, _stunIndicator, screenPosition.x, screenPosition.y + tile->getTerrainLevel(), tileShade);
 									}
 								}
 							}

@@ -21,6 +21,12 @@
 #include "../Savegame/BattleUnit.h"
 #include "../Savegame/BattleItem.h"
 #include "../Savegame/SavedBattleGame.h"
+#include "../Mod/RuleItem.h"
+#include "../Mod/Armor.h"
+#include "../Engine/HiResAssets.h"
+#include "../Engine/Logger.h"
+#include "../Engine/Script.h"
+#include <set>
 
 namespace OpenXcom
 {
@@ -61,6 +67,8 @@ void ItemSprite::draw(const BattleItem* item, int x, int y, int shade)
 		ScriptWorkerBlit work;
 		BattleItem::ScriptFill(&work, item, _save, BODYPART_ITEM_FLOOR, _animationFrame, shade);
 		work.executeBlit(sprite, _dest, x, y, shade);
+		if (HiResAssets::any())
+			HiResItem::mapDraw(sprite, _dest, x, y, shade, item);
 	}
 }
 
@@ -73,7 +81,114 @@ void ItemSprite::drawShadow(const BattleItem* item, int x, int y)
 	if (sprite)
 	{
 		sprite->blitNShade(_dest, x, y, 16);
+		if (HiResAssets::any())
+			HiResItem::mapDraw(sprite, _dest, x, y, 16, nullptr);
 	}
+}
+
+namespace HiResItem
+{
+
+void unitRecolor(const BattleUnit *unit, Uint8 from[4], Uint8 to[4])
+{
+	for (int k = 0; k < 4; ++k) { from[k] = 0; to[k] = 0; }
+	if (!unit)
+		return;
+	const Armor *armor = unit->getArmor();
+	const int groups[4] = { armor->getFaceColorGroup(), armor->getHairColorGroup(), armor->getUtileColorGroup(), armor->getRankColorGroup() };
+	for (const auto &pr : unit->getRecolor())
+		for (int k = 0; k < 4; ++k)
+			if (groups[k] > 0 && (groups[k] << 4) == pr.first && !from[k])
+			{
+				from[k] = pr.first;
+				to[k] = pr.second;
+				break;
+			}
+}
+
+bool customScript(const BattleItem *item)
+{
+	if (!item)
+		return false;
+	const auto &scr = item->getRules()->getScript<ModScript::RecolorItemSprite>();
+	if (!scr || scr.isDefaultCode())
+		return false;
+	static std::set<const RuleItem*> warned;
+	if (warned.insert(item->getRules()).second)
+		Log(LOG_WARNING) << "HiResAssets: item " << item->getRules()->getType() << " has a custom recolorItemSprite script: its 32-bit pictures are drawn without recolour (shade / brightness only)";
+	return true;
+}
+
+void recolor(const BattleItem *item, Uint8 from[4], Uint8 to[4])
+{
+	for (int k = 0; k < 4; ++k) { from[k] = 0; to[k] = 0; }
+	if (!item)
+		return;
+	if (item->getRules()->getScript<ModScript::RecolorItemSprite>())
+		return; // own script: default code = no unit recolour; custom = shade only (customScript warns)
+	unitRecolor(item->getUnit(), from, to);
+}
+
+void mapDraw(const Surface *frame, Surface *dest, int x, int y, int shade, const BattleItem *item, int clipX, int clipY, int clipW, int clipH)
+{
+	if (!frame || !dest)
+		return;
+	const SDL_Surface *ps = const_cast<Surface*>(frame)->getSurface();
+	if (HiResAssets::proxyByPixels(ps->pixels) == ps)
+	{
+		Uint8 from[4], to[4];
+		if (customScript(item))
+		{
+			for (int k = 0; k < 4; ++k) { from[k] = 0; to[k] = 0; }
+		}
+		else
+		{
+			recolor(item, from, to);
+		}
+		HiResAssets::onBattleDraw(ps, dest->getSurface(), x, y, shade, false, 0, from, to, clipX, clipY, clipW, clipH);
+	}
+	else
+	{
+		HiResAssets::battleMark8(dest->getSurface(), (const Uint8*)ps->pixels, ps->w, ps->h, ps->pitch, x, y, false, clipX, clipY, clipW, clipH);
+	}
+}
+
+int scriptBrightness(const Surface *frame, const BattleItem *item, const SavedBattleGame *save, int part, int animFrame)
+{
+	if (!frame || !item || !customScript(item))
+		return 256;
+	SDL_Surface *ps = const_cast<Surface*>(frame)->getSurface();
+	const SDL_Color *pal = HiResAssets::battlePalette();
+	if (!pal && ps->format->palette)
+		pal = ps->format->palette->colors;
+	if (!pal)
+		return 256;
+	Surface tmp(ps->w, ps->h, 0, 0);
+	tmp.clear();
+	ScriptWorkerBlit work;
+	BattleItem::ScriptFill(&work, item, save, part, animFrame, 0);
+	tmp.lock();
+	work.executeBlit(frame, &tmp, 0, 0, 0);
+	tmp.unlock();
+	auto lum = [&](Uint8 i) { return 299 * pal[i].r + 587 * pal[i].g + 114 * pal[i].b; };
+	long long a = 0, b = 0;
+	const SDL_Surface *ts = tmp.getSurface();
+	for (int y = 0; y < ps->h; ++y)
+	{
+		const Uint8 *sp = (const Uint8*)ps->pixels + y * ps->pitch;
+		const Uint8 *tp = (const Uint8*)ts->pixels + y * ts->pitch;
+		for (int x = 0; x < ps->w; ++x)
+			if (sp[x])
+			{
+				a += lum(sp[x]);
+				b += tp[x] ? lum(tp[x]) : 0;
+			}
+	}
+	if (a <= 0)
+		return 256;
+	return (int)std::max(0LL, std::min(512LL, (b * 256 + a / 2) / a));
+}
+
 }
 
 } //namespace OpenXcom

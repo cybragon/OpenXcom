@@ -1,4 +1,4 @@
-# Hi-res images for modders (8.7.1-hires-2, geoscape/UI stage)
+# Hi-res images for modders (8.7.1-hires-2.5, battle-14)
 
 Options > Video, hi-res dropdown: **Hi-res off (original)** / **Hi-res on** (`oxceHiResAssets`, in
 user/hires_option.cfg). Upscaling follows the screen filter: none -> nearest, Scale -> smooth, HQx / xBRZ -> that filter;
@@ -16,16 +16,81 @@ into `subX` x `subY` cells on that scaled grid. Example: ranks 192x40 rule, 32x4
 file -> six 128x160 hi-res cells, each a 32x40 frame.
 
 ## 32-bit PNG / JPG: where allowed
+Since battle-13 almost every picture may be 32-bit; only a short deny-list keeps 8-bit images.
 - Geoscape, basescape, Ufopaedia, menus, UI chrome: allowed (drawn true-colour).
-- Battlescape UI chrome: TAC00/TAC01.SCR, ICONS, UNIBORD, SCANBORD, DETBORD(2), MEDIBORD, TinyRanks.
-- Shared battlescape sets **BIGOBS.PCK, SMOKE.PCK, DETBLOB.DAT**: allowed; the map and shaded draws
-  use a battlescape-palette 8-bit proxy (indices 1-239), the UI / native inventory the picture.
-  Hand slots stay 8-bit. Map smoke / fire / explosions: see "Battle map smoke" below.
-- Other battlescape resources (units, terrain, HANDOB/FLOOROB, cursor, ...): converted to 8-bit in
-  the battlescape palette (downscaled to the rule size first) with a log warning.
+- Battlescape UI (TAC00/TAC01.SCR, ICONS, UNIBORD, SCANBORD, DETBORD(2), MEDIBORD, TinyRanks, and the
+  `backgroundImage` / `altBackgroundImage` a mod sets for the battlescape, inventory, medikit, minimap and stats
+  interfaces): allowed, battlescape-palette proxy. OXCE battle-only pictures added by a mod (reactionIndicator,
+  noReactionIndicator, oxceLinks, TFTDReserve, Big*Indicator, InvCopy/InvPaste, AlienInventory...) also get a
+  battlescape-palette proxy.
+- Battle map (**Hi-res: all**): unit sheets, terrain, SMOKE.PCK, X1.PCK, HIT.PCK, Projectiles, and since battle-14
+  **CURSOR.PCK, Pathfinding, FLOOROB.PCK, HANDOB.PCK** and the floor indicators (FloorStun/Wound/Burn/ShockIndicator,
+  the enviro `mapShockIndicator`): drawn at output resolution, shaded like the 8-bit sprite. See "Map markers" and "Items".
+- Shared sets **BIGOBS.PCK, SMOKE.PCK (ranks), DETBLOB.DAT**: the map and shaded draws use a battlescape-palette
+  8-bit proxy, the UI / native inventory / battle hand slots the picture.
+- Still 8-bit only (deny-list): **MEDIBITS.DAT** (body parts recoloured green/red by colour index) and
+  **SCANG.DAT** (minimap colour index + offset, primer pulse). A 32-bit file there is downscaled to the rule size
+  and quantized to the battlescape palette with a log warning. With Hi-res **Geoscape** (battle map off) the battle
+  map sheets above are converted the same way.
 - Hi-res images option **off**: 32-bit/JPG files are downscaled to the rule size and quantized to
   the right palette (battlescape types: indices 1-239) with a log warning, instead of an error.
   Files that cannot be decoded still disable the mod as before.
+
+## Map markers: 3D cursor, path arrows, waypoints (battle-14)
+- **CURSOR.PCK** (32x40 frames): the game picks a frame per state and colour (red / yellow / blue box back and front
+  parts, red / yellow crosshairs, throw / psi / waypoint markers - keep the frame order of the original sheet). These
+  frames are **not recoloured**: draw each frame in its own colour, like the original.
+- **Pathfinding** (12x2 frames of 32x40: path arrows by direction, row 2 the arrows of the "turn" / end markers,
+  frames 11 and 23 the tile markers): these are recoloured at draw time by the TU state / marker colour (green = this
+  turn, yellow = next turns, red = not enough TU, ...). The 8-bit sprite swaps the colour ramp (high nibble) and keeps the
+  brightness (low nibble). A 32-bit picture is tinted the same way: its **brightness** is mapped onto the target
+  colour ramp (rampTint), its own hue is dropped. So **draw the arrows grey** (light = bright end of the ramp, dark
+  = dark end); coloured art loses its colour and only its brightness remains. Alpha works (soft edges).
+- Other map markers: the yellow arrow over the selected unit is a fixed 9x9 pattern in the code (not a picture);
+  waypoint and TU numbers are bitmap digits. Floor indicators of unconscious units (FloorStunIndicator etc., 32x40,
+  `extraSprites` singleImage) may be 32-bit; they are shaded with the tile.
+- Same sheet layout and size rules as other sheets: `width`/`height` logical, file at one uniform scale (4x = 128x160 cells).
+
+## Items on the map: FLOOROB.PCK, HANDOB.PCK (battle-14)
+- 32x40 frames, same layout as the original sheets; 32-bit files at a uniform scale (4x recommended).
+- Shaded by the tile light. Corpse / carried items recolour the face, hair, utile and rank groups of their unit
+  like 32-bit unit sheets: optional `<file>_mask.png` of the same size (red face, green hair, white utile, blue rank),
+  the masked pixels get the unit's colour by brightness.
+- An item with its own (non-default) `recolorItemSprite` script: the script works on colour indices and cannot be run on
+  32-bit art. Its 32-bit map pictures are drawn **shaded only** (log warning once per item). In the inventory and the
+  battle hand slots (BIGOBS) a 32-bit picture takes the **brightness** the script gives the 8-bit proxy (a darkening
+  script still darkens; hue changes are lost).
+- 8-bit FLOOROB frames (vanilla) now go through the battle filter like other map sprites (no more nearest blocks).
+
+## Unit shadows (battle-14)
+- Option `oxceHiResUnitShadow` in hires_option.cfg: opacity % (default 60, 0 = off). Only with **Hi-res: all** and
+  `oxceHiResBattleLayered: true` (default). Off = the map looks exactly as before.
+- One soft shadow per visible unit, positioned with the unit's walking offset: it moves with the sprite pixel by pixel
+  (walking, stairs, falling). It is drawn right after each floor it touches, clipped to that floor's diamond, so walls,
+  objects and units drawn later cover it, and floors in front do not cut it.
+- Strength = option x armor opacity x floor brightness of each tile (lit 100% = full, dark = none): a unit in the dark
+  casts no visible shadow.
+- Hovering / flying units over empty space: the shadow falls on the first floor below (up to 2 levels), 50% weaker and
+  80% smaller per level; nothing below = no shadow.
+- Pictures (engine defaults, procedural soft black ellipses): `HiResShadowSmall` (1x1 units, 22x11 logical) and
+  `HiResShadowLarge` (2x2 units, 44x22). Replace them with `extraSprites` of the same name (`singleImage: true`,
+  `width`/`height` = logical size, any larger 32-bit file with alpha). The shadow is centred on the unit's feet
+  (1x1: tile floor centre; 2x2: centre of the four tiles).
+- Armor keys:
+  ```yaml
+  armors:
+    - type: STR_MY_HWP_ARMOR
+      hiResShadow: MyHwpShadow        # any extraSprites single image; default by size (HiResShadowSmall / HiResShadowLarge)
+      hiResShadowOffset: [0, 2]       # logical px (x, y), default [0, 0]
+      hiResShadowOpacity: 80          # % of oxceHiResUnitShadow, default 100
+      hiResShadowFlying: false        # no shadow while hovering over empty space, default true
+  ```
+  A humanoid 2x shadow for a 2x2 unit: `hiResShadow: HiResShadowLarge` (the default for size 2 anyway).
+
+## Slideshows (intro / ending, battle-14)
+`videos:` slideshow slides (`imagePath`) may be hi-res: a picture larger than 320x200, or a 32-bit picture of exactly
+320x200, is drawn at output resolution. A 32-bit slide uses the geoscape palette for its 8-bit proxy and the caption
+colours; 8-bit 320x200 slides load as before.
 
 ## Battle map smoke, fire and explosions (32-bit, translucent)
 With **Hi-res: all** and `oxceHiResBattleLayered: true` (default), 32-bit sheets for `SMOKE.PCK` and `X1.PCK`

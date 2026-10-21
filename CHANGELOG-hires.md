@@ -25,6 +25,18 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
   Faster hi-res UI delivery (no SDL_GetRGB per pixel; pre-blit snapshots only for pictures with transparency).
   Options > Video: the hi-res dropdown no longer covers the open filter list; with automatic OpenGL (xBRZ) the filter shows xBRZ.
 
+- battle-12 (2026-10-20): smooth downscaling of hi-res pictures drawn smaller than their file (`oxceHiResDownscale`).
+- battle-13 (2026-10-20): deny-list instead of allow-list (almost every picture may be 32-bit); grey BACK*.SCR tinted by
+  the screen palette; screen fades / TFTD depth applied to 32-bit pictures; pressed buttons and disabled dogfight weapons hi-res.
+- battle-14 (2026-10-21): FLOOROB / HANDOB, CURSOR.PCK, Pathfinding and floor unconscious indicators on the hi-res battle
+  map (path arrows tinted from grey art; items with the unit colour-swap table, custom `recolorItemSprite` = shade only);
+  8-bit floor items filtered like other map sprites; hand slots and inventory pictures take the brightness of a custom item
+  script; mod battlescape interface backgrounds and OXCE battle-only pictures get the battlescape palette; hi-res
+  slideshow slides; **unit shadows** (`oxceHiResUnitShadow`, default 60%, follow the unit while it moves, floor brightness,
+  armor keys `hiResShadow`, `hiResShadowOffset`, `hiResShadowOpacity`, `hiResShadowFlying`; engine pictures
+  `HiResShadowSmall` / `HiResShadowLarge`). Modified: Battlescape/Map, ItemSprite, UnitSprite, Inventory, Mod/Mod, Armor,
+  RuleItem, Menu/SlideshowState, Engine/HiResAssets, HiResLayer, HiResCanvas, Options.
+
 ## 8.7.1-hires-2 (2026-10-13)
 
 Changes since 8.7.1-hires-1 (test builds 2test–10test).

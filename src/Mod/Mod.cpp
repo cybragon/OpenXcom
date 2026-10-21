@@ -6283,6 +6283,8 @@ void Mod::classifyHiResBattleTypes()
 		Log(LOG_INFO) << "HiResAssets: " << uiCount << " battlescape pictures may be 32-bit (deny-list: " << keep8Names.size() << " names)";
 	}
 	HiResAssets::setTypePalette("AvatarBackground", battlePal);
+	// ending / intro slideshow slides (SlideshowState): a 32-bit slide of exactly 320x200 is attached too
+	HiResAssets::attachWhenFits("Slideshow");
 	// sprite sets drawn only on basescape-palette screens (craft info, soldier diary); DayNightIndicator
 	// (confirm landing, geoscape palette) keeps the geoscape fallback
 	{

@@ -22,6 +22,9 @@
 #include "../Engine/FileMap.h"
 #include "../Engine/Game.h"
 #include "../Engine/InteractiveSurface.h"
+#include "../Engine/HiResAssets.h"
+#include "../Engine/Palette.h"
+#include "../Mod/Mod.h"
 #include "../Engine/Screen.h"
 #include "../Engine/Timer.h"
 #include "../Interface/Text.h"
@@ -42,7 +45,13 @@ SlideshowState::SlideshowState(const SlideshowHeader &slideshowHeader, const std
 	{
 		InteractiveSurface *slide =
 			new InteractiveSurface(Screen::ORIGINAL_WIDTH, Screen::ORIGINAL_HEIGHT, 0, 0);
-		slide->loadImage(def.imagePath);
+		// battle-14: hi-res slides (a larger picture, or a 32-bit one of 320x200) are drawn at output
+		// resolution over a proxy; a 32-bit slide uses the geoscape palette for its proxy and captions
+		if (!HiResAssets::loadReplacement(slide, def.imagePath, Screen::ORIGINAL_WIDTH, Screen::ORIGINAL_HEIGHT,
+			_game->getMod()->getPalette("PAL_GEOSCAPE")->getColors(), "Slideshow"))
+		{
+			slide->loadImage(def.imagePath);
+		}
 		slide->onMouseClick((ActionHandler)&SlideshowState::screenClick, 0);
 		slide->onKeyboardPress((ActionHandler)&SlideshowState::screenClick, Options::keyOk);
 		slide->onKeyboardPress((ActionHandler)&SlideshowState::screenSkip, Options::keyCancel);

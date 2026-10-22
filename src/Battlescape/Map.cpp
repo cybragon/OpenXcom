@@ -109,6 +109,7 @@ struct HiResShadow
 	const Surface *pic;
 	int x, y, w, h, z;
 	double opacity;
+	int level; ///< battle-15: terrain level (px, <= 0) of the surface the unit stands on (interpolated while walking)
 };
 
 /// Hi-res battle stage 1: records a terrain/unit-set proxy drawn by Surface::blitRaw (same arguments).
@@ -992,7 +993,7 @@ void Map::drawTerrain(Surface *surface)
 			const double opacity = std::min(100, Options::oxceHiResUnitShadow) / 100.0 * opct / 100.0 * std::pow(0.5, down);
 			if (opacity <= 0.0)
 				continue;
-			hiResShadows.push_back({ pic, fx - w / 2, fy - h / 2, w, h, pos.z - down, opacity });
+			hiResShadows.push_back({ pic, fx - w / 2, fy - h / 2, w, h, pos.z - down, opacity, down ? 0 : off.TerrainLevelOffset });
 		}
 	}
 
@@ -1047,19 +1048,30 @@ void Map::drawTerrain(Surface *surface)
 					}
 
 					// battle-14: the parts of the unit shadows that fall on this floor (clipped to its diamond),
-					// strength following the floor brightness (light 100% = full, dark = none)
-					if (!hiResShadows.empty() && tile->getSprite(O_FLOOR) && tile->isDiscovered(O_FLOOR))
+					// strength following the floor brightness (light 100% = full, dark = none).
+					// battle-15: a raised surface (stairs / ramps: terrain level from a back object) gets its
+					// pieces after that object (it would cover them), and a piece is only cast on a tile whose
+					// surface height matches the unit's (a stair shadow is not cut onto the flat tiles around)
+					const bool shadowAfterObject = tile->getTerrainLevel() != 0 && tile->getSprite(O_OBJECT) && tile->isBackTileObject(O_OBJECT);
+					auto drawShadowPieces = [&]()
 					{
-						const int dcx = screenPosition.x + 16, dcy = screenPosition.y + 32 + tile->getTerrainLevel();
+						if (hiResShadows.empty() || !tile->isDiscovered(O_FLOOR) || !(tile->getSprite(O_FLOOR) || shadowAfterObject))
+							return;
+						const int tl = tile->getTerrainLevel();
+						const int dcx = screenPosition.x + 16, dcy = screenPosition.y + 32 + tl;
 						for (const HiResShadow &hs : hiResShadows)
 						{
 							if (hs.z != itZ || hs.x >= dcx + 16 || hs.x + hs.w <= dcx - 16 || hs.y >= dcy + 8 || hs.y + hs.h <= dcy - 8)
+								continue;
+							if (std::abs(tl - hs.level) > 4)
 								continue;
 							const int a = (int)std::lround(255.0 * hs.opacity * HiResAssets::shadeFactor(tileShade) / 256.0);
 							if (a > 0)
 								HiResAssets::onShadowDraw(const_cast<Surface*>(hs.pic)->getSurface(), surface->getSurface(), hs.x, hs.y, hs.w, hs.h, a, dcx, dcy);
 						}
-					}
+					};
+					if (!shadowAfterObject)
+						drawShadowPieces();
 
 					auto* unit = tile->getUnit();
 
@@ -1143,6 +1155,8 @@ void Map::drawTerrain(Surface *surface)
 									{ Surface::blitRaw(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); hiResBattle(surface, tmpSurface, screenPosition.x, screenPosition.y - tile->getYOffset(O_OBJECT), tileShade, false, _nvColor); }
 							}
 						}
+						if (shadowAfterObject)
+							drawShadowPieces(); // battle-15: stairs / ramps
 						// draw an item on top of the floor (if any)
 						BattleItem* item = tile->getTopItem();
 						if (item)

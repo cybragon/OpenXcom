@@ -10,7 +10,10 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
   "added" were written for this fork; files listed as "modified" were changed for this fork on the
   dates above.
 
-## battle test builds (unreleased, battle-8: 2026-10-19)
+## 8.7.1-hires-3 (unreleased, prepared 2026-10-22; no tag yet)
+Collects the battle test builds below (battle-8 … battle-15).
+
+## battle test builds (battle-8: 2026-10-19)
 - WEBP pictures (`.webp`, by extension) for hi-res assets, like JPEG; a missing mod file is an error (no other extension is tried).
 - UI panel filter follows the battlefield filter rule (OpenGL output: `oxceHiResBattleFilter`; software: the screen filter).
 - Avatar mode (mod defines `AvatarBackground`): base soldier info and battle unit info screens show the battle avatar

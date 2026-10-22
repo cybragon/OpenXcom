@@ -1,4 +1,4 @@
-# Hi-res images for modders (8.7.1-hires-2.5, battle-14)
+# Hi-res images for modders (8.7.1-hires-3, battle-15)
 
 Options > Video, hi-res dropdown: **Hi-res off (original)** / **Hi-res on** (`oxceHiResAssets`, in
 user/hires_option.cfg). Upscaling follows the screen filter: none -> nearest, Scale -> smooth, HQx / xBRZ -> that filter;
@@ -28,10 +28,9 @@ Since battle-13 almost every picture may be 32-bit; only a short deny-list keeps
   the enviro `mapShockIndicator`): drawn at output resolution, shaded like the 8-bit sprite. See "Map markers" and "Items".
 - Shared sets **BIGOBS.PCK, SMOKE.PCK (ranks), DETBLOB.DAT**: the map and shaded draws use a battlescape-palette
   8-bit proxy, the UI / native inventory / battle hand slots the picture.
-- Still 8-bit only (deny-list): **MEDIBITS.DAT** (body parts recoloured green/red by colour index) and
-  **SCANG.DAT** (minimap colour index + offset, primer pulse). A 32-bit file there is downscaled to the rule size
-  and quantized to the battlescape palette with a log warning. With Hi-res **Geoscape** (battle map off) the battle
-  map sheets above are converted the same way.
+- Since battle-15 **MEDIBITS.DAT** (medikit body parts) and **SCANG.DAT** (minimap) may be 32-bit too (see
+  "Medikit body parts and minimap"). With Hi-res **Geoscape** (battle map off) the battle map sheets above are
+  downscaled to the rule size and quantized to the battlescape palette with a log warning.
 - Hi-res images option **off**: 32-bit/JPG files are downscaled to the rule size and quantized to
   the right palette (battlescape types: indices 1-239) with a log warning, instead of an error.
   Files that cannot be decoded still disable the mod as before.
@@ -68,6 +67,9 @@ Since battle-13 almost every picture may be 32-bit; only a short deny-list keeps
 - One soft shadow per visible unit, positioned with the unit's walking offset: it moves with the sprite pixel by pixel
   (walking, stairs, falling). It is drawn right after each floor it touches, clipped to that floor's diamond, so walls,
   objects and units drawn later cover it, and floors in front do not cut it.
+- Stairs and ramps (battle-15): on a raised tile (terrain level from a back object such as a stair) the shadow is drawn
+  after that object, at the stair's height, and a shadow is only cast on tiles whose surface height is within 4 px of
+  the unit's (no pieces cut onto the flat tiles around a stair, or onto a stair next to a unit on flat ground).
 - Strength = option x armor opacity x floor brightness of each tile (lit 100% = full, dark = none): a unit in the dark
   casts no visible shadow.
 - Hovering / flying units over empty space: the shadow falls on the first floor below (up to 2 levels), 50% weaker and
@@ -86,6 +88,25 @@ Since battle-13 almost every picture may be 32-bit; only a short deny-list keeps
       hiResShadowFlying: false        # no shadow while hovering over empty space, default true
   ```
   A humanoid 2x shadow for a 2x2 unit: `hiResShadow: HiResShadowLarge` (the default for size 2 anyway).
+
+## Medikit body parts and minimap (battle-15)
+- `MEDIBITS.DAT`: 6 frames of 52x58 (head, torso, right arm, left arm, right leg, left leg), each frame the whole view
+  with only its part opaque (as the original). The game recolours a wounded part by colour group (interface `medikit`,
+  element `body`: `color` = healthy, `color2` = wounded; 0 = no recolour). A 32-bit part is drawn as is when its colour
+  is 0, otherwise the middle colour of that palette group (index group*16+6) is blended over it at 63%: draw the parts
+  green (healthy look) with light details; wounded parts then read as the wound colour. Clicks still use the 8-bit proxy
+  (opaque pixels), so keep the parts' outlines at the rule size.
+- `SCANG.DAT`: 4x4 frames (the original has 454: units 0-8 with 3 animation frames, items 9-11 ..., map tiles from 35 on via
+  the terrain `miniMapIndex`). A 32-bit cell is drawn at output resolution; the tile darkness of the minimap (shade) is
+  black blended over it, the red recolour of large neutral units / primed grenades the red group colour. Example sheet:
+  `width: 1816, height: 4, subX: 4, subY: 4` with a 7264x16 file (4x).
+- The inventory primer pulse and the battlescape HUD markers that also use SCANG frame 6 keep their 8-bit proxy.
+
+## Pressed battlescape buttons (battle-15)
+- Reserve / kneel buttons are inverted when selected. OXCE draws `TFTDReserve` (59x24) and `KneelButton` over ICONS:
+  with the stock 8-bit pictures the selected button shows the inverted 8-bit pixels (as before battle-13); give a 32-bit
+  `TFTDReserve` / `KneelButton` (battlescape-palette proxy) to get the hi-res picture inverted. A 32-bit ICONS picture
+  hidden under those 8-bit overlays no longer shows through in the pressed state.
 
 ## Slideshows (intro / ending, battle-14)
 `videos:` slideshow slides (`imagePath`) may be hi-res: a picture larger than 320x200, or a 32-bit picture of exactly

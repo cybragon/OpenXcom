@@ -36,6 +36,12 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
   armor keys `hiResShadow`, `hiResShadowOffset`, `hiResShadowOpacity`, `hiResShadowFlying`; engine pictures
   `HiResShadowSmall` / `HiResShadowLarge`). Modified: Battlescape/Map, ItemSprite, UnitSprite, Inventory, Mod/Mod, Armor,
   RuleItem, Menu/SlideshowState, Engine/HiResAssets, HiResLayer, HiResCanvas, Options.
+- battle-15 (2026-10-22): **MEDIBITS.DAT** (medikit body parts, wound colour blended over the picture) and **SCANG.DAT**
+  (minimap, shade and red recolour blended over the picture) may be 32-bit (removed from the deny-list; `Surface::blitNShadeHiRes`);
+  unit shadows on stairs / ramps drawn after the stair object and only on tiles at the unit's surface height (no cut pieces);
+  pressed battlescape buttons: a 32-bit ICONS picture covered by the stock 8-bit `TFTDReserve` / `KneelButton` no longer
+  shows through in the inverted state, a 32-bit `TFTDReserve` is inverted hi-res. Modified: Battlescape/Map, MedikitView,
+  MiniMapView, Engine/Surface, HiResLayer, Interface/BattlescapeButton, Mod/Mod.
 
 ## 8.7.1-hires-2 (2026-10-13)
 

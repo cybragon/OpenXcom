@@ -204,9 +204,12 @@ void BattlescapeButton::initSurfaces(Surface* custom)
 
 	if (!_tftdMode && HiResLayer::recording())
 	{
+		HiResLayer::onCopy(_surface.get(), _altSurface->getSurface(), 0, 0);
 		// battle-13: hi-res pictures under the button (32-bit ICONS...) are drawn inverted in the pressed
 		// state too, instead of leaving the 8-bit inverted copy alone on screen
-		HiResLayer::onCopy(_surface.get(), _altSurface->getSurface(), 0, 0);
+		// battle-15: a picture covered by 8-bit pixels (stock TFTDReserve over a 32-bit ICONS) is not
+		// verified once inverted: drop it, the pressed state then shows the inverted 8-bit pixels
+		HiResLayer::dropOverdrawn(_altSurface->getSurface(), _surface.get());
 		const SDL_Color &m = getPalette()[(Uint8)(_color + 3)];
 		HiResLayer::invertSurface(_altSurface->getSurface(), (Uint8)std::min(255.0, 0.299 * m.r + 0.587 * m.g + 0.114 * m.b + 0.5));
 	}

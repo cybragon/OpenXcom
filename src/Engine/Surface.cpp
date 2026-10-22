@@ -1042,6 +1042,41 @@ void Surface::blitNShade(Surface *surface, int x, int y, int shade, bool half, i
 }
 
 /**
+ * battle-15: blitNShade of a hi-res asset proxy that keeps its picture (MEDIBITS.DAT, SCANG.DAT): the 8bpp
+ * pixels are exactly those of blitNShade; the picture is recorded like an unshaded blit and then tinted:
+ * new base colour = the middle colour of that group blended over it, shade = black at the shade's darkness.
+ */
+void Surface::blitNShadeHiRes(Surface *surface, int x, int y, int shade, int newBaseColor) const
+{
+	if (!HiResAssets::any() || !surface || (shade == 0 && newBaseColor == 0))
+	{
+		blitNShade(surface, x, y, shade, false, newBaseColor);
+		return;
+	}
+	const size_t before = HiResLayer::commandCount(surface->getSurface());
+	blitRaw(SurfaceRaw<Uint8>(surface), SurfaceRaw<const Uint8>(this), x, y, shade, false, newBaseColor);
+	HiResAssets::onDraw(_surface.get(), 0, 0, _surface->w, _surface->h, surface->getSurface(), x, y);
+	Uint32 tint = 0;
+	const SDL_Palette *pal = surface->getSurface()->format->palette;
+	const int dark = 255 - std::min(255, HiResAssets::shadeFactor(std::max(0, std::min(16, shade))) * 255 / 256);
+	if (newBaseColor && pal)
+	{
+		const int idx = std::min(255, ((newBaseColor - 1) << 4) + 6);
+		const SDL_Color c = pal->colors[idx];
+		const double f = (255 - dark) / 255.0;
+		tint = 0xA0000000u | ((Uint32)(c.r * f) << 16) | ((Uint32)(c.g * f) << 8) | (Uint32)(c.b * f);
+		if (dark > 0xA0)
+			tint = (tint & 0x00FFFFFFu) | ((Uint32)dark << 24);
+	}
+	else if (dark > 0)
+	{
+		tint = (Uint32)dark << 24; // black
+	}
+	if (tint)
+		HiResLayer::tintFrom(surface->getSurface(), before, tint);
+}
+
+/**
  * Specific blit function to blit battlescape terrain data in different shades in a fast way.
  * @param surface destination blit to
  * @param x

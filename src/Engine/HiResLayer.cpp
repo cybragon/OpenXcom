@@ -3385,6 +3385,68 @@ void HiResLayer::tintSurface(SDL_Surface *holder, Uint32 tint)
 			c.tint = tint;
 }
 
+void HiResLayer::dropOverdrawn(SDL_Surface *holder, const SDL_Surface *pixels)
+{
+	if (!_recording || !holder || !pixels || pixels->format->BytesPerPixel != 1 || pixels->w != holder->w || pixels->h != holder->h)
+		return;
+	auto it = S.lists.find(holder);
+	if (it == S.lists.end())
+		return;
+	auto &list = it->second;
+	const Uint8 *px = (const Uint8*)pixels->pixels;
+	list.erase(std::remove_if(list.begin(), list.end(), [&](const HiResCmd &c)
+	{
+		if (c.kind != HiResCmdKind::Image || !c.assetId || c.tint || c.invert || c.battle || c.w != c.srcW || c.h != c.srcH)
+			return false;
+		int ew = 0, eh = 0;
+		const Uint8 *ev = HiResAssets::expected(c.assetId, ew, eh);
+		if (!ev)
+			return false;
+		const int x0 = std::max<int>(0, c.clipX), y0 = std::max<int>(0, c.clipY);
+		const int x1 = std::min<int>(holder->w, c.clipX + c.clipW), y1 = std::min<int>(holder->h, c.clipY + c.clipH);
+		long total = 0, differ = 0;
+		for (int y = y0; y < y1; ++y)
+		{
+			const int v = y - c.y + c.srcY;
+			if (v < 0 || v >= eh)
+				continue;
+			for (int x = x0; x < x1; ++x)
+			{
+				const int u = x - c.x + c.srcX;
+				if (u < 0 || u >= ew)
+					continue;
+				const Uint8 e = ev[(size_t)v * ew + u];
+				if (!e)
+					continue;
+				++total;
+				if (px[(size_t)y * pixels->pitch + x] != e)
+					++differ;
+			}
+		}
+		return total > 0 && differ * 2 > total;
+	}), list.end());
+}
+
+size_t HiResLayer::commandCount(SDL_Surface *holder)
+{
+	if (!_recording || !holder)
+		return 0;
+	auto it = S.lists.find(holder);
+	return it == S.lists.end() ? 0 : it->second.size();
+}
+
+void HiResLayer::tintFrom(SDL_Surface *holder, size_t from, Uint32 tint)
+{
+	if (!_recording || !holder || !tint)
+		return;
+	auto it = S.lists.find(holder);
+	if (it == S.lists.end())
+		return;
+	for (size_t i = from; i < it->second.size(); ++i)
+		if (it->second[i].kind == HiResCmdKind::Image)
+			it->second[i].tint = tint;
+}
+
 void HiResLayer::invertSurface(SDL_Surface *holder, Uint8 midLum)
 {
 	if (!_recording || !holder)

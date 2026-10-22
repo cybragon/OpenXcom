@@ -96,7 +96,7 @@ void MiniMapView::draw()
 				{
 					if (isAltPressed)
 					{
-						emptySpace->blitNShade(this, x, y, 0);
+						emptySpace->blitNShadeHiRes(this, x, y, 0);
 					}
 					px++;
 					continue;
@@ -116,7 +116,7 @@ void MiniMapView::draw()
 								shade = t->getShade();
 								if (shade > _maxShade) shade = _maxShade; //vanilla
 							}
-							s->blitNShade(this, x, y, shade);
+							s->blitNShadeHiRes(this, x, y, shade);
 						}
 					}
 				}
@@ -131,11 +131,11 @@ void MiniMapView::draw()
 					Surface * s = _set->getFrame(frame);
 					if (size > 1 && t->getUnit()->getFaction() == FACTION_NEUTRAL)
 					{
-						s->blitNShade(this, x, y, 0, false, Pathfinding::red);
+						s->blitNShadeHiRes(this, x, y, 0, Pathfinding::red);
 					}
 					else
 					{
-						s->blitNShade(this, x, y, 0);
+						s->blitNShadeHiRes(this, x, y, 0);
 					}
 				}
 				// perhaps (at least one) item on this tile?
@@ -164,12 +164,12 @@ void MiniMapView::draw()
 					else if (atLeastOnePrimed)
 					{
 						// dye red
-						s->blitNShade(this, x, y, 0, false, Pathfinding::red);
+						s->blitNShadeHiRes(this, x, y, 0, Pathfinding::red);
 					}
 					else
 					{
 						// vanilla
-						s->blitNShade(this, x, y, 0);
+						s->blitNShadeHiRes(this, x, y, 0);
 					}
 				}
 

@@ -6214,10 +6214,10 @@ void Mod::classifyHiResBattleTypes()
 	// picture gets a battlescape-palette proxy for the game and is drawn as is by the overlay; the names
 	// below keep their 8-bit images (a 32-bit file is downscaled + converted to the battlescape palette).
 	// Each entry: why the 8-bit pixels are needed (see docs/hires-deny-list in the battle-13 report).
+	// battle-15: MEDIBITS.DAT (medikit body parts) and SCANG.DAT (minimap) left the list: their recoloured /
+	// shaded blits keep the picture with a tint (Surface::blitNShadeHiRes; draw grey or green body parts)
 	struct Keep8 { const char *name; const char *why; };
 	static const Keep8 keep8[] = {
-		{ "MEDIBITS.DAT", "medikit body parts recoloured green/red by colour index (MedikitView, newBaseColor)" },
-		{ "SCANG.DAT", "minimap tiles and inventory primer pulse: colour index + offset / pulsing shade" },
 		{ "BIGOBS.PCK", "shared: map/shaded draws use the 8-bit proxy, UI and inventory canvas the picture (native path)" },
 		{ "DETBLOB.DAT", "shared: unit detail dots, proxy for shaded draws, picture for the UI (native path)" },
 	};

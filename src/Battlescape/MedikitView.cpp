@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "MedikitView.h"
+#include "../Engine/HiResLayer.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleInterface.h"
@@ -60,13 +61,14 @@ void MedikitView::draw()
 		green = _game->getMod()->getInterface("medikit")->getElement("body")->color;
 		red = _game->getMod()->getInterface("medikit")->getElement("body")->color2;
 	}
+	HiResLayer::clearSurface(getSurface()); // battle-15: the body parts are redrawn (no stale hi-res commands)
 	this->lock();
 	for (unsigned int i = 0; i < set->getTotalFrames(); i++)
 	{
 		int wound = _unit->getFatalWound((UnitBodyPart)i);
 		Surface * surface = set->getFrame (i);
 		int baseColor = wound ? red : green;
-		surface->blitNShade(this, 0, 0, 0, false, baseColor);
+		surface->blitNShadeHiRes(this, 0, 0, 0, baseColor); // battle-15: 32-bit body parts tinted
 	}
 	this->unlock();
 

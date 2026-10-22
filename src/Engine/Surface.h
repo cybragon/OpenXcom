@@ -318,6 +318,9 @@ public:
 	void blitNShade(SurfaceRaw<Uint8> surface, int x, int y, int shade = 0, bool half = false, int newBaseColor = 0) const;
 	/// Same onto a Surface: an unshaded blit of a hi-res asset proxy is recorded for the hi-res layer.
 	void blitNShade(Surface *surface, int x, int y, int shade = 0, bool half = false, int newBaseColor = 0) const;
+	/// battle-15: blitNShade that also shows a hi-res picture of this proxy, shade / new base colour applied
+	/// as a tint over the picture (black at the shade's darkness, or the colour group's middle colour).
+	void blitNShadeHiRes(Surface *surface, int x, int y, int shade, int newBaseColor = 0) const;
 	/// Specific blit function to blit battlescape terrain data in different shades in a fast way.
 	void blitNShade(SurfaceRaw<Uint8> surface, int x, int y, int shade, GraphSubset range) const;
 	/// Invalidate the surface: force it to be redrawn

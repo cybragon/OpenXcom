@@ -191,6 +191,14 @@ public:
 	/// The surface was inverted by Surface::invert (mid colour luminance 'midLum'): its pictures are drawn with
 	/// their brightness inverted around it; a second inversion restores them.
 	static void invertSurface(SDL_Surface *holder, Uint8 midLum);
+	/// battle-15: drops the hi-res picture commands of holder whose proxy pixels (checked in 'pixels', same size) were mostly overdrawn by
+	/// 8-bit pixels (e.g. TFTDReserve blitted over ICONS): before an effect that disables the pixel check
+	/// (invert / tint), so a covered picture does not reappear in the pressed copy.
+	static void dropOverdrawn(SDL_Surface *holder, const SDL_Surface *pixels);
+	/// battle-15: number of commands held by holder (for tintFrom).
+	static size_t commandCount(SDL_Surface *holder);
+	/// battle-15: tints the image commands holder got since it held 'from' commands (one shaded/recoloured blit).
+	static void tintFrom(SDL_Surface *holder, size_t from, Uint32 tint);
 	static void transferScaled(SDL_Surface *src, int x, int y, int w, int h, SDL_Surface *dst, int scale);
 
 	// --- glyph helpers

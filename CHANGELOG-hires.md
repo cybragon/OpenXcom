@@ -51,6 +51,10 @@ Collects the battle test builds below (battle-8 … battle-16).
 Changes since 8.7.1-hires-1 (test builds 2test–10test).
 
 ### Hi-res images (option `oxceHiResAssets`)
+- battle-16b (2026-10-23): small text inside hi-res pictures (medikit MEDIBORD, motion scanner DETBORD2): before
+  output the 8bpp screen under hi-res pixels gets back its real under value instead of the proxy (no fine white
+  lines with the xBRZ/HQx/Scale screen filters); a hi-res picture over another hi-res picture is composited
+  directly over it (no opaque 8bpp floor). Inventory keeps its black floor.
 - battle-16 (2026-10-23): one rule for every hi-res picture: the 8bpp proxy is only for game logic and click tests;
   the screen shows the real lower layer with the hi-res picture alpha-composited over it, coverage decided by the
   recorded overdraw (no proxy/screen matching, no edge-only cells). Fixes the medikit/minimap grid loss and label holes;

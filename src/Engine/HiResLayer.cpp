@@ -109,6 +109,10 @@ struct LayerState
 	bool outputSupported = false;
 	bool modeChanged = false;
 	std::vector<Uint32> stamps;        ///< per base pixel: id of last opaque blit
+	std::vector<Uint32> hrOwn;         ///< battle-16b: per base pixel: stamp of the hi-res asset shown there (0 = none)
+	struct Restore { Uint32 idx; Uint32 cur, under; }; // screen pixel values (8bpp index or 32bpp mapped colour)
+	std::vector<std::pair<size_t, Uint32>> seeThru; ///< battle-16b: pixels where a picture lies over another picture (keep the lower one's stamp)
+	std::vector<Restore> restores;     ///< battle-16b: 8bpp screen pixels to put back to what was under a hi-res picture
 	Uint32 stampCounter = 0;
 	Uint32 runCounter = 0;
 	std::vector<HiResCmd> frame;       ///< commands that reached the screen this frame
@@ -1174,6 +1178,7 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 	// The picture is composited with its own alpha over what was under it (never over its proxy).
 	std::vector<Uint8> m((size_t)vw * vh, 0);
 	std::vector<Uint32> bk;
+	std::vector<size_t> ownNow;
 	bool any = false;
 	const std::vector<Uint8> *under = nullptr;
 	bool fullUnder = false;
@@ -1224,29 +1229,75 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 					continue;
 				m[mi] = MASK_PROXY;
 				any = true;
+				const size_t pi = (size_t)yy * S.baseW + xx;
+				const bool onBase = xx >= 0 && yy >= 0 && xx < S.baseW && yy < S.baseH && pi < S.hrOwn.size();
+				// battle-16b: is a hi-res picture shown under this pixel (an earlier asset, not drawn over since)?
+				const bool lowerHiRes = onBase && S.hrOwn[pi] && (S.hrOwn[pi] == c.stamp || S.stamps[pi] == S.hrOwn[pi]);
+				if (lowerHiRes)
+					S.seeThru.emplace_back(pi, S.hrOwn[pi]); // the lower picture stays visible under this one
+				else if (onBase)
+					ownNow.push_back(pi);
 				if (!spal || c.battle)
 					continue;
 				// background of the picture here: what the asset draw covered
 				Uint32 rgb = 0;
 				bool known = false;
+				int under8 = -1; // the pixel under the picture (put back into the screen before output)
+				Uint32 under32 = 0;
+				bool has32 = false;
 				if (fullUnder && uv > 0)
 				{
 					const SDL_Color &col = spal[uv];
 					rgb = ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
 					known = true;
+					under8 = uv;
 				}
 				else if (carrier && fullUnder && uv == 0 && xx >= carrier->x && yy >= carrier->y && xx - carrier->x < carrier->w && yy - carrier->y < carrier->h)
 				{
 					const size_t ci = (size_t)(yy - carrier->y) * carrier->w + (xx - carrier->x);
 					if (!carrier->px32.empty())
+					{
 						rgb = fastRGB(carrier->px32[ci], carrier->dst->format);
+						under32 = carrier->px32[ci];
+						has32 = true;
+					}
 					else
 					{
 						const SDL_Color &col = spal[carrier->px[ci]];
 						rgb = ((Uint32)col.r << 16) | ((Uint32)col.g << 8) | col.b;
+						under8 = carrier->px[ci];
 					}
 					known = true;
 				}
+				else if (fullUnder && uv == 0 && (src == S.screen || !(src->flags & SDL_SRCCOLORKEY)))
+				{
+					under8 = 0; // the screen itself / an opaque surface: 0 is the real pixel
+				}
+				if (onBase && S.screen && (under8 >= 0 || has32))
+				{
+					if (S.screen->format->BitsPerPixel == 8)
+					{
+						if (under8 >= 0 && under8 != s)
+							S.restores.push_back(LayerState::Restore{ (Uint32)pi, s, (Uint32)under8 });
+					}
+					else if (S.screen->format->BytesPerPixel == 4)
+					{
+						const SDL_PixelFormat *sf = S.screen->format;
+						const Uint32 cur = SDL_MapRGB(sf, spal[s].r, spal[s].g, spal[s].b);
+						const Uint32 und = has32 ? under32 : SDL_MapRGB(sf, spal[under8].r, spal[under8].g, spal[under8].b);
+						if (src == S.screen)
+						{
+							// drawn straight onto the 32bpp screen: what is there now is the asset's own pixel
+							const Uint32 now = ((const Uint32*)((const Uint8*)S.screen->pixels + yy * S.screen->pitch))[xx];
+							if (now != und)
+								S.restores.push_back(LayerState::Restore{ (Uint32)pi, now, und });
+						}
+						else if (cur != und)
+							S.restores.push_back(LayerState::Restore{ (Uint32)pi, cur, und });
+					}
+				}
+				if (lowerHiRes)
+					known = false; // battle-16b: composite over that picture (no opaque floor of its proxy colour)
 				if (known)
 				{
 					if (bk.empty())
@@ -1268,6 +1319,8 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 	SDL_UnlockSurface(src);
 	if (!any)
 		return false;
+	for (size_t pi : ownNow)
+		S.hrOwn[pi] = c.stamp;
 	S.masks.push_back(std::move(m));
 	S.backs.push_back(std::move(bk));
 	c.maskIdx = (Uint32)S.masks.size();
@@ -1275,6 +1328,16 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 }
 
 Uint32 storeUnder(const HiResCmd &c, std::vector<Uint8> &&u, bool full);
+
+/// battle-16b: after a blit's stamps, a picture drawn over another picture keeps the lower picture's stamp
+/// there (the lower one is not hidden: the upper one is composited over it, later in the frame order).
+void applySeeThru()
+{
+	for (const auto &st : S.seeThru)
+		if (st.first < S.stamps.size())
+			S.stamps[st.first] = S.hrOwn[st.first] = st.second;
+	S.seeThru.clear();
+}
 
 /// Snapshot of the pixels under a hi-res asset's transparent proxy pixels next to its silhouette,
 /// taken when the asset is drawn into 'dst' (after the 8bpp blit: transparent proxy pixels left the
@@ -2646,7 +2709,10 @@ void HiResLayer::reconfigure()
 	}
 	_recording = (_textConfigured || uiImagesWanted() || assetsWanted()) && S.outputSupported;
 	if (_recording && S.stamps.size() != (size_t)S.baseW * S.baseH)
+	{
 		S.stamps.assign((size_t)S.baseW * S.baseH, 0);
+		S.hrOwn.assign((size_t)S.baseW * S.baseH, 0);
+	}
 	if (wasRecording != _recording)
 	{
 		S.lists.clear();
@@ -2690,9 +2756,15 @@ void HiResLayer::setScreen(SDL_Surface *screenBuffer, bool supportedOutput)
 	bool was = _recording;
 	_recording = (_textConfigured || uiImagesWanted() || assetsWanted()) && S.outputSupported;
 	if (_recording)
+	{
 		S.stamps.assign((size_t)S.baseW * S.baseH, 0);
+		S.hrOwn.assign((size_t)S.baseW * S.baseH, 0);
+	}
 	else
+	{
 		std::vector<Uint32>().swap(S.stamps);
+		std::vector<Uint32>().swap(S.hrOwn);
+	}
 	if (was != _recording)
 	{
 		Log(LOG_INFO) << "HiResLayer: recording " << (_recording ? "enabled" : "disabled (unsupported output path)");
@@ -2822,6 +2894,7 @@ void HiResLayer::recordAsset(SDL_Surface *dst, const HiResCmd &cmd, const SDL_Su
 			for (int xx = 0; xx < c.clipW; ++xx)
 				if (m[(size_t)yy * c.clipW + xx] == MASK_PROXY || m[(size_t)yy * c.clipW + xx] == MASK_BACK)
 					S.stamps[(c.clipY + yy) * S.baseW + c.clipX + xx] = c.stamp;
+		applySeeThru();
 		S.frame.push_back(c);
 		return;
 	}
@@ -2926,11 +2999,13 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 	if (!_recording || !src || !dst)
 		return;
 	const bool toScreen = (dst == S.screen);
-	Uint32 stamp = 0;
-	if (toScreen)
+	Uint32 stamp = toScreen ? ++S.stampCounter : 0;
+	// occlusion: stamp every base pixel covered by an opaque source pixel (after this blit's assets were
+	// delivered: they see the stamps of what was under them - battle-16b hi-res over hi-res)
+	auto doStamp = [&]()
 	{
-		// occlusion: stamp every base pixel covered by an opaque source pixel
-		stamp = ++S.stampCounter;
+		if (!toScreen)
+			return;
 		int rx = x, ry = y, rw = src->w, rh = src->h;
 		if (intersect(rx, ry, rw, rh, 0, 0, S.baseW, S.baseH))
 		{
@@ -2957,7 +3032,7 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 					std::fill_n(&S.stamps[yy * S.baseW + rx], rw, stamp);
 			}
 		}
-	}
+	};
 
 	auto it = S.lists.find(src);
 	const bool hasCmds = (it != S.lists.end() && !it->second.empty());
@@ -3014,6 +3089,7 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 	}
 	else if (!hasCmds)
 	{
+		doStamp();
 		return;
 	}
 
@@ -3061,6 +3137,8 @@ void HiResLayer::onBlit(SDL_Surface *src, SDL_Surface *dst, int x, int y)
 		}
 		dl->push_back(c);
 	}
+	doStamp();
+	applySeeThru();
 	if (S.carrier.src == src)
 		S.carrier.src = nullptr; // consumed
 	if (toScreen && src == layerSurf && layerVal.size() == (size_t)src->w * src->h && pal)
@@ -3438,6 +3516,9 @@ void HiResLayer::beginFrame()
 	S.backs.clear();
 	S.stampCounter = 0;
 	std::fill(S.stamps.begin(), S.stamps.end(), 0);
+	std::fill(S.hrOwn.begin(), S.hrOwn.end(), 0);
+	S.restores.clear();
+	S.seeThru.clear();
 }
 
 bool HiResLayer::caretPosition(double &x, double &y, double &h)
@@ -3451,6 +3532,38 @@ bool HiResLayer::caretPosition(double &x, double &y, double &h)
 const std::vector<HiResCmd> &HiResLayer::frameCommands()
 {
 	return S.frame;
+}
+
+void HiResLayer::restoreUnders(SDL_Surface *screen)
+{
+	const int bpp = screen ? screen->format->BytesPerPixel : 0;
+	if (!_recording || !screen || screen != S.screen || (bpp != 1 && bpp != 4) || S.restores.empty())
+		return;
+	// battle-16b: the screen under a hi-res picture shows what is really under it, never the proxy
+	// (screen filters such as xBRZ would spread the proxy into the picture's soft edges). Latest first, so a
+	// picture over another picture goes back to the lower picture's proxy, then to what is under that one.
+	const Uint32 rgbMask = bpp == 4 ? (screen->format->Rmask | screen->format->Gmask | screen->format->Bmask) : 0xFF;
+	SDL_LockSurface(screen);
+	Uint8 *px = (Uint8*)screen->pixels;
+	for (auto r = S.restores.rbegin(); r != S.restores.rend(); ++r)
+	{
+		const int yy = (int)(r->idx / S.baseW), xx = (int)(r->idx % S.baseW);
+		if (yy >= screen->h || xx >= screen->w)
+			continue;
+		if (bpp == 1)
+		{
+			Uint8 &p = px[(size_t)yy * screen->pitch + xx];
+			if (p == r->cur)
+				p = (Uint8)r->under;
+		}
+		else
+		{
+			Uint32 &p = ((Uint32*)(px + (size_t)yy * screen->pitch))[xx];
+			if ((p & rgbMask) == (r->cur & rgbMask))
+				p = (p & ~rgbMask) | (r->under & rgbMask);
+		}
+	}
+	SDL_UnlockSurface(screen);
 }
 
 void HiResLayer::renderSoftware(SDL_Surface *out, int top, int bottom, int left, int right)

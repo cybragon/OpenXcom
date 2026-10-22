@@ -246,6 +246,8 @@ public:
 	// --- frame
 	/// Start of a frame (screen buffer was cleared).
 	static void beginFrame();
+	/// battle-16b: puts the 8bpp pixels under hi-res pictures back into the screen (before output / filters).
+	static void restoreUnders(SDL_Surface *screen);
 	/// Renders the frame's commands on top of the already drawn OpenGL output.
 	static void renderGL(OpenGL *gl, int outW, int outH, int top, int bottom, int left, int right, const SDL_Color *screenPalette);
 	/// Renders the frame's commands on top of the already scaled 32bpp software output surface.

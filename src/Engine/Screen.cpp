@@ -210,6 +210,7 @@ void Screen::flip()
 		_pushPalette = false;
 	}
 
+	HiResLayer::restoreUnders(_surface.get());
 	if (getWidth() != _baseWidth || getHeight() != _baseHeight || useOpenGL())
 	{
 		Zoom::flipWithZoom(_surface.get(), _screen, _topBlackBand, _bottomBlackBand, _leftBlackBand, _rightBlackBand, &glOutput);

@@ -11,7 +11,7 @@ version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires
   dates above.
 
 ## 8.7.1-hires-3 (unreleased, prepared 2026-10-22; no tag yet)
-Collects the battle test builds below (battle-8 … battle-15).
+Collects the battle test builds below (battle-8 … battle-16).
 
 ## battle test builds (battle-8: 2026-10-19)
 - WEBP pictures (`.webp`, by extension) for hi-res assets, like JPEG; a missing mod file is an error (no other extension is tried).
@@ -51,6 +51,11 @@ Collects the battle test builds below (battle-8 … battle-15).
 Changes since 8.7.1-hires-1 (test builds 2test–10test).
 
 ### Hi-res images (option `oxceHiResAssets`)
+- battle-16 (2026-10-23): one rule for every hi-res picture: the 8bpp proxy is only for game logic and click tests;
+  the screen shows the real lower layer with the hi-res picture alpha-composited over it, coverage decided by the
+  recorded overdraw (no proxy/screen matching, no edge-only cells). Fixes the medikit/minimap grid loss and label holes;
+  tints (MEDIBITS state, highlights) are applied to the hi-res picture, not the 8bpp cells; the inventory
+  background is composited over black instead of its 8bpp proxy. Modified: Engine/HiResLayer, Battlescape/InventoryState.
 - extraSprites replacements whose size differs from the replaced image are drawn at the output
   resolution. `width`/`height` is the logical size; a larger file is fitted into that box keeping its
   aspect. Sheets (`subX`/`subY`) are cut at one scale. Mod-defined images are fitted per consumer box.

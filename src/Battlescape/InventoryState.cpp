@@ -448,10 +448,12 @@ void InventoryState::blitNativeBack(SDL_Surface *screen)
 		_backHash = h;
 		_canvasBack->begin(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), sx, sy);
 		_canvasBack->setPalette(_bg->getSurface()->format->palette); // state palette for 8-bit art
+		// battle-16 common rule: the picture over its real lower layer. _bg is the first layer of this
+		// full-screen state, so under it is the cleared (black) screen - never the 8bpp proxy in the holder
+		_canvasBack->fillRect(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), 0xFF000000u);
 		// background: TAC01's picture when it has one (hi-res asset), else the 8bpp _bg
 		if (!(_bgSource && _canvasBack->drawSurface(_bgSource, _bg->getX(), _bg->getY())))
 		{
-			_canvasBack->fillRect(_bg->getX(), _bg->getY(), _bg->getWidth(), _bg->getHeight(), 0);
 			_canvasBack->drawSurface8(_bg, _bg->getX(), _bg->getY());
 		}
 		if (_soldier->getVisible())

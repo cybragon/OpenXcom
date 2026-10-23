@@ -101,10 +101,13 @@ struct HiResCmd
 	Uint8 rcFrom[4] = {0, 0, 0, 0};  ///< recolour source group<<4 per channel (face, hair, utile, rank), 0 = off
 	Uint8 rcTo[4] = {0, 0, 0, 0};    ///< recolour target base colour per channel
 	Uint32 tint = 0;                 ///< ARGB colour blended over the picture (8bpp highlight of a copied background), 0 = none;
-	                                 ///< the proxy pixels are recoloured, so they are not verified (every opaque proxy pixel counts)
+	                                 ///< the proxy pixels are recoloured: verified against refId (the recoloured copy)
 	Uint8 invert = 0;                ///< 1 = brightness inverted around 'invertMid' (8bpp Surface::invert of a pressed button);
-	                                 ///< like tint, the proxy pixels are recoloured and not verified
+	                                 ///< like tint, the proxy pixels are recoloured (verified against refId)
 	Uint8 invertMid = 0;             ///< luminance of the middle colour of the 8bpp inversion
+	Uint32 refId = 0;                ///< memorial-fix: snapshot of the recoloured proxy pixels (tint / invert), per proxy pixel of
+	                                 ///< the source rect, taken right after the 8bpp recolour; a pixel that no longer shows it was
+	                                 ///< drawn over later (8-bit thumb over a tinted scrollbar track), 0 = none (not verified)
 	// --- resolved when the command reaches the screen buffer
 	SDL_Color fill = {0, 0, 0, 0};
 	SDL_Color line = {0, 0, 0, 0};

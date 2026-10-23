@@ -1197,6 +1197,22 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 			return -1;
 		return (*under)[(size_t)(v - c.srcY) * c.srcW + (u - c.srcX)];
 	};
+	// memorial-fix: recoloured copies (tint / invert) are verified against their snapshot (refId): pixels drawn
+	// over them later in an off-screen surface (8-bit scrollbar thumb over the tinted track) hide the picture
+	const std::vector<Uint8> *ref = nullptr;
+	if (c.refId && (c.tint || c.invert) && !c.battle)
+	{
+		auto ri = S.unders.find(c.refId);
+		if (ri != S.unders.end() && ri->second.size() == (size_t)c.srcW * c.srcH)
+			ref = &ri->second;
+	}
+	auto refAt = [&](int u, int v) -> int
+	{
+		if (!ref || u < c.srcX || v < c.srcY || u >= c.srcX + c.srcW || v >= c.srcY + c.srcH)
+			return -1;
+		const int r = (*ref)[(size_t)(v - c.srcY) * c.srcW + (u - c.srcX)];
+		return r ? r : -1; // 0 = no pixel recorded there
+	};
 	const SDL_Color *spal = src->format->palette ? src->format->palette->colors : nullptr;
 	int bownW = 0, bownH = 0;
 	const Uint32 *bown = (c.battle && c.battleId) ? HiResAssets::battleOwners(src, bownW, bownH) : nullptr;
@@ -1224,7 +1240,8 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 			if (ev)
 			{
 				// opaque proxy pixel: still there (a recoloured copy for tint / invert) or overdrawn
-				const bool here = (c.tint || c.invert) ? s != 0 : s == ev;
+				const int rv = refAt(u, v);
+				const bool here = (c.tint || c.invert) ? (rv >= 0 ? s == rv : s != 0) : s == ev;
 				if (!here)
 					continue;
 				m[mi] = MASK_PROXY;
@@ -2400,7 +2417,7 @@ Uint64 frameHash(int dstW, int dstH, bool mapInBuffer)
 		h = mix64(h, (Uint64)(Uint8)c.inkTopL | ((Uint64)(Uint8)c.inkBotL << 8) | ((Uint64)(Uint8)c.inkTopK << 16) | ((Uint64)(Uint8)c.inkBotK << 24));
 		h = mix64(h, c.imageId); h = mix64(h, c.assetId);
 		h = mix64(h, (Uint64)(Uint16)c.srcX | ((Uint64)(Uint16)c.srcY << 16) | ((Uint64)(Uint16)c.srcW << 32) | ((Uint64)(Uint16)c.srcH << 48));
-		h = mix64(h, c.palKey); h = mix64(h, c.maskIdx); h = mix64(h, c.underId);
+		h = mix64(h, c.palKey); h = mix64(h, c.maskIdx); h = mix64(h, c.underId); h = mix64(h, c.refId);
 		h = mix64(h, (Uint64)c.battle | ((Uint64)c.layered << 8) | ((Uint64)c.clearRect << 16) | ((Uint64)c.nearest << 24) | ((Uint64)c.shade << 32) | ((Uint64)c.nvColor << 40));
 		h = mix64(h, c.spriteKey); h = mix64(h, c.battleId); h = mix64(h, c.shadowA); h = mix64(h, (Uint32)(Uint16)c.diaX); h = mix64(h, (Uint32)(Uint16)c.diaY); h = mix64(h, c.tint); h = mix64(h, c.invert); h = mix64(h, c.invertMid); h = mix64(h, c.stamp);
 		h = hashBytes(h, c.rcFrom, 4); h = hashBytes(h, c.rcTo, 4);
@@ -3322,6 +3339,38 @@ void HiResLayer::onCopy(SDL_Surface *src, SDL_Surface *dst, int fromX, int fromY
 	S.lists[dst] = std::move(out);
 }
 
+namespace
+{
+/// memorial-fix: the recoloured proxy pixels of a tinted / inverted asset command as its holder shows them
+/// now (right after the 8bpp recolour), per proxy pixel of the source rect (same mapping as deliverAsset).
+Uint32 snapshotRecoloured(const HiResCmd &c, const SDL_Surface *holder)
+{
+	int ew = 0, eh = 0;
+	const Uint8 *e = HiResAssets::expected(c.assetId, ew, eh);
+	if (!e || !holder || holder->format->BitsPerPixel != 8 || c.battle || c.layered || c.w <= 0 || c.h <= 0 || c.srcW <= 0 || c.srcH <= 0)
+		return 0;
+	int vx = c.clipX, vy = c.clipY, vw = c.clipW, vh = c.clipH;
+	if (!intersect(vx, vy, vw, vh, c.x, c.y, c.w, c.h) || !intersect(vx, vy, vw, vh, 0, 0, holder->w, holder->h))
+		return 0;
+	std::vector<Uint8> r((size_t)c.srcW * c.srcH, 0);
+	for (int yy = vy; yy < vy + vh; ++yy)
+	{
+		const int v = std::min(eh - 1, std::min(c.srcY + c.srcH - 1, c.srcY + (yy - c.y) * c.srcH / c.h));
+		if (v < c.srcY)
+			continue;
+		const Uint8 *hp = (const Uint8*)holder->pixels + yy * holder->pitch;
+		for (int xx = vx; xx < vx + vw; ++xx)
+		{
+			const int u = std::min(ew - 1, std::min(c.srcX + c.srcW - 1, c.srcX + (xx - c.x) * c.srcW / c.w));
+			if (u < c.srcX)
+				continue;
+			r[(size_t)(v - c.srcY) * c.srcW + (u - c.srcX)] = hp[xx];
+		}
+	}
+	return storeUnder(c, std::move(r), false);
+}
+}
+
 void HiResLayer::tintSurface(SDL_Surface *holder, Uint32 tint)
 {
 	if (!_recording || !holder)
@@ -3331,7 +3380,10 @@ void HiResLayer::tintSurface(SDL_Surface *holder, Uint32 tint)
 		return;
 	for (HiResCmd &c : it->second)
 		if (c.kind == HiResCmdKind::Image)
+		{
 			c.tint = tint;
+			c.refId = c.assetId ? snapshotRecoloured(c, holder) : 0;
+		}
 }
 
 void HiResLayer::dropOverdrawn(SDL_Surface *holder, const SDL_Surface *pixels)
@@ -3393,7 +3445,10 @@ void HiResLayer::tintFrom(SDL_Surface *holder, size_t from, Uint32 tint)
 		return;
 	for (size_t i = from; i < it->second.size(); ++i)
 		if (it->second[i].kind == HiResCmdKind::Image)
+		{
 			it->second[i].tint = tint;
+			it->second[i].refId = it->second[i].assetId ? snapshotRecoloured(it->second[i], holder) : 0;
+		}
 }
 
 void HiResLayer::invertSurface(SDL_Surface *holder, Uint8 midLum)
@@ -3408,6 +3463,8 @@ void HiResLayer::invertSurface(SDL_Surface *holder, Uint8 midLum)
 		{
 			c.invert ^= 1;
 			c.invertMid = midLum;
+			// the holder already shows the inverted 8bpp pixels (callers recolour first)
+			c.refId = (c.invert && c.assetId) ? snapshotRecoloured(c, holder) : 0;
 		}
 }
 
@@ -3565,6 +3622,7 @@ void HiResLayer::restoreUnders(SDL_Surface *screen)
 	}
 	SDL_UnlockSurface(screen);
 }
+
 
 void HiResLayer::renderSoftware(SDL_Surface *out, int top, int bottom, int left, int right)
 {

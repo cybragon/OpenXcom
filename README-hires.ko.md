@@ -1,12 +1,12 @@
-# OpenXcom Extended 8.7.1-hires-2 (비공식 고해상도 포크)
+# OpenXcom Extended 8.7.1-hires-3 (비공식 고해상도 포크)
 
 [English](README-hires.en.md) · [변경 내역](CHANGELOG-hires.md) · [모드 제작자용 안내(영문)](MODDING-hires.md)
 
 > **비공식 포크입니다.** OpenXcom Extended(OXCE) 8.7.1을 바탕으로 고친 개인 빌드이며,
 > OXCE/OpenXcom 공식 배포판이 아닙니다. 이 빌드의 문제는 **원작 팀(OXCE, OpenXcom)에 문의하지 말아 주세요.**
 
-- 버전 이름: `8.7.1-hires-2` (게임 창 제목: `OpenXcom Extended 8.7.1-hires-2 (v2026-10-13)`)
-- 릴리스 태그(예정): `v8.7.1-hires-2`
+- 버전 이름: `8.7.1-hires-3` (게임 창 제목: `OpenXcom Extended 8.7.1-hires-3 (v2026-10-13)`)
+- 릴리스 태그: `v8.7.1-hires-3`
 - 바탕: OXCE 8.7.1 (커밋 `441cae1b0`)
 - 라이선스: GNU GPL v3 이상 (`LICENSE.txt`)
 
@@ -95,7 +95,7 @@ TU, 체력, 탄약 같은 전투 화면 숫자를 굵은 TTF 숫자 글꼴(`BATT
 글자 입력 칸에서 IME로 입력할 수 있고, 커서, 조합 중인 글자, 후보 창이 TTF 글자 위치에 맞춰 나옵니다.
 
 ## 설치 (Windows x64)
-1. zip을 풀면 `Extended-8.7.1-hires-2` 폴더가 생깁니다. 기존 OpenXcom 설치와 따로 둡니다.
+1. zip을 풀면 `Extended-8.7.1-hires-3` 폴더가 생깁니다. 기존 OpenXcom 설치와 따로 둡니다.
 2. **원작 게임 데이터는 들어 있지 않습니다.** 직접 가지고 있는 X-COM: UFO Defense(Steam, GOG 등)의 데이터
    (GEODATA, GEOGRAPH, MAPS, ROUTES, SOUND, TERRAIN, UFOGRAPH, UFOINTRO, UNITS …)를 `UFO\` 폴더에 복사해 넣으세요.
    TFTD가 있으면 `TFTD\`에 넣습니다(선택).
@@ -150,7 +150,7 @@ TU, 체력, 탄약 같은 전투 화면 숫자를 굵은 TTF 숫자 글꼴(`BATT
 - 테두리, 굵게, 힌팅 같은 일부 옵션은 게임 안 메뉴가 없고 `hires_option.cfg`에서만 바꿀 수 있습니다.
 - 성능 영향은 따로 측정하지 않았습니다.
 - 시험은 주로 리눅스 가상 화면(Xvfb)에서 자동 캡처 비교로 했고, Windows에서 시험 빌드를 직접 확인했습니다. 세이브는 꼭 백업하세요.
-- 세이브 파일 형식은 바꾸지 않았습니다. 세이브 머리글의 버전 문자열만 `Extended 8.7.1-hires-2`로 기록됩니다. 고해상도 이미지를 끄면 OXCE 8.7.1과 똑같이 그리고, 기존 모드는 고칠 필요가 없습니다.
+- 세이브 파일 형식은 바꾸지 않았습니다. 세이브 머리글의 버전 문자열만 `Extended 8.7.1-hires-3`로 기록됩니다. 고해상도 이미지를 끄면 OXCE 8.7.1과 똑같이 그리고, 기존 모드는 고칠 필요가 없습니다.
 
 ## 앞으로의 목표
 - OpenGL 셰이더 필터에서도 UI 그래픽 필터 지원
@@ -170,5 +170,5 @@ OpenXcom Extended를 만들고 이끌어 온 **Meridian**과 모든 OXCE 기여�
 
 ## 라이선스와 소스
 - OpenXcom과 이 포크는 GNU GPL v3 이상으로 배포됩니다(`LICENSE.txt`). 함께 링크한 라이브러리의 고지는 `THIRD_PARTY.txt`와 `licenses\`에 있습니다.
-- 소스: https://github.com/cybragon/OpenXcom (태그 `v8.7.1-hires-2` 예정. hires-1은 `hires-1` 브랜치 / 태그 `v8.7.1-hires-1`)
+- 소스: https://github.com/cybragon/OpenXcom (태그 `v8.7.1-hires-3`. hires-2는 태그 `v8.7.1-hires-2`, hires-1은 `hires-1` 브랜치 / 태그 `v8.7.1-hires-1`)
 - 수정 사실과 수정한 파일 목록은 `CHANGELOG-hires.md`에 있습니다.

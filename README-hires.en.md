@@ -1,4 +1,4 @@
-# OpenXcom Extended 8.7.1-hires-2 (unofficial hi-res fork)
+# OpenXcom Extended 8.7.1-hires-3 (unofficial hi-res fork)
 
 [한국어](README-hires.ko.md) · [Changelog](CHANGELOG-hires.md) · [Modder notes](MODDING-hires.md)
 
@@ -6,8 +6,8 @@
 > not an official OXCE/OpenXcom release. **Please do not contact the original teams (OXCE, OpenXcom)
 > about this build.**
 
-- Version name: `8.7.1-hires-2` (window title: `OpenXcom Extended 8.7.1-hires-2 (v2026-10-13)`)
-- Planned release tag: `v8.7.1-hires-2`
+- Version name: `8.7.1-hires-3` (window title: `OpenXcom Extended 8.7.1-hires-3 (v2026-10-13)`)
+- Release tag: `v8.7.1-hires-3`
 - Base: OXCE 8.7.1 (commit `441cae1b0`)
 - License: GNU GPL v3 or later (`LICENSE.txt`)
 
@@ -101,7 +101,7 @@ TU, health, ammo and other battlescape numbers are drawn with a bold TTF digit f
 IME input in text fields, with the caret, composition and candidate window placed on the TTF text.
 
 ## Installation (Windows x64)
-1. Unzip; you get an `Extended-8.7.1-hires-2` folder. Keep it separate from any other OpenXcom install.
+1. Unzip; you get an `Extended-8.7.1-hires-3` folder. Keep it separate from any other OpenXcom install.
 2. **No original game data is included.** Copy the data of your own copy of X-COM: UFO Defense
    (Steam, GOG, ...), i.e. GEODATA, GEOGRAPH, MAPS, ROUTES, SOUND, TERRAIN, UFOGRAPH, UFOINTRO, UNITS ...,
    into the `UFO\` folder. Optionally put TFTD data into `TFTD\`.
@@ -156,7 +156,7 @@ Apart from the "Fonts" tab and the Video hi-res dropdown, these are set in `user
 - Some options (outline, bold, hinting, ...) have no in-game menu and can only be changed in `hires_option.cfg`.
 - The performance impact has not been measured.
 - Testing was mostly automated screenshot comparisons on a Linux virtual display (Xvfb), plus manual checks of test builds on Windows. Please back up your saves.
-- The savegame format was not changed. Only the version string in the save header is written as `Extended 8.7.1-hires-2`. With hi-res images off, rendering is the same as OXCE 8.7.1; existing mods need no changes.
+- The savegame format was not changed. Only the version string in the save header is written as `Extended 8.7.1-hires-3`. With hi-res images off, rendering is the same as OXCE 8.7.1; existing mods need no changes.
 
 ## Goals
 - UI graphics filters with OpenGL shader filters too
@@ -177,5 +177,5 @@ as well as to the original OpenXcom developers and contributors. This fork is on
 
 ## License and source
 - OpenXcom and this fork are distributed under the GNU GPL v3 or later (`LICENSE.txt`). Notices of the linked libraries are in `THIRD_PARTY.txt` and `licenses\`.
-- Source: https://github.com/cybragon/OpenXcom (planned tag `v8.7.1-hires-2`; hires-1: branch `hires-1` / tag `v8.7.1-hires-1`)
+- Source: https://github.com/cybragon/OpenXcom (tag `v8.7.1-hires-3`; hires-2: tag `v8.7.1-hires-2`; hires-1: branch `hires-1` / tag `v8.7.1-hires-1`)
 - The modification notice and the list of modified files are in `CHANGELOG-hires.md`.

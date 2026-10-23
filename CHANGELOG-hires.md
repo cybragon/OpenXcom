@@ -1,16 +1,16 @@
-# OpenXcom Extended 8.7.1-hires-2 – CHANGELOG / modification notice
+# OpenXcom Extended 8.7.1-hires-3 – CHANGELOG / modification notice
 
 This is a **modified version** of OpenXcom Extended (OXCE) 8.7.1 (upstream commit `441cae1b0`),
 an unofficial fork. It is distributed under the same license, the GNU General Public License
 version 3 or later (see `LICENSE.txt`). See `README-hires.en.md` / `README-hires.ko.md`.
 
-- Version name: `8.7.1-hires-2` (planned release tag `v8.7.1-hires-2`)
-- Modified: 2026-09-25 – 2026-10-13
+- Version name: `8.7.1-hires-3` (release tag `v8.7.1-hires-3`)
+- Modified: 2026-09-25 – 2026-10-23
 - The original OpenXcom / OXCE copyright notices in every file are kept. Files listed below as
   "added" were written for this fork; files listed as "modified" were changed for this fork on the
   dates above.
 
-## 8.7.1-hires-3 (unreleased, prepared 2026-10-22; no tag yet)
+## 8.7.1-hires-3 (2026-10-23)
 Collects the battle test builds below (battle-8 … battle-16).
 
 ## battle test builds (battle-8: 2026-10-19)

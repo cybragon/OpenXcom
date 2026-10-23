@@ -1290,7 +1290,21 @@ bool deliverAsset(HiResCmd &c, SDL_Surface *src, int x, int y, const LayerState:
 				{
 					under8 = 0; // the screen itself / an opaque surface: 0 is the real pixel
 				}
-				if (onBase && S.screen && (under8 >= 0 || has32))
+				// battle-16d: only the silhouette border (a proxy pixel next to a transparent one or the rect edge)
+				// goes back to the true under value: that is where the picture's soft edge lets it through. Inside
+				// the silhouette the proxy stays (its colour matches the picture), so pin holes of a filtered /
+				// resampled picture (xBRZ alpha holes on HUD buttons) do not show the black under the HUD.
+				bool border = false;
+				for (int dv = -1; dv <= 1 && !border; ++dv)
+					for (int du = -1; du <= 1 && !border; ++du)
+					{
+						const int nu = u + du, nv = v + dv;
+						if (nu < c.srcX || nv < c.srcY || nu >= c.srcX + c.srcW || nv >= c.srcY + c.srcH || nu >= ew || nv >= eh)
+							border = true;
+						else if (!e[(size_t)nv * ew + nu])
+							border = true;
+					}
+				if (onBase && S.screen && border && (under8 >= 0 || has32))
 				{
 					if (S.screen->format->BitsPerPixel == 8)
 					{
@@ -3606,6 +3620,12 @@ void HiResLayer::restoreUnders(SDL_Surface *screen)
 	{
 		const int yy = (int)(r->idx / S.baseW), xx = (int)(r->idx % S.baseW);
 		if (yy >= screen->h || xx >= screen->w)
+			continue;
+		// battle-16d: only where a hi-res picture is still shown at the end of the frame (the last blit there
+		// is a picture's). A later 8-bit draw over the picture (popup frame, button cover) may reuse the
+		// proxy's palette index by chance: matching the value alone put the under pixel (often black) back
+		// into that 8-bit drawing.
+		if (r->idx >= S.stamps.size() || r->idx >= S.hrOwn.size() || !S.hrOwn[r->idx] || S.stamps[r->idx] != S.hrOwn[r->idx])
 			continue;
 		if (bpp == 1)
 		{
